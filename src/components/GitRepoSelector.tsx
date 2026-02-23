@@ -17,6 +17,7 @@ import {
   installAgentCli,
   SupportedAgentCli,
 } from '@/app/actions/git';
+import { resolveRepositoryByName } from '@/app/actions/repository';
 import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
@@ -62,10 +63,16 @@ type TerminalWindow = Window & {
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
   repoPath?: string | null;
+  fromRepoName?: string | null;
   prefillFromSession?: string | null;
 };
 
-export default function GitRepoSelector({ mode = 'home', repoPath = null, prefillFromSession = null }: GitRepoSelectorProps) {
+export default function GitRepoSelector({
+  mode = 'home',
+  repoPath = null,
+  fromRepoName = null,
+  prefillFromSession = null,
+}: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
 
@@ -95,6 +102,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
   const [loading, setLoading] = useState(false);
   const [deletingSessionName, setDeletingSessionName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isResolvingRepoFromName, setIsResolvingRepoFromName] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInstallingAgentCli, setIsInstallingAgentCli] = useState(false);
   const [installingAgentCli, setInstallingAgentCli] = useState<SupportedAgentCli | null>(null);
@@ -271,6 +279,55 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     // `handleSelectRepo` is intentionally excluded to avoid retriggering from function identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, repoPath, selectedRepo]);
+
+  useEffect(() => {
+    if (mode !== 'new') return;
+    if (repoPath) {
+      setIsResolvingRepoFromName(false);
+      return;
+    }
+
+    const trimmedFromRepoName = fromRepoName?.trim() ?? '';
+    if (!trimmedFromRepoName) {
+      setIsResolvingRepoFromName(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveFromRepoName = async () => {
+      setError(null);
+      setIsResolvingRepoFromName(true);
+
+      const result = await resolveRepositoryByName(trimmedFromRepoName);
+      if (isCancelled) return;
+
+      if (!result.success) {
+        setError(result.error || 'Failed to search repositories.');
+        setIsResolvingRepoFromName(false);
+        return;
+      }
+
+      if (!result.repoPath) {
+        setError(`Could not find a matching repository for "${trimmedFromRepoName}".`);
+        setIsResolvingRepoFromName(false);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set('repo', result.repoPath);
+      if (prefillFromSession) {
+        params.set('prefillFromSession', prefillFromSession);
+      }
+      router.replace(`/new?${params.toString()}`);
+    };
+
+    void resolveFromRepoName();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [fromRepoName, mode, prefillFromSession, repoPath, router]);
 
   useEffect(() => {
     setHasAppliedPrefill(false);
@@ -1490,6 +1547,34 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
                   Done
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'new' && !selectedRepo && (!repoPath || !!error) && (
+        <div className="card w-full max-w-2xl bg-base-200 shadow-xl">
+          <div className="card-body">
+            <h2 className="card-title flex items-center gap-2">
+              <FolderGit2 className="w-6 h-6 text-primary" />
+              Git Repository Selector
+            </h2>
+            {isResolvingRepoFromName ? (
+              <div className="alert text-sm py-2 px-3 mt-2 flex items-center gap-2">
+                <span className="loading loading-spinner loading-sm"></span>
+                {fromRepoName
+                  ? `Searching for repository "${fromRepoName}"...`
+                  : 'Searching for repository...'}
+              </div>
+            ) : error ? (
+              <div className="alert alert-error text-sm py-2 px-3 mt-2">{error}</div>
+            ) : (
+              <div className="text-sm opacity-70 mt-2">No repository specified.</div>
+            )}
+            <div className="mt-4">
+              <button className="btn btn-primary btn-sm" onClick={() => router.push('/')}>
+                Choose Repository
+              </button>
             </div>
           </div>
         </div>

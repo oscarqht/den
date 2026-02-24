@@ -236,8 +236,8 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
     if (global.ttydPersistenceMode === 'tmux' && os.platform() !== 'win32') {
       try {
         const { spawnSync } = await import('child_process');
-        // Re-apply tmux defaults for already-running instances so text selection keeps working.
-        spawnSync('tmux', ['set-option', '-g', 'mouse', 'off'], {
+        // Re-apply tmux defaults for already-running instances so wheel scrollback stays available.
+        spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
           stdio: 'ignore',
           env: process.env,
         });
@@ -282,12 +282,12 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     let persistenceMode: 'tmux' | 'shell' = 'shell';
     if (hasTmux) {
-      // Keep deep history while preserving native terminal text selection/copy behavior in ttyd.
+      // Keep deep history and wheel scrollback in tmux-backed ttyd sessions.
       spawnSync('tmux', ['start-server'], {
         stdio: 'ignore',
         env: process.env,
       });
-      spawnSync('tmux', ['set-option', '-g', 'mouse', 'off'], {
+      spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
         stdio: 'ignore',
         env: process.env,
       });
@@ -336,6 +336,45 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
   } catch (error) {
     console.error('Error starting ttyd:', error);
     return { success: false, error: 'Failed to start ttyd. Make sure ttyd is installed and in your PATH.' };
+  }
+}
+
+export async function setTmuxSessionMouseMode(
+  sessionName: string,
+  role: TerminalSessionRole,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  if (os.platform() === 'win32') {
+    return { success: true };
+  }
+
+  try {
+    const { spawnSync } = await import('child_process');
+    const tmuxSession = getTmuxSessionName(sessionName, role);
+    const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
+      stdio: 'ignore',
+      env: process.env,
+    });
+
+    // Session might not be created yet (e.g. hidden terminal iframe not initialized).
+    // Treat this as a no-op so toggling mode remains robust.
+    if (typeof hasSessionResult.status === 'number' && hasSessionResult.status !== 0) {
+      return { success: true };
+    }
+
+    const result = spawnSync('tmux', ['set-option', '-t', tmuxSession, 'mouse', enabled ? 'on' : 'off'], {
+      stdio: 'ignore',
+      env: process.env,
+    });
+
+    if (typeof result.status === 'number' && result.status !== 0) {
+      return { success: false, error: `tmux exited with status ${result.status}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to set tmux mouse mode:', error);
+    return { success: false, error: 'Failed to set tmux mouse mode.' };
   }
 }
 

@@ -1,9 +1,18 @@
 name: Publish To NPM
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "The tag to publish (e.g. v1.0.0)"
+        required: false
+  workflow_run:
+    workflows:
+      - Release On Main Merge
+    branches:
+      - main
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -11,6 +20,7 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
 
     steps:
@@ -18,11 +28,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || github.sha }}
 
       - name: Resolve release tag
         id: resolve-tag
         run: |
-          TAG_NAME="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag_name }}" ]; then
+            TAG_NAME="${{ inputs.tag_name }}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            # If manually triggered without input, use the current ref (e.g. if run on a tag)
+            TAG_NAME="${GITHUB_REF_NAME}"
+          else
+            # Workflow run triggered by release
+            git fetch --tags origin main
+            TAG_NAME="$(git tag --merged origin/main | grep '^v' | sort -V | tail -n1)"
+          fi
 
           if [ -z "${TAG_NAME}" ]; then
             echo "No release tag found for this event. Skipping publish."

@@ -235,7 +235,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
   }
 
   try {
-    const { spawn } = await import('child_process');
+    const { spawn, spawnSync } = await import('child_process');
 
     const env: any = { ...process.env };
     // Clean up environment variables to prevent conflicts
@@ -245,10 +245,17 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     delete env.PORT;
     delete env.NODE_ENV;
 
-    const shell = os.platform() === 'win32' ? 'powershell' : 'bash';
     const workingDir = os.homedir();
+    const isWindows = os.platform() === 'win32';
+    const commandProbe = isWindows ? 'where' : 'which';
+    const hasTmux =
+      !isWindows &&
+      spawnSync(commandProbe, ['tmux'], {
+        stdio: 'ignore',
+        env: process.env,
+      }).status === 0;
 
-    const child = spawn('ttyd', [
+    const ttydArgs = [
       '-p', '7681',
       '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black", "selectionBackground": "rgba(59, 130, 246, 0.4)"}',
       '-t', 'disableResizeOverlay=true',
@@ -256,8 +263,19 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
       '-t', 'fontWeight=300',
       '-t', 'fontWeightBold=500',
       '-w', workingDir,
-      '-W', shell
-    ], {
+      '-W',
+    ];
+
+    if (hasTmux) {
+      // Use URL args so each iframe can attach to a dedicated tmux session.
+      ttydArgs.push('-a', 'tmux');
+    } else {
+      const shell = isWindows ? 'powershell' : 'bash';
+      console.warn('tmux is unavailable; falling back to non-persistent ttyd shell mode.');
+      ttydArgs.push(shell);
+    }
+
+    const child = spawn('ttyd', ttydArgs, {
       stdio: 'ignore',
       detached: false,
       cwd: workingDir,

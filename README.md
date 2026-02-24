@@ -30,12 +30,12 @@ Viba is a local session manager for AI coding agents. It lets you pick a Git rep
 - Next.js (App Router) + React + TypeScript
 - Tailwind CSS + DaisyUI
 - `simple-git` for Git/worktree operations
-- `ttyd` as the web terminal backend (proxied at `/terminal`)
+- `ttyd` + `tmux` as the web terminal backend/persistence layer (proxied at `/terminal`)
 
 ## Prerequisites
 
 - Node.js and npm
-- A system package manager (`viba-cli` auto-installs `ttyd` when missing)
+- A system package manager (`viba-cli` auto-installs `ttyd` and `tmux` when missing on macOS/Linux)
 - At least one supported agent CLI installed (for example `codex`, `gemini`, or `agent`)
 
 ## Getting Started

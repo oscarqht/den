@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 // import { useRouter } from 'next/navigation';
 import {
     deleteSessionInBackground,
@@ -74,6 +74,22 @@ const TERMINAL_HEADER_HEIGHT = 40;
 const TERMINAL_PANEL_RIGHT_GAP = 16;
 const TERMINAL_MINIMIZED_VISIBLE_WIDTH = 40;
 const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
+const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
+
+const sanitizeTmuxSessionName = (value: string): string => {
+    const safe = value.trim().replace(/[^a-zA-Z0-9_-]/g, '-');
+    return safe || 'session';
+};
+
+const buildTerminalSrc = (sessionName: string, role: 'agent' | 'terminal'): string => {
+    const tmuxSession = `viba-${sanitizeTmuxSessionName(sessionName).slice(0, 40)}-${role}`;
+    const params = new URLSearchParams();
+    params.append('arg', 'new-session');
+    params.append('arg', '-A');
+    params.append('arg', '-s');
+    params.append('arg', tmuxSession);
+    return `/terminal?${params.toString()}`;
+};
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -240,6 +256,28 @@ export function SessionView({
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const agentTerminalSrc = useMemo(() => buildTerminalSrc(sessionName, 'agent'), [sessionName]);
+    const floatingTerminalSrc = useMemo(() => buildTerminalSrc(sessionName, 'terminal'), [sessionName]);
+
+    const getTerminalBootstrapKey = useCallback((slot: 'agent' | 'terminal') => {
+        return `${TERMINAL_BOOTSTRAP_STORAGE_PREFIX}${sessionName}:${slot}`;
+    }, [sessionName]);
+
+    const hasTerminalBootstrapped = useCallback((slot: 'agent' | 'terminal'): boolean => {
+        try {
+            return window.sessionStorage.getItem(getTerminalBootstrapKey(slot)) === '1';
+        } catch {
+            return false;
+        }
+    }, [getTerminalBootstrapKey]);
+
+    const markTerminalBootstrapped = useCallback((slot: 'agent' | 'terminal'): void => {
+        try {
+            window.sessionStorage.setItem(getTerminalBootstrapKey(slot), '1');
+        } catch {
+            // Ignore storage failures (private mode / disabled storage).
+        }
+    }, [getTerminalBootstrapKey]);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
@@ -1401,6 +1439,15 @@ export function SessionView({
                         };
                     } catch { /* ignore if API unavailable */ }
 
+                    const alreadyBootstrapped = hasTerminalBootstrapped('agent');
+                    if (alreadyBootstrapped) {
+                        setFeedback('Reconnected to terminal');
+                        win.focus();
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) (textarea as HTMLElement).focus();
+                        return;
+                    }
+
                     // Attempt injection
 
                     // User instructions:
@@ -1430,6 +1477,7 @@ export function SessionView({
                     };
 
                     pressEnter();
+                    markTerminalBootstrapped('agent');
 
                     // Inject agent command if present
                     if (agent) {
@@ -1608,6 +1656,14 @@ export function SessionView({
                         console.error('Failed to setup auto-scroll:', e);
                     }
 
+                    const alreadyBootstrapped = hasTerminalBootstrapped('terminal');
+                    if (alreadyBootstrapped) {
+                        win.focus();
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) (textarea as HTMLElement).focus();
+                        return;
+                    }
+
                     const targetPath = worktree || repo;
                     const cmd = `cd ${quoteShellArg(targetPath)}`;
                     term.paste(cmd);
@@ -1628,6 +1684,7 @@ export function SessionView({
                         }
                     };
                     pressEnter();
+                    markTerminalBootstrapped('terminal');
 
                     // Check for startup script
                     if (startupScript && !isResume) {
@@ -1895,7 +1952,7 @@ export function SessionView({
                 >
                     <iframe
                         ref={iframeRef}
-                        src="/terminal"
+                        src={agentTerminalSrc}
                         className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleIframeLoad}
@@ -2031,7 +2088,7 @@ export function SessionView({
                 <div className={isTerminalMinimized ? 'h-0 overflow-hidden' : 'h-[calc(100%-2.5rem)]'}>
                     <iframe
                         ref={terminalRef}
-                        src="/terminal"
+                        src={floatingTerminalSrc}
                         className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleTerminalLoad}

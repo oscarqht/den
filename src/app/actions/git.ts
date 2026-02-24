@@ -351,6 +351,17 @@ export async function setTmuxSessionMouseMode(
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
+    const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
+      stdio: 'ignore',
+      env: process.env,
+    });
+
+    // Session might not be created yet (e.g. hidden terminal iframe not initialized).
+    // Treat this as a no-op so toggling mode remains robust.
+    if (typeof hasSessionResult.status === 'number' && hasSessionResult.status !== 0) {
+      return { success: true };
+    }
+
     const result = spawnSync('tmux', ['set-option', '-t', tmuxSession, 'mouse', enabled ? 'on' : 'off'], {
       stdio: 'ignore',
       env: process.env,

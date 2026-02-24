@@ -92,11 +92,6 @@ type PreviewComponentStackEntry = {
     } | null;
 };
 
-type ResolveComponentSourceResponse = {
-    sourcePath?: string;
-    error?: string;
-};
-
 const isWindowsAbsolutePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value);
 
 const normalizePickerSourceFileName = (value: string): string => {
@@ -267,6 +262,7 @@ export function SessionView({
     const [previewInputUrl, setPreviewInputUrl] = useState('');
     const [previewUrl, setPreviewUrl] = useState('');
     const [isPreviewPickerActive, setIsPreviewPickerActive] = useState(false);
+    const [isResolvingElement, setIsResolvingElement] = useState(false);
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
 
@@ -634,9 +630,9 @@ export function SessionView({
         setIsInsertingFilePaths(false);
     }, [pasteIntoAgentIframe]);
 
-    const resolveComponentSourcePathByName = useCallback(async (componentName: string): Promise<string | null> => {
-        const normalizedName = normalizeComponentLookupName(componentName);
-        if (!normalizedName) return null;
+    const resolveComponentSourcePathByNames = useCallback(async (componentNames: string[]): Promise<{ resolvedName: string; sourcePath: string } | null> => {
+        const normalizedNames = componentNames.map(normalizeComponentLookupName).filter(Boolean);
+        if (normalizedNames.length === 0) return null;
 
         const roots = Array.from(
             new Set(
@@ -655,15 +651,15 @@ export function SessionView({
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        componentName: normalizedName,
+                        componentNames: normalizedNames,
                         workspaceRoot,
                     }),
                 });
 
-                const payload = await response.json().catch(() => null) as ResolveComponentSourceResponse | null;
+                const payload = await response.json().catch(() => null) as { resolvedName?: string; sourcePath?: string; error?: string } | null;
                 if (!response.ok) {
                     console.warn('Component source resolve miss', {
-                        componentName: normalizedName,
+                        componentNames: normalizedNames,
                         workspaceRoot,
                         error: payload?.error || response.statusText,
                     });
@@ -671,7 +667,9 @@ export function SessionView({
                 }
 
                 const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
-                if (sourcePath) return sourcePath;
+                const resolvedName = typeof payload?.resolvedName === 'string' ? payload.resolvedName.trim() : '';
+                
+                if (sourcePath && resolvedName) return { sourcePath, resolvedName };
             } catch (error) {
                 console.error('Failed to resolve component source path:', error);
             }
@@ -1223,6 +1221,15 @@ export function SessionView({
                 const fallbackName = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
                     ? firstReactComponent.trim()
                     : '';
+                const builtInComponents = new Set([
+                    'Suspense', 'ErrorBoundary', 'Router', 'AppRouter', 'LayoutRouter',
+                    'RenderFromTemplateContext', 'ScrollAndFocusHandler', 'InnerLayoutRouter',
+                    'RedirectErrorBoundary', 'NotFoundBoundary', 'LoadingBoundary',
+                    'ReactDevOverlay', 'HotReload', 'AppContainer', 'Route', 'Link', 'Image',
+                    'OuterLayoutRouter', 'Head', 'StringRefs', 'Fragment', 'Profiler',
+                    'StrictMode', 'SuspenseList', 'Script', 'Page', '__next_root_layout_boundary__'
+                ]);
+
                 const stackComponentNames = Array.from(
                     new Set(
                         reactStack
@@ -1231,9 +1238,17 @@ export function SessionView({
                                 const name = (entry as { name?: unknown }).name;
                                 return typeof name === 'string' ? name.trim() : '';
                             })
-                            .filter(Boolean)
+                            .filter((name) => {
+                                if (!name) return false;
+                                if (builtInComponents.has(name)) return false;
+                                if (name.startsWith('styled.') || name.startsWith('Styled(')) return false;
+                                return true;
+                            })
                     )
                 );
+
+                console.log('Filtered stack component names:', stackComponentNames);
+
                 const identifier = componentReference
                     || fallbackName
                     || (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
@@ -1251,14 +1266,15 @@ export function SessionView({
                 void (async () => {
                     let finalIdentifier = componentReference || '';
 
-                    // Fallback: when React stack has no source metadata, resolve the file path by component name(s).
                     if (!finalIdentifier && stackComponentNames.length > 0) {
-                        for (const componentName of stackComponentNames) {
-                            const resolvedPath = await resolveComponentSourcePathByName(componentName);
-                            if (resolvedPath) {
-                                finalIdentifier = `${componentName} (${resolvedPath})`;
-                                break;
+                        setIsResolvingElement(true);
+                        try {
+                            const result = await resolveComponentSourcePathByNames(stackComponentNames);
+                            if (result?.resolvedName && result?.sourcePath) {
+                                finalIdentifier = `${result.resolvedName} (${result.sourcePath})`;
                             }
+                        } finally {
+                            setIsResolvingElement(false);
                         }
                     }
 
@@ -1269,6 +1285,8 @@ export function SessionView({
                         }
                         finalIdentifier = identifier;
                     }
+
+                    console.log('Final resolved component identifier:', finalIdentifier);
 
                     const inserted = await pasteIntoAgentIframe(`${finalIdentifier} `);
                     setFeedback(
@@ -1284,7 +1302,7 @@ export function SessionView({
         return () => {
             window.removeEventListener('message', handlePreviewMessage);
         };
-    }, [pasteIntoAgentIframe, repo, resolveComponentSourcePathByName, worktree]);
+    }, [pasteIntoAgentIframe, repo, resolveComponentSourcePathByNames, worktree]);
 
     useEffect(() => {
         setIsPreviewPickerActive(false);
@@ -1966,10 +1984,14 @@ export function SessionView({
                                     className={`btn btn-ghost btn-xs ${isPreviewPickerActive ? 'btn-active text-success' : ''}`}
                                     type="button"
                                     onClick={handleTogglePreviewPicker}
-                                    disabled={!previewUrl}
+                                    disabled={!previewUrl || isResolvingElement}
                                     title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
                                 >
-                                    <MousePointer2 className="h-3 w-3" />
+                                    {isResolvingElement ? (
+                                        <span className="loading loading-spinner loading-xs w-3 h-3"></span>
+                                    ) : (
+                                        <MousePointer2 className="h-3 w-3" />
+                                    )}
                                 </button>
                                 <button className="btn btn-xs" type="submit">
                                     Go

@@ -12,6 +12,7 @@ import {
     updateSessionBaseBranch,
     writeSessionPromptFile
 } from '@/app/actions/session';
+import { setTmuxSessionMouseMode } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
@@ -78,6 +79,7 @@ type PreviewNavigationAction = 'back' | 'forward' | 'reload';
 type TerminalBootstrapSlot = 'agent' | 'terminal';
 type TerminalBootstrapState = 'idle' | 'in_progress' | 'done';
 type TerminalBootstrapRegistry = Record<string, TerminalBootstrapState>;
+type TerminalMouseMode = 'on' | 'off';
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
@@ -258,9 +260,23 @@ export function SessionView({
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const agentFrameMouseModeCleanupRef = useRef<(() => void) | null>(null);
+    const terminalFrameMouseModeCleanupRef = useRef<(() => void) | null>(null);
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
         timer: null,
+    });
+    const terminalMouseDesiredModeRef = useRef<Record<TerminalBootstrapSlot, TerminalMouseMode>>({
+        agent: 'on',
+        terminal: 'on',
+    });
+    const terminalMouseAppliedModeRef = useRef<Record<TerminalBootstrapSlot, TerminalMouseMode>>({
+        agent: 'on',
+        terminal: 'on',
+    });
+    const terminalMouseSyncingRef = useRef<Record<TerminalBootstrapSlot, boolean>>({
+        agent: false,
+        terminal: false,
     });
     const agentTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'agent'), [sessionName]);
     const floatingTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'terminal'), [sessionName]);
@@ -282,6 +298,20 @@ export function SessionView({
             injected: false,
             timer: null,
         };
+        terminalMouseDesiredModeRef.current = {
+            agent: 'on',
+            terminal: 'on',
+        };
+        terminalMouseAppliedModeRef.current = {
+            agent: 'on',
+            terminal: 'on',
+        };
+        terminalMouseSyncingRef.current = {
+            agent: false,
+            terminal: false,
+        };
+        agentFrameMouseModeCleanupRef.current?.();
+        terminalFrameMouseModeCleanupRef.current?.();
     }, [sessionName]);
 
     useEffect(() => {
@@ -367,6 +397,49 @@ export function SessionView({
             // Ignore storage failures (private mode / disabled storage).
         }
     }, [getTerminalBootstrapKey, setRuntimeBootstrapState]);
+
+    const syncTmuxMouseMode = useCallback((slot: TerminalBootstrapSlot) => {
+        if (terminalPersistenceMode !== 'tmux') return;
+        if (terminalMouseSyncingRef.current[slot]) return;
+
+        terminalMouseSyncingRef.current[slot] = true;
+        const run = async () => {
+            while (terminalMouseAppliedModeRef.current[slot] !== terminalMouseDesiredModeRef.current[slot]) {
+                const nextMode = terminalMouseDesiredModeRef.current[slot];
+                try {
+                    const result = await setTmuxSessionMouseMode(sessionName, slot, nextMode === 'on');
+                    if (!result.success) {
+                        console.error(`Failed to set tmux mouse mode for ${slot}:`, result.error || 'Unknown error');
+                        break;
+                    }
+                    terminalMouseAppliedModeRef.current[slot] = nextMode;
+                } catch (error) {
+                    console.error(`Failed to set tmux mouse mode for ${slot}:`, error);
+                    break;
+                }
+            }
+
+            terminalMouseSyncingRef.current[slot] = false;
+            if (terminalMouseAppliedModeRef.current[slot] !== terminalMouseDesiredModeRef.current[slot]) {
+                window.setTimeout(() => syncTmuxMouseMode(slot), 60);
+            }
+        };
+
+        void run();
+    }, [sessionName, terminalPersistenceMode]);
+
+    const requestTmuxMouseMode = useCallback((slot: TerminalBootstrapSlot, mode: TerminalMouseMode) => {
+        if (terminalPersistenceMode !== 'tmux') return;
+        if (
+            terminalMouseDesiredModeRef.current[slot] === mode &&
+            terminalMouseAppliedModeRef.current[slot] === mode &&
+            !terminalMouseSyncingRef.current[slot]
+        ) {
+            return;
+        }
+        terminalMouseDesiredModeRef.current[slot] = mode;
+        syncTmuxMouseMode(slot);
+    }, [syncTmuxMouseMode, terminalPersistenceMode]);
 
     const isShellPromptReady = useCallback((term: TerminalWindow['term']): boolean => {
         const activeBuffer = term?.buffer?.active;
@@ -1376,6 +1449,58 @@ export function SessionView({
         };
     }, [handleTerminalLinkOpen]);
 
+    const attachTerminalMouseModeToggle = useCallback((
+        iframe: HTMLIFrameElement,
+        slot: TerminalBootstrapSlot,
+        cleanupRef: React.MutableRefObject<(() => void) | null>
+    ) => {
+        cleanupRef.current?.();
+        if (terminalPersistenceMode !== 'tmux') return;
+
+        const frameDocument = iframe.contentDocument;
+        if (!frameDocument) return;
+
+        const setSelectionMode = () => {
+            requestTmuxMouseMode(slot, 'off');
+        };
+
+        const setScrollMode = () => {
+            requestTmuxMouseMode(slot, 'on');
+        };
+
+        const handleMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            setSelectionMode();
+        };
+
+        const handleMouseUp = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            setScrollMode();
+        };
+
+        const handleWindowMouseUp = () => {
+            setScrollMode();
+        };
+
+        const handleWindowBlur = () => {
+            setScrollMode();
+        };
+
+        frameDocument.addEventListener('mousedown', handleMouseDown, true);
+        frameDocument.addEventListener('mouseup', handleMouseUp, true);
+        window.addEventListener('mouseup', handleWindowMouseUp, true);
+        window.addEventListener('blur', handleWindowBlur, true);
+
+        cleanupRef.current = () => {
+            frameDocument.removeEventListener('mousedown', handleMouseDown, true);
+            frameDocument.removeEventListener('mouseup', handleMouseUp, true);
+            window.removeEventListener('mouseup', handleWindowMouseUp, true);
+            window.removeEventListener('blur', handleWindowBlur, true);
+            setScrollMode();
+            cleanupRef.current = null;
+        };
+    }, [requestTmuxMouseMode, terminalPersistenceMode]);
+
     useEffect(() => {
         if (!isPreviewVisible) return;
         if (previewInputUrl.trim()) return;
@@ -1618,6 +1743,7 @@ export function SessionView({
                 if (win && win.term) {
                     const term = win.term;
                     attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
+                    attachTerminalMouseModeToggle(iframe, 'agent', agentFrameMouseModeCleanupRef);
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
@@ -1828,6 +1954,7 @@ export function SessionView({
                     attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
                         onLinkActivated: () => setIsTerminalMinimized(true),
                     });
+                    attachTerminalMouseModeToggle(iframe, 'terminal', terminalFrameMouseModeCleanupRef);
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {

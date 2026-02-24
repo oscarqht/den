@@ -339,6 +339,34 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
   }
 }
 
+export async function setTmuxSessionMouseMode(
+  sessionName: string,
+  role: TerminalSessionRole,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  if (os.platform() === 'win32') {
+    return { success: true };
+  }
+
+  try {
+    const { spawnSync } = await import('child_process');
+    const tmuxSession = getTmuxSessionName(sessionName, role);
+    const result = spawnSync('tmux', ['set-option', '-t', tmuxSession, 'mouse', enabled ? 'on' : 'off'], {
+      stdio: 'ignore',
+      env: process.env,
+    });
+
+    if (typeof result.status === 'number' && result.status !== 0) {
+      return { success: false, error: `tmux exited with status ${result.status}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to set tmux mouse mode:', error);
+    return { success: false, error: 'Failed to set tmux mouse mode.' };
+  }
+}
+
 export async function terminateSessionTerminalSessions(sessionName: string): Promise<void> {
   if (os.platform() === 'win32') return;
 

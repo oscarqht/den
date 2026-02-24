@@ -1063,7 +1063,6 @@ export default function GitRepoSelector({
                 ) : (
                   <div className="flex flex-col gap-2">
                     {config.recentRepos.map(repo => {
-                      const sessionCount = allSessions.filter(s => s.repoPath === repo).length;
                       return (
                         <div
                           key={repo}
@@ -1078,12 +1077,6 @@ export default function GitRepoSelector({
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            {sessionCount > 0 && (
-                              <div className="badge badge-secondary badge-sm gap-1 opacity-80" title={`${sessionCount} on-going sessions`}>
-                                <Bot className="w-3 h-3" />
-                                {sessionCount}
-                              </div>
-                            )}
                             <button
                               onClick={(e) => handleRemoveRecent(e, repo)}
                               className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"

@@ -787,10 +787,9 @@ export function SessionView({
         return () => window.clearInterval(timer);
     }, [loadUncommittedFileCount, sessionName]);
 
-    const runMerge = async (requireConfirmation = true): Promise<boolean> => {
+    const runMerge = async (): Promise<boolean> => {
         if (!sessionName) return false;
         if (!currentBaseBranch) return false;
-        if (requireConfirmation && !confirm(`Merge ${branch} into ${currentBaseBranch}?`)) return false;
 
         setIsMerging(true);
         setFeedback('Merging session branch...');
@@ -815,7 +814,7 @@ export function SessionView({
     };
 
     const handleMerge = async () => {
-        await runMerge(true);
+        await runMerge();
     };
 
     const [isRebaseDropdownOpen, setIsRebaseDropdownOpen] = useState(false);
@@ -836,9 +835,6 @@ export function SessionView({
         if (!sessionName) return;
 
         const isNewBranch = targetBranch !== currentBaseBranch;
-
-        // Ask for confirmation
-        if (!confirm(`Rebase ${branch} onto ${targetBranch}?`)) return;
 
         setIsRebasing(true);
         setFeedback(isNewBranch ? `Updating base to ${targetBranch} and rebasing...` : 'Rebasing session branch...');

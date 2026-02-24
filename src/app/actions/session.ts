@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
+import { getErrorMessage } from '../../lib/error-utils';
 import { prepareSessionWorktree, removeWorktree, terminateSessionTerminalSessions } from './git';
 
 export type SessionMetadata = {
@@ -42,11 +43,6 @@ export type SessionPrefillContext = {
   agentProvider: string;
   model: string;
 };
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 async function getSessionsDir(): Promise<string> {
   const homedir = os.homedir();
@@ -283,7 +279,7 @@ export async function listSessions(repoPath?: string): Promise<SessionMetadata[]
 
         // Filter by repoPath if provided
         if (repoPath && data.repoPath !== repoPath) {
-            continue;
+          continue;
         }
 
         sessions.push(data);
@@ -366,7 +362,7 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
     await fs.rm(filePath, { force: true });
     const contextFilePath = await getSessionContextFilePath(sessionName);
     await fs.rm(contextFilePath, { force: true });
-    
+
     // 3. Delete prompt file
     const promptsDir = await getSessionPromptsDir();
     const promptFilePath = path.join(promptsDir, `${sessionName}.txt`);

@@ -4,13 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_run:
-    workflows:
-      - Release On Main Merge
-    branches:
-      - main
-    types:
-      - completed
 
 permissions:
   contents: read
@@ -18,7 +11,6 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
 
     steps:
@@ -26,17 +18,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_run' && 'main' || github.sha }}
 
       - name: Resolve release tag
         id: resolve-tag
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            TAG_NAME="${GITHUB_REF_NAME}"
-          else
-            git fetch --tags origin main
-            TAG_NAME="$(git tag --merged origin/main | grep '^v' | sort -V | tail -n1)"
-          fi
+          TAG_NAME="${GITHUB_REF_NAME}"
 
           if [ -z "${TAG_NAME}" ]; then
             echo "No release tag found for this event. Skipping publish."

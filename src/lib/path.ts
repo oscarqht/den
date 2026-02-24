@@ -23,7 +23,8 @@ export function getDirName(path: string): string {
   
   if (lastIdx === -1) {
     // No separator found. Could be a relative path or a Windows drive root like "C:"
-    if (path.includes(':') && path.length <= 3) return path; // Return as is if it's "C:\" or "C:"
+    // For "C:\" or "C:", we return the normalized version (C:/ or C:)
+    if (path.includes(':') && path.length <= 3) return normalized;
     return '.';
   }
   

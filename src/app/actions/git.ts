@@ -233,6 +233,18 @@ declare global {
 
 export async function startTtydProcess(): Promise<{ success: boolean; persistenceMode?: 'tmux' | 'shell'; error?: string }> {
   if (global.ttydProcess) {
+    if (global.ttydPersistenceMode === 'tmux' && os.platform() !== 'win32') {
+      try {
+        const { spawnSync } = await import('child_process');
+        // Re-apply tmux defaults for already-running instances so text selection keeps working.
+        spawnSync('tmux', ['set-option', '-g', 'mouse', 'off'], {
+          stdio: 'ignore',
+          env: process.env,
+        });
+      } catch (error) {
+        console.error('Failed to apply tmux mouse option:', error);
+      }
+    }
     return { success: true, persistenceMode: global.ttydPersistenceMode || 'shell' };
   }
 
@@ -270,12 +282,12 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     let persistenceMode: 'tmux' | 'shell' = 'shell';
     if (hasTmux) {
-      // Ensure tmux sessions keep enough history and support mouse wheel scrolling.
+      // Keep deep history while preserving native terminal text selection/copy behavior in ttyd.
       spawnSync('tmux', ['start-server'], {
         stdio: 'ignore',
         env: process.env,
       });
-      spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
+      spawnSync('tmux', ['set-option', '-g', 'mouse', 'off'], {
         stdio: 'ignore',
         env: process.env,
       });

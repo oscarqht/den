@@ -212,6 +212,32 @@ const walkSourceFiles = async (workspaceRoot: string): Promise<string[]> => {
   return files;
 };
 
+const runWithConcurrency = async <T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> => {
+  const ret: Promise<void>[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    ret.push(p);
+
+    if (limit <= items.length) {
+      const e: Promise<void> = p.then(() => {
+        executing.splice(executing.indexOf(e), 1);
+      });
+      executing.push(e);
+      if (executing.length >= limit) {
+        await Promise.race(executing);
+      }
+    }
+  }
+
+  await Promise.all(ret);
+};
+
 const searchByScanningFilesForNames = async (workspaceRoot: string, componentNames: string[]): Promise<Map<string, string[]>> => {
   const files = await walkSourceFiles(workspaceRoot);
   if (files.length === 0) return new Map();
@@ -233,31 +259,26 @@ const searchByScanningFilesForNames = async (workspaceRoot: string, componentNam
   const results = new Map<string, string[]>();
   if (nameToRegexes.size === 0) return results;
 
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < files.length; i += BATCH_SIZE) {
-    const batch = files.slice(i, i + BATCH_SIZE);
-    await Promise.all(
-      batch.map(async (absolutePath) => {
-        try {
-          const stat = await fs.stat(absolutePath);
-          if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return;
-          const content = await fs.readFile(absolutePath, 'utf-8');
-          
-          const relativePath = path.relative(workspaceRoot, absolutePath);
-          
-          for (const [name, regexes] of nameToRegexes.entries()) {
-            if (regexes.some((regex) => regex.test(content))) {
-              const currentMatches = results.get(name) || [];
-              currentMatches.push(relativePath);
-              results.set(name, currentMatches);
-            }
-          }
-        } catch {
-          // Ignore unreadable files
+  const CONCURRENCY_LIMIT = 100;
+  await runWithConcurrency(files, CONCURRENCY_LIMIT, async (absolutePath) => {
+    try {
+      const stat = await fs.stat(absolutePath);
+      if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return;
+      const content = await fs.readFile(absolutePath, 'utf-8');
+
+      const relativePath = path.relative(workspaceRoot, absolutePath);
+
+      for (const [name, regexes] of nameToRegexes.entries()) {
+        if (regexes.some((regex) => regex.test(content))) {
+          const currentMatches = results.get(name) || [];
+          currentMatches.push(relativePath);
+          results.set(name, currentMatches);
         }
-      })
-    );
-  }
+      }
+    } catch {
+      // Ignore unreadable files
+    }
+  });
 
   return results;
 };

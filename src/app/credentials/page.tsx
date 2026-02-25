@@ -2,11 +2,16 @@
 
 import { listCredentials, removeCredential, saveGitHubCredential, saveGitLabCredential } from '@/app/actions/credentials';
 import type { Credential, CredentialType, GitLabCredential } from '@/lib/credentials';
-import { ArrowLeft, Github, KeyRound, Trash2 } from 'lucide-react';
+import { ArrowLeft, KeyRound, Trash2 } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 const DEFAULT_GITLAB_SERVER_URL = 'https://gitlab.com';
+const PROVIDER_ICON_URLS = {
+  github: 'https://www.google.com/s2/favicons?domain=github.com&sz=64',
+  gitlab: 'https://www.google.com/s2/favicons?domain=gitlab.com&sz=64',
+} as const;
 
 type FlashMessage = {
   tone: 'success' | 'error';
@@ -22,6 +27,19 @@ function formatCredentialSubtitle(credential: Credential): string {
 
 function formatProviderLabel(type: CredentialType): string {
   return type === 'github' ? 'GitHub' : 'GitLab';
+}
+
+function ProviderIcon({ type }: { type: CredentialType }) {
+  return (
+    <Image
+      src={PROVIDER_ICON_URLS[type]}
+      alt={`${formatProviderLabel(type)} icon`}
+      width={20}
+      height={20}
+      className="h-5 w-5 rounded-sm"
+      unoptimized
+    />
+  );
 }
 
 export default function CredentialsPage() {
@@ -171,7 +189,7 @@ export default function CredentialsPage() {
             <div className="card bg-base-200 shadow-xl">
               <div className="card-body space-y-4">
                 <h2 className="card-title flex items-center gap-2">
-                  <Github className="h-5 w-5" />
+                  <ProviderIcon type="github" />
                   GitHub
                 </h2>
 
@@ -207,9 +225,12 @@ export default function CredentialsPage() {
                     {githubCredentials.map((credential) => (
                       <div key={credential.id} className="rounded-md border border-base-300 bg-base-100 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">{credential.username}</div>
-                            <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                          <div className="min-w-0 flex items-start gap-2">
+                            <ProviderIcon type="github" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{credential.username}</div>
+                              <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                            </div>
                           </div>
                           <button
                             className="btn btn-error btn-outline btn-xs"
@@ -229,7 +250,10 @@ export default function CredentialsPage() {
 
             <div className="card bg-base-200 shadow-xl">
               <div className="card-body space-y-4">
-                <h2 className="card-title">GitLab</h2>
+                <h2 className="card-title flex items-center gap-2">
+                  <ProviderIcon type="gitlab" />
+                  GitLab
+                </h2>
 
                 <label className="form-control w-full gap-2">
                   <span className="label-text text-xs uppercase tracking-wide opacity-70">Server URL</span>
@@ -275,10 +299,13 @@ export default function CredentialsPage() {
                     {gitlabCredentials.map((credential) => (
                       <div key={credential.id} className="rounded-md border border-base-300 bg-base-100 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">{credential.username}</div>
-                            <div className="text-xs opacity-70 truncate">{credential.serverUrl}</div>
-                            <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                          <div className="min-w-0 flex items-start gap-2">
+                            <ProviderIcon type="gitlab" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{credential.username}</div>
+                              <div className="text-xs opacity-70 truncate">{credential.serverUrl}</div>
+                              <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                            </div>
                           </div>
                           <button
                             className="btn btn-error btn-outline btn-xs"

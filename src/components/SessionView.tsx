@@ -177,9 +177,7 @@ export interface SessionViewProps {
     startupScript?: string;
     devServerScript?: string;
     initialMessage?: string;
-    rawInitialMessage?: string;
     title?: string;
-    attachmentNames?: string[];
     sessionMode?: 'fast' | 'plan';
     onExit: (force?: boolean) => void;
     isResume?: boolean;
@@ -198,9 +196,7 @@ export function SessionView({
     startupScript,
     devServerScript,
     initialMessage,
-    rawInitialMessage,
     title,
-    attachmentNames,
     sessionMode = 'fast',
     onExit,
     isResume,
@@ -1617,42 +1613,41 @@ export function SessionView({
                                 }
                             } else {
                                 const safeTitle = title?.trim() || '';
-                                const parts = [];
-                                if (safeTitle) parts.push(safeTitle);
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
-                                if (trimmedInitialMessage) parts.push(trimmedInitialMessage);
-                                if (sessionMode === 'plan' && !trimmedInitialMessage.includes(PLAN_MODE_STARTUP_INSTRUCTION)) {
-                                    parts.push(PLAN_MODE_STARTUP_INSTRUCTION);
-                                }
-                                if (!trimmedInitialMessage.includes(AUTO_COMMIT_INSTRUCTION)) {
-                                    parts.push(AUTO_COMMIT_INSTRUCTION);
-                                }
-                                let fullMessage = parts.join('\n\n');
-                                if (attachmentNames && attachmentNames.length > 0) {
-                                    const attachmentBasePath = `${worktree || repo}-attachments`;
-                                    const attachmentSection = [
-                                        'Attachments:',
-                                        ...attachmentNames.map(name => `- ${attachmentBasePath}/${name}`)
-                                    ].join('\n');
-                                    fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
-                                }
-
+                                const taskParts: string[] = [];
+                                if (safeTitle) taskParts.push(safeTitle);
+                                if (trimmedInitialMessage) taskParts.push(trimmedInitialMessage);
+                                const taskContent = taskParts.join('\n\n');
                                 let safeMessage = '';
-                                if (fullMessage) {
-                                    if ((rawInitialMessage && rawInitialMessage.trim().length > 0) || (attachmentNames && attachmentNames.length > 0)) {
-                                        try {
-                                            const result = await writeSessionPromptFile(sessionName, fullMessage);
-                                            if (result.success && result.filePath) {
-                                                safeMessage = ` "$(cat ${quoteShellArg(result.filePath)})"`;
-                                            } else {
-                                                console.error('Failed to write prompt file, falling back to inline prompt', result.error);
-                                                safeMessage = ` ${quoteShellArg(fullMessage)}`;
-                                            }
-                                        } catch (err) {
-                                            console.error('Exception writing prompt file', err);
+
+                                // Only send an initial prompt if the user provided title or message.
+                                if (taskContent) {
+                                    const instructionLines: string[] = [];
+                                    if (sessionMode === 'plan') {
+                                        instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
+                                    }
+                                    instructionLines.push(AUTO_COMMIT_INSTRUCTION);
+
+                                    const fullMessage = [
+                                        '# Instructions',
+                                        '',
+                                        instructionLines.join('\n'),
+                                        '',
+                                        '# Task',
+                                        '',
+                                        taskContent,
+                                    ].join('\n');
+
+                                    try {
+                                        const result = await writeSessionPromptFile(sessionName, fullMessage);
+                                        if (result.success && result.filePath) {
+                                            safeMessage = ` "$(cat ${quoteShellArg(result.filePath)})"`;
+                                        } else {
+                                            console.error('Failed to write prompt file, falling back to inline prompt', result.error);
                                             safeMessage = ` ${quoteShellArg(fullMessage)}`;
                                         }
-                                    } else {
+                                    } catch (err) {
+                                        console.error('Exception writing prompt file', err);
                                         safeMessage = ` ${quoteShellArg(fullMessage)}`;
                                     }
                                 }

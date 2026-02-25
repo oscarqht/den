@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List, Pin, PinOff } from 'lucide-react';
 import { getDirName } from '@/lib/path';
+import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 const VIEW_MODE_STORAGE_KEY = 'viba:session-file-browser:view-mode';
 
@@ -300,10 +301,16 @@ export default function SessionFileBrowser({
     await savePinnedFolderShortcuts([...pinnedFolderShortcuts, folderPath]);
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = useCallback(async () => {
     if (selectedPaths.length === 0) return;
     await onConfirm(selectedPaths);
-  };
+  }, [onConfirm, selectedPaths]);
+
+  useDialogKeyboardShortcuts({
+    onConfirm: handleConfirm,
+    onDismiss: onCancel,
+    canConfirm: selectedPaths.length > 0,
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

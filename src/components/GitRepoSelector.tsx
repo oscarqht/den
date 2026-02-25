@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
+import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
 
@@ -943,14 +944,25 @@ export default function GitRepoSelector({
     void startSession();
   };
 
-  const handleLoginDone = async () => {
+  const dismissLoginModal = useCallback(() => {
     setIsLoginModalOpen(false);
     setLoginAgentCli(null);
     setLoginCommand('');
     setLoginCommandInjected(false);
     setLoginModalError(null);
+  }, []);
+
+  const handleLoginDone = async () => {
+    dismissLoginModal();
     await startSession({ skipAgentSetup: true });
   };
+
+  useDialogKeyboardShortcuts({
+    enabled: mode === 'new' && isLoginModalOpen && !!loginAgentCli,
+    onConfirm: handleLoginDone,
+    onDismiss: dismissLoginModal,
+    canConfirm: !loading,
+  });
 
   const handleResumeSession = async (session: SessionMetadata) => {
     if (!selectedRepo) return;

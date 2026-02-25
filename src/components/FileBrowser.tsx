@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { checkDirectoryAccessible, listDirectories, getHomeDirectory } from '@/app/actions/git';
 import { Folder, ArrowLeft, Check } from 'lucide-react';
 import { getDirName } from '@/lib/path';
+import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 interface FileSystemItem {
   name: string;
@@ -108,7 +109,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
     };
   }, [currentPath, homePath]);
 
-  const handleSelectPath = async (path: string) => {
+  const handleSelectPath = useCallback(async (path: string) => {
     if (checkRepo) {
       const isValid = await checkRepo(path);
       if (!isValid) {
@@ -119,11 +120,17 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
       }
     }
     await onSelect(path);
-  };
+  }, [checkRepo, onSelect]);
 
-  const handleSelect = async () => {
+  const handleSelect = useCallback(async () => {
     await handleSelectPath(currentPath);
-  };
+  }, [currentPath, handleSelectPath]);
+
+  useDialogKeyboardShortcuts({
+    onConfirm: handleSelect,
+    onDismiss: onCancel,
+    canConfirm: Boolean(currentPath),
+  });
 
   const handleNavigate = (path: string) => {
     setCurrentPath(path);

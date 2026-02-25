@@ -38,6 +38,10 @@ type TerminalBootstrapSlot = 'agent' | 'terminal';
 type TerminalBootstrapState = 'idle' | 'in_progress' | 'done';
 type TerminalBootstrapRegistry = Record<string, TerminalBootstrapState>;
 type TerminalInteractionMode = 'scroll' | 'select';
+type TerminalOnWriteParsedDisposable = { dispose?: () => void };
+type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
+    onWriteParsed?: (callback: () => void) => TerminalOnWriteParsedDisposable | void;
+};
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -207,6 +211,7 @@ export function SessionView({
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
         timer: null,
@@ -334,6 +339,72 @@ export function SessionView({
         return false;
     }, []);
 
+    const stopTerminalProcessMonitor = useCallback(() => {
+        if (terminalProcessMonitorCleanupRef.current) {
+            terminalProcessMonitorCleanupRef.current();
+            terminalProcessMonitorCleanupRef.current = null;
+        }
+    }, []);
+
+    const startTerminalProcessMonitor = useCallback((
+        iframe: HTMLIFrameElement,
+        term: NonNullable<TerminalWindow['term']>
+    ) => {
+        stopTerminalProcessMonitor();
+
+        let disposed = false;
+        let writeDisposable: { dispose?: () => void } | null = null;
+        let mutationObserver: MutationObserver | null = null;
+        let intervalId: number | null = null;
+
+        const updateProcessState = () => {
+            if (disposed) return;
+            const isRunning = !isShellPromptReady(term);
+            setIsTerminalForegroundProcessRunning((current) => (current === isRunning ? current : isRunning));
+        };
+
+        updateProcessState();
+        intervalId = window.setInterval(updateProcessState, 1000);
+
+        try {
+            const xterm = term as TerminalWithOnWriteParsed;
+            if (typeof xterm.onWriteParsed === 'function') {
+                writeDisposable = xterm.onWriteParsed(updateProcessState) || null;
+            } else {
+                const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
+                if (screen) {
+                    mutationObserver = new MutationObserver(updateProcessState);
+                    mutationObserver.observe(screen, { childList: true, subtree: true, characterData: true });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to setup terminal process monitor:', error);
+        }
+
+        terminalProcessMonitorCleanupRef.current = () => {
+            disposed = true;
+            if (intervalId !== null) {
+                window.clearInterval(intervalId);
+                intervalId = null;
+            }
+            if (writeDisposable && typeof writeDisposable.dispose === 'function') {
+                writeDisposable.dispose();
+            }
+            mutationObserver?.disconnect();
+        };
+    }, [isShellPromptReady, stopTerminalProcessMonitor]);
+
+    useEffect(() => {
+        return () => {
+            stopTerminalProcessMonitor();
+        };
+    }, [stopTerminalProcessMonitor]);
+
+    useEffect(() => {
+        setIsTerminalForegroundProcessRunning(false);
+        stopTerminalProcessMonitor();
+    }, [sessionName, stopTerminalProcessMonitor]);
+
     const injectTerminalStartupScript = useCallback((
         iframe: HTMLIFrameElement,
         win: TerminalWindow,
@@ -420,6 +491,7 @@ export function SessionView({
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
+    const [isTerminalForegroundProcessRunning, setIsTerminalForegroundProcessRunning] = useState(false);
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
     const [isRebasing, setIsRebasing] = useState(false);
@@ -568,9 +640,9 @@ export function SessionView({
             // Small delay to allow layout to update and iframe to render
             setTimeout(() => {
                 try {
-                    const win = iframe.contentWindow as any;
+                    const win = iframe.contentWindow as TerminalWindow | null;
                     if (win && win.term) {
-                        win.term.scrollToBottom();
+                        win.term.scrollToBottom?.();
                         win.focus();
                         const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
                         if (textarea) (textarea as HTMLElement).focus();
@@ -1363,7 +1435,7 @@ export function SessionView({
 
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
-        if (!script || !terminalRef.current) return;
+        if (!script || !terminalRef.current || isTerminalForegroundProcessRunning) return;
 
         // Auto-show terminal if minimized
         setIsTerminalMinimized(false);
@@ -1631,6 +1703,8 @@ export function SessionView({
     const handleTerminalLoad = () => {
         if (!terminalRef.current) return;
         const iframe = terminalRef.current;
+        stopTerminalProcessMonitor();
+        setIsTerminalForegroundProcessRunning(false);
 
         // Safety check
         try {
@@ -1671,20 +1745,26 @@ export function SessionView({
                         };
                     } catch { /* ignore if API unavailable */ }
 
+                    startTerminalProcessMonitor(iframe, term);
+
                     // Enable auto-scroll to bottom on output
                     try {
-                        const xterm = term as any;
+                        const xterm = term as TerminalWithOnWriteParsed;
                         const scrollHandler = () => {
+                            const activeBuffer = xterm.buffer?.active as ({ baseY?: number; viewportY?: number } | undefined);
+                            const baseY = typeof activeBuffer?.baseY === 'number' ? activeBuffer.baseY : 0;
+                            const viewportY = typeof activeBuffer?.viewportY === 'number' ? activeBuffer.viewportY : baseY;
+
                             // Only scroll if we are close to the bottom to allow reviewing history
-                            if (xterm.buffer?.active && (xterm.buffer.active.baseY - xterm.buffer.active.viewportY < 10)) {
-                                xterm.scrollToBottom();
+                            if (activeBuffer && (baseY - viewportY < 10)) {
+                                xterm.scrollToBottom?.();
                             } else {
                                 // Fallback if buffer access fails or simple mode
-                                xterm.scrollToBottom();
+                                xterm.scrollToBottom?.();
                             }
                         };
 
-                        if (xterm.onWriteParsed) {
+                        if (typeof xterm.onWriteParsed === 'function') {
                             xterm.onWriteParsed(scrollHandler);
                         } else {
                             // Fallback for older xterm or different setups
@@ -1756,6 +1836,7 @@ export function SessionView({
                     setTimeout(() => checkAndInject(attempts + 1), 500);
                 }
             } catch (e) {
+                setIsTerminalForegroundProcessRunning(false);
                 resetTerminalBootstrap('terminal');
                 console.error("Secondary terminal injection error", e);
             }
@@ -1789,6 +1870,13 @@ export function SessionView({
     const terminalPanelRight = isTerminalMinimized
         ? `calc(${TERMINAL_MINIMIZED_VISIBLE_WIDTH}px - min(${terminalSize.width}px, calc(100vw - 2rem)))`
         : TERMINAL_PANEL_RIGHT_GAP;
+    const hasDevServerScript = Boolean(devServerScript?.trim());
+    const isDevButtonDisabled = !hasDevServerScript || isStartingDevServer || isTerminalForegroundProcessRunning;
+    const devButtonTitle = !hasDevServerScript
+        ? 'Set a dev server script to enable this button'
+        : isTerminalForegroundProcessRunning
+            ? 'A process is already running in the terminal'
+            : 'Run dev server script in terminal';
 
     return (
         <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
@@ -1884,20 +1972,16 @@ export function SessionView({
                     </div>
 
                     <div className="flex items-center border border-base-content/20 rounded overflow-hidden bg-base-100">
-                        {devServerScript?.trim() && (
-                            <>
-                                <button
-                                    className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
-                                    onClick={handleStartDevServer}
-                                    disabled={isStartingDevServer}
-                                    title="Run dev server script in terminal"
-                                >
-                                    {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
-                                    <span className={headerButtonLabelClass}>Dev</span>
-                                </button>
-                                <div className="w-[1px] h-4 bg-base-content/10"></div>
-                            </>
-                        )}
+                        <button
+                            className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
+                            onClick={handleStartDevServer}
+                            disabled={isDevButtonDisabled}
+                            title={devButtonTitle}
+                        >
+                            {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
+                            <span className={headerButtonLabelClass}>Dev</span>
+                        </button>
+                        <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
                             className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
                             onClick={() => setIsPreviewVisible((previous) => !previous)}

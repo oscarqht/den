@@ -8,6 +8,7 @@ const CREDENTIALS_FILE_NAME = 'credentials.json';
 export type CredentialType = 'github' | 'gitlab';
 
 export interface BaseCredential {
+  id: string;
   type: CredentialType;
   username: string;
   createdAt: string;
@@ -26,14 +27,22 @@ export interface GitLabCredential extends BaseCredential {
 export type Credential = GitHubCredential | GitLabCredential;
 
 type CredentialMetadata = {
+  id: string;
+  type: CredentialType;
+  username: string;
+  serverUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  keytarAccount?: string;
+};
+
+type LegacyCredentialMetadata = {
   type: CredentialType;
   username: string;
   serverUrl?: string;
   createdAt: string;
   updatedAt: string;
 };
-
-type CredentialMetadataMap = Partial<Record<CredentialType, CredentialMetadata>>;
 
 type KeytarModule = {
   getPassword(service: string, account: string): Promise<string | null>;
@@ -77,12 +86,45 @@ async function requireKeytar(): Promise<KeytarModule> {
   return keytar;
 }
 
-function getKeytarAccount(type: CredentialType): string {
-  return `credential-${type}`;
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function normalizeGitLabServerUrl(serverUrl: string): string {
   return serverUrl.trim().replace(/\/$/, '');
+}
+
+function getDefaultKeytarAccount(id: string): string {
+  return `credential-${id}`;
+}
+
+function getLegacyKeytarAccount(type: CredentialType): string {
+  return `credential-${type}`;
+}
+
+function getKeytarAccountForMetadata(metadata: CredentialMetadata): string {
+  return metadata.keytarAccount || getDefaultKeytarAccount(metadata.id);
+}
+
+function toCredential(metadata: CredentialMetadata): Credential {
+  if (metadata.type === 'gitlab') {
+    return {
+      id: metadata.id,
+      type: 'gitlab',
+      username: metadata.username,
+      serverUrl: metadata.serverUrl || 'https://gitlab.com',
+      createdAt: metadata.createdAt,
+      updatedAt: metadata.updatedAt,
+    };
+  }
+
+  return {
+    id: metadata.id,
+    type: 'github',
+    username: metadata.username,
+    createdAt: metadata.createdAt,
+    updatedAt: metadata.updatedAt,
+  };
 }
 
 async function getCredentialsFilePath(): Promise<string> {
@@ -91,7 +133,7 @@ async function getCredentialsFilePath(): Promise<string> {
   return path.join(vibaDir, CREDENTIALS_FILE_NAME);
 }
 
-function isCredentialMetadata(value: unknown, expectedType: CredentialType): value is CredentialMetadata {
+function isLegacyCredentialMetadata(value: unknown, expectedType: CredentialType): value is LegacyCredentialMetadata {
   if (!value || typeof value !== 'object') return false;
 
   const candidate = value as Record<string, unknown>;
@@ -107,82 +149,114 @@ function isCredentialMetadata(value: unknown, expectedType: CredentialType): val
   return true;
 }
 
-async function readCredentialsMetadata(): Promise<CredentialMetadataMap> {
+function isCredentialMetadata(value: unknown): value is CredentialMetadata {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== 'string' || !candidate.id.trim()) return false;
+  if (candidate.type !== 'github' && candidate.type !== 'gitlab') return false;
+  if (typeof candidate.username !== 'string') return false;
+  if (typeof candidate.createdAt !== 'string') return false;
+  if (typeof candidate.updatedAt !== 'string') return false;
+  if (candidate.keytarAccount !== undefined && typeof candidate.keytarAccount !== 'string') return false;
+
+  if (candidate.type === 'gitlab') {
+    return typeof candidate.serverUrl === 'string';
+  }
+
+  return true;
+}
+
+async function writeCredentialsMetadata(metadata: CredentialMetadata[]): Promise<void> {
+  const credentialsFilePath = await getCredentialsFilePath();
+  await fs.writeFile(credentialsFilePath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+async function readCredentialsMetadata(): Promise<CredentialMetadata[]> {
   const credentialsFilePath = await getCredentialsFilePath();
 
   try {
     const content = await fs.readFile(credentialsFilePath, 'utf-8');
     const parsed = JSON.parse(content) as unknown;
 
+    if (Array.isArray(parsed)) {
+      return parsed.filter(isCredentialMetadata);
+    }
+
     if (!parsed || typeof parsed !== 'object') {
-      return {};
+      return [];
     }
 
-    const mapped = parsed as Record<string, unknown>;
-    const result: CredentialMetadataMap = {};
+    const legacyMapped = parsed as Record<string, unknown>;
+    const migrated: CredentialMetadata[] = [];
 
-    if (isCredentialMetadata(mapped.github, 'github')) {
-      result.github = mapped.github;
+    if (isLegacyCredentialMetadata(legacyMapped.github, 'github')) {
+      const metadata = legacyMapped.github;
+      migrated.push({
+        id: generateId(),
+        type: 'github',
+        username: metadata.username,
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+        keytarAccount: getLegacyKeytarAccount('github'),
+      });
     }
 
-    if (isCredentialMetadata(mapped.gitlab, 'gitlab')) {
-      result.gitlab = mapped.gitlab;
+    if (isLegacyCredentialMetadata(legacyMapped.gitlab, 'gitlab')) {
+      const metadata = legacyMapped.gitlab;
+      migrated.push({
+        id: generateId(),
+        type: 'gitlab',
+        username: metadata.username,
+        serverUrl: metadata.serverUrl,
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+        keytarAccount: getLegacyKeytarAccount('gitlab'),
+      });
     }
 
-    return result;
+    if (migrated.length > 0) {
+      await writeCredentialsMetadata(migrated);
+    }
+
+    return migrated;
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      return {};
+      return [];
     }
 
     console.error('Failed to parse credentials metadata:', error);
-    return {};
+    return [];
   }
-}
-
-async function writeCredentialsMetadata(metadata: CredentialMetadataMap): Promise<void> {
-  const credentialsFilePath = await getCredentialsFilePath();
-  await fs.writeFile(credentialsFilePath, JSON.stringify(metadata, null, 2), 'utf-8');
 }
 
 export async function getAllCredentials(): Promise<Credential[]> {
   const metadata = await readCredentialsMetadata();
-  const credentials: Credential[] = [];
 
-  if (metadata.github) {
-    credentials.push({
-      type: 'github',
-      username: metadata.github.username,
-      createdAt: metadata.github.createdAt,
-      updatedAt: metadata.github.updatedAt,
-    });
-  }
-
-  if (metadata.gitlab) {
-    credentials.push({
-      type: 'gitlab',
-      username: metadata.gitlab.username,
-      serverUrl: metadata.gitlab.serverUrl || 'https://gitlab.com',
-      createdAt: metadata.gitlab.createdAt,
-      updatedAt: metadata.gitlab.updatedAt,
-    });
-  }
-
-  return credentials;
+  return metadata
+    .map(toCredential)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function getCredentialByType(type: CredentialType): Promise<Credential | null> {
-  const credentials = await getAllCredentials();
-  return credentials.find((credential) => credential.type === type) || null;
+export async function getCredentialById(id: string): Promise<Credential | null> {
+  const metadata = await readCredentialsMetadata();
+  const found = metadata.find((credential) => credential.id === id);
+  return found ? toCredential(found) : null;
 }
 
-export async function getCredentialToken(type: CredentialType): Promise<string | null> {
+export async function getCredentialToken(id: string): Promise<string | null> {
+  const metadata = await readCredentialsMetadata();
+  const found = metadata.find((credential) => credential.id === id);
+  if (!found) {
+    return null;
+  }
+
   const keytar = await loadKeytar();
   if (!keytar) {
     return null;
   }
 
-  return keytar.getPassword(SERVICE_NAME, getKeytarAccount(type));
+  return keytar.getPassword(SERVICE_NAME, getKeytarAccountForMetadata(found));
 }
 
 async function verifyGitHubToken(token: string): Promise<{ valid: boolean; username?: string; error?: string }> {
@@ -242,7 +316,7 @@ async function verifyGitLabToken(serverUrl: string, token: string): Promise<{ va
   }
 }
 
-export async function upsertGitHubCredential(token: string): Promise<{ success: boolean; credential?: GitHubCredential; error?: string }> {
+export async function createGitHubCredential(token: string): Promise<{ success: boolean; credential?: GitHubCredential; error?: string }> {
   const trimmedToken = token.trim();
   if (!trimmedToken) {
     return { success: false, error: 'GitHub token is required.' };
@@ -261,32 +335,46 @@ export async function upsertGitHubCredential(token: string): Promise<{ success: 
   }
 
   const metadata = await readCredentialsMetadata();
+  const duplicate = metadata.find((credential) => (
+    credential.type === 'github'
+    && credential.username === verification.username
+  ));
+
+  if (duplicate) {
+    return { success: false, error: `A GitHub credential for ${verification.username} already exists.` };
+  }
+
+  const id = generateId();
   const now = new Date().toISOString();
-  const createdAt = metadata.github?.createdAt || now;
+  const keytarAccount = getDefaultKeytarAccount(id);
 
-  await keytar.setPassword(SERVICE_NAME, getKeytarAccount('github'), trimmedToken);
+  await keytar.setPassword(SERVICE_NAME, keytarAccount, trimmedToken);
 
-  metadata.github = {
+  const created: CredentialMetadata = {
+    id,
     type: 'github',
     username: verification.username,
-    createdAt,
+    createdAt: now,
     updatedAt: now,
+    keytarAccount,
   };
 
+  metadata.push(created);
   await writeCredentialsMetadata(metadata);
 
   return {
     success: true,
     credential: {
+      id: created.id,
       type: 'github',
-      username: verification.username,
-      createdAt,
-      updatedAt: now,
+      username: created.username,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
     },
   };
 }
 
-export async function upsertGitLabCredential(
+export async function createGitLabCredential(
   serverUrl: string,
   token: string,
 ): Promise<{ success: boolean; credential?: GitLabCredential; error?: string }> {
@@ -320,46 +408,66 @@ export async function upsertGitLabCredential(
   }
 
   const metadata = await readCredentialsMetadata();
+  const duplicate = metadata.find((credential) => (
+    credential.type === 'gitlab'
+    && credential.username === verification.username
+    && credential.serverUrl === normalizedServerUrl
+  ));
+
+  if (duplicate) {
+    return {
+      success: false,
+      error: `A GitLab credential for ${verification.username} on ${normalizedServerUrl} already exists.`,
+    };
+  }
+
+  const id = generateId();
   const now = new Date().toISOString();
-  const createdAt = metadata.gitlab?.createdAt || now;
+  const keytarAccount = getDefaultKeytarAccount(id);
 
-  await keytar.setPassword(SERVICE_NAME, getKeytarAccount('gitlab'), trimmedToken);
+  await keytar.setPassword(SERVICE_NAME, keytarAccount, trimmedToken);
 
-  metadata.gitlab = {
+  const created: CredentialMetadata = {
+    id,
     type: 'gitlab',
     username: verification.username,
     serverUrl: normalizedServerUrl,
-    createdAt,
+    createdAt: now,
     updatedAt: now,
+    keytarAccount,
   };
 
+  metadata.push(created);
   await writeCredentialsMetadata(metadata);
 
   return {
     success: true,
     credential: {
+      id: created.id,
       type: 'gitlab',
-      username: verification.username,
-      serverUrl: normalizedServerUrl,
-      createdAt,
-      updatedAt: now,
+      username: created.username,
+      serverUrl: created.serverUrl || normalizedServerUrl,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
     },
   };
 }
 
-export async function deleteCredential(type: CredentialType): Promise<{ success: boolean; error?: string }> {
+export async function deleteCredential(id: string): Promise<{ success: boolean; error?: string }> {
   const metadata = await readCredentialsMetadata();
+  const index = metadata.findIndex((credential) => credential.id === id);
 
-  if (!metadata[type]) {
-    return { success: true };
+  if (index === -1) {
+    return { success: false, error: 'Credential not found.' };
   }
 
-  delete metadata[type];
+  const credential = metadata[index];
+  metadata.splice(index, 1);
   await writeCredentialsMetadata(metadata);
 
   const keytar = await loadKeytar();
   if (keytar) {
-    await keytar.deletePassword(SERVICE_NAME, getKeytarAccount(type));
+    await keytar.deletePassword(SERVICE_NAME, getKeytarAccountForMetadata(credential));
   }
 
   return { success: true };

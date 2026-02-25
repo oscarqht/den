@@ -44,7 +44,22 @@ type AgentProvider = {
 };
 
 type SessionMode = 'fast' | 'plan';
-type RepoCredentialPreference = 'auto' | 'github' | 'gitlab';
+type RepoCredentialSelection = 'auto' | string;
+
+function getCredentialOptionLabel(credential: Credential): string {
+  if (credential.type === 'github') {
+    return `GitHub - ${credential.username}`;
+  }
+
+  let host = credential.serverUrl;
+  try {
+    host = new URL(credential.serverUrl).host;
+  } catch {
+    // Keep raw server URL if parsing fails.
+  }
+
+  return `GitLab - ${credential.username} @ ${host}`;
+}
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
@@ -86,7 +101,7 @@ export default function GitRepoSelector({
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
-  const [repoCredentialPreference, setRepoCredentialPreference] = useState<RepoCredentialPreference>('auto');
+  const [repoCredentialSelection, setRepoCredentialSelection] = useState<RepoCredentialSelection>('auto');
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
   const router = useRouter();
@@ -154,19 +169,43 @@ export default function GitRepoSelector({
     return null;
   }, []);
 
-  const getRepoCredentialPreference = useCallback((repo: string): RepoCredentialPreference => {
-    const value = config?.repoSettings?.[repo]?.credentialPreference;
-    if (value === 'github' || value === 'gitlab') {
-      return value;
+  const resolveRepoCredentialSelection = useCallback((repo: string, credentials: Credential[] = credentialOptions): RepoCredentialSelection => {
+    const repoSettings = config?.repoSettings?.[repo];
+    if (!repoSettings) return 'auto';
+
+    if (repoSettings.credentialId) {
+      return repoSettings.credentialId;
     }
+
+    const legacyPreference = repoSettings.credentialPreference;
+    if (legacyPreference === 'github' || legacyPreference === 'gitlab') {
+      const matched = credentials.find((credential) => credential.type === legacyPreference);
+      if (matched) return matched.id;
+    }
+
     return 'auto';
-  }, [config]);
+  }, [config, credentialOptions]);
+
+  const getRepoCredentialLabel = useCallback((repo: string): string => {
+    const repoSettings = config?.repoSettings?.[repo];
+    if (!repoSettings) return 'Auto';
+
+    if (repoSettings.credentialId) {
+      const matched = credentialOptions.find((credential) => credential.id === repoSettings.credentialId);
+      return matched ? getCredentialOptionLabel(matched) : 'Selected credential';
+    }
+
+    if (repoSettings.credentialPreference === 'github') return 'GitHub (legacy)';
+    if (repoSettings.credentialPreference === 'gitlab') return 'GitLab (legacy)';
+
+    return 'Auto';
+  }, [config, credentialOptions]);
 
   const dismissRepoSettingsDialog = useCallback(() => {
     if (isSavingRepoSettings) return;
     setIsRepoSettingsDialogOpen(false);
     setRepoForSettings(null);
-    setRepoCredentialPreference('auto');
+    setRepoCredentialSelection('auto');
     setRepoSettingsError(null);
     setIsLoadingCredentialOptions(false);
   }, [isSavingRepoSettings]);
@@ -175,12 +214,16 @@ export default function GitRepoSelector({
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [cfg, sessions] = await Promise.all([
+        const [cfg, sessions, credentialsResult] = await Promise.all([
           getConfig(),
-          listSessions()
+          listSessions(),
+          listCredentials(),
         ]);
         setConfig(cfg);
         setAllSessions(sessions);
+        if (credentialsResult.success) {
+          setCredentialOptions(credentialsResult.credentials);
+        }
       } catch (e) {
         console.error('Failed to load data', e);
       } finally {
@@ -789,7 +832,7 @@ export default function GitRepoSelector({
     e.stopPropagation();
 
     setRepoForSettings(repo);
-    setRepoCredentialPreference(getRepoCredentialPreference(repo));
+    setRepoCredentialSelection(resolveRepoCredentialSelection(repo));
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
     setIsLoadingCredentialOptions(true);
@@ -801,6 +844,7 @@ export default function GitRepoSelector({
         setCredentialOptions([]);
       } else {
         setCredentialOptions(result.credentials);
+        setRepoCredentialSelection(resolveRepoCredentialSelection(repo, result.credentials));
       }
     } catch (err) {
       console.error(err);
@@ -813,12 +857,19 @@ export default function GitRepoSelector({
 
   const handleSaveRepoSettings = async () => {
     if (!repoForSettings) return;
+    const credentialId = repoCredentialSelection === 'auto' ? null : repoCredentialSelection;
+
+    if (credentialId && !credentialOptions.some((credential) => credential.id === credentialId)) {
+      setRepoSettingsError('Selected credential no longer exists. Please choose another credential.');
+      return;
+    }
 
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
     try {
       const newConfig = await updateRepoSettings(repoForSettings, {
-        credentialPreference: repoCredentialPreference,
+        credentialId,
+        credentialPreference: undefined,
       });
       setConfig(newConfig);
       dismissRepoSettingsDialog();
@@ -1132,8 +1183,6 @@ export default function GitRepoSelector({
   const selectableRepos = selectedRepo
     ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
     : recentRepos;
-  const githubCredential = credentialOptions.find((credential) => credential.type === 'github') || null;
-  const gitlabCredential = credentialOptions.find((credential) => credential.type === 'gitlab') || null;
 
   return (
     <>
@@ -1185,12 +1234,7 @@ export default function GitRepoSelector({
                 ) : (
                   <div className="flex flex-col gap-2">
                     {config.recentRepos.map(repo => {
-                      const credentialPreference = getRepoCredentialPreference(repo);
-                      const credentialLabel = credentialPreference === 'auto'
-                        ? 'Auto'
-                        : credentialPreference === 'github'
-                          ? 'GitHub'
-                          : 'GitLab';
+                      const credentialLabel = getRepoCredentialLabel(repo);
 
                       return (
                         <div
@@ -1258,21 +1302,22 @@ export default function GitRepoSelector({
                 <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
                 <select
                   className="select select-bordered w-full"
-                  value={repoCredentialPreference}
-                  onChange={(event) => setRepoCredentialPreference(event.target.value as RepoCredentialPreference)}
+                  value={repoCredentialSelection}
+                  onChange={(event) => setRepoCredentialSelection(event.target.value)}
                   disabled={isSavingRepoSettings}
                 >
                   <option value="auto">Auto (match repository remote)</option>
-                  <option value="github">
-                    GitHub{githubCredential ? ` (${githubCredential.username})` : ' (not configured)'}
-                  </option>
-                  <option value="gitlab">
-                    GitLab
-                    {gitlabCredential && gitlabCredential.type === 'gitlab'
-                      ? ` (${gitlabCredential.username} @ ${gitlabCredential.serverUrl})`
-                      : ' (not configured)'}
-                  </option>
+                  {credentialOptions.map((credential) => (
+                    <option key={credential.id} value={credential.id}>
+                      {getCredentialOptionLabel(credential)}
+                    </option>
+                  ))}
                 </select>
+                {credentialOptions.length === 0 && !isLoadingCredentialOptions && (
+                  <div className="text-xs opacity-60">
+                    No credentials found. Add credentials from the Credentials page.
+                  </div>
+                )}
               </div>
 
               {isLoadingCredentialOptions && (

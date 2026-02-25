@@ -10,6 +10,7 @@ export interface RepoSettings {
   startupScript?: string;
   devServerScript?: string;
   lastBranch?: string;
+  credentialId?: string | null;
   credentialPreference?: 'auto' | 'github' | 'gitlab';
 }
 

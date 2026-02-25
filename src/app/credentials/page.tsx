@@ -1,7 +1,7 @@
 'use client';
 
 import { listCredentials, removeCredential, saveGitHubCredential, saveGitLabCredential } from '@/app/actions/credentials';
-import type { Credential, CredentialType } from '@/lib/credentials';
+import type { Credential, CredentialType, GitLabCredential } from '@/lib/credentials';
 import { ArrowLeft, Github, KeyRound, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -12,6 +12,17 @@ type FlashMessage = {
   tone: 'success' | 'error';
   text: string;
 } | null;
+
+function formatCredentialSubtitle(credential: Credential): string {
+  if (credential.type === 'gitlab') {
+    return `${credential.username} @ ${credential.serverUrl}`;
+  }
+  return credential.username;
+}
+
+function formatProviderLabel(type: CredentialType): string {
+  return type === 'github' ? 'GitHub' : 'GitLab';
+}
 
 export default function CredentialsPage() {
   const router = useRouter();
@@ -24,16 +35,16 @@ export default function CredentialsPage() {
   const [gitlabServerUrl, setGitLabServerUrl] = useState(DEFAULT_GITLAB_SERVER_URL);
 
   const [savingType, setSavingType] = useState<CredentialType | null>(null);
-  const [deletingType, setDeletingType] = useState<CredentialType | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [flashMessage, setFlashMessage] = useState<FlashMessage>(null);
 
-  const githubCredential = useMemo(
-    () => credentials.find((credential) => credential.type === 'github') || null,
+  const githubCredentials = useMemo(
+    () => credentials.filter((credential) => credential.type === 'github'),
     [credentials],
   );
 
-  const gitlabCredential = useMemo(
-    () => credentials.find((credential) => credential.type === 'gitlab') || null,
+  const gitlabCredentials = useMemo(
+    () => credentials.filter((credential) => credential.type === 'gitlab') as GitLabCredential[],
     [credentials],
   );
 
@@ -47,11 +58,6 @@ export default function CredentialsPage() {
     }
 
     setCredentials(result.credentials);
-    const configuredGitLab = result.credentials.find((credential) => credential.type === 'gitlab');
-    if (configuredGitLab && configuredGitLab.type === 'gitlab') {
-      setGitLabServerUrl(configuredGitLab.serverUrl);
-    }
-
     setLoading(false);
   };
 
@@ -69,10 +75,6 @@ export default function CredentialsPage() {
       }
 
       setCredentials(result.credentials);
-      const configuredGitLab = result.credentials.find((credential) => credential.type === 'gitlab');
-      if (configuredGitLab && configuredGitLab.type === 'gitlab') {
-        setGitLabServerUrl(configuredGitLab.serverUrl);
-      }
       setLoading(false);
     })();
 
@@ -93,7 +95,7 @@ export default function CredentialsPage() {
     }
 
     setGitHubToken('');
-    setFlashMessage({ tone: 'success', text: 'GitHub credential saved.' });
+    setFlashMessage({ tone: 'success', text: 'GitHub credential added.' });
     await reloadCredentials();
     setSavingType(null);
   };
@@ -110,34 +112,34 @@ export default function CredentialsPage() {
     }
 
     setGitLabToken('');
-    setFlashMessage({ tone: 'success', text: 'GitLab credential saved.' });
+    setFlashMessage({ tone: 'success', text: 'GitLab credential added.' });
     await reloadCredentials();
     setSavingType(null);
   };
 
-  const handleDelete = async (type: CredentialType) => {
-    const providerLabel = type === 'github' ? 'GitHub' : 'GitLab';
-    const confirmed = confirm(`Delete the ${providerLabel} credential?`);
+  const handleDelete = async (credential: Credential) => {
+    const providerLabel = formatProviderLabel(credential.type);
+    const confirmed = confirm(`Delete this ${providerLabel} credential for ${formatCredentialSubtitle(credential)}?`);
     if (!confirmed) return;
 
     setFlashMessage(null);
-    setDeletingType(type);
+    setDeletingId(credential.id);
 
-    const result = await removeCredential(type);
+    const result = await removeCredential(credential.id);
     if (!result.success) {
       setFlashMessage({ tone: 'error', text: result.error });
-      setDeletingType(null);
+      setDeletingId(null);
       return;
     }
 
     setFlashMessage({ tone: 'success', text: `${providerLabel} credential deleted.` });
     await reloadCredentials();
-    setDeletingType(null);
+    setDeletingId(null);
   };
 
   return (
     <main className="min-h-screen bg-base-100 p-4 md:p-10">
-      <div className="mx-auto w-full max-w-4xl space-y-5">
+      <div className="mx-auto w-full max-w-5xl space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button className="btn btn-ghost btn-sm" onClick={() => router.push('/')}>
@@ -165,19 +167,13 @@ export default function CredentialsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="card bg-base-200 shadow-xl">
-              <div className="card-body space-y-3">
+              <div className="card-body space-y-4">
                 <h2 className="card-title flex items-center gap-2">
                   <Github className="h-5 w-5" />
                   GitHub
                 </h2>
-
-                <p className="text-sm opacity-80">
-                  {githubCredential
-                    ? `Configured for ${githubCredential.username} (updated ${new Date(githubCredential.updatedAt).toLocaleString()}).`
-                    : 'No GitHub credential configured.'}
-                </p>
 
                 <label className="form-control w-full gap-2">
                   <span className="label-text text-xs uppercase tracking-wide opacity-70">Personal Access Token</span>
@@ -191,38 +187,49 @@ export default function CredentialsPage() {
                   />
                 </label>
 
-                <div className="card-actions justify-end gap-2 pt-2">
-                  {githubCredential && (
-                    <button
-                      className="btn btn-error btn-outline btn-sm"
-                      onClick={() => void handleDelete('github')}
-                      disabled={deletingType === 'github' || savingType === 'github'}
-                    >
-                      {deletingType === 'github' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-4 w-4" />}
-                      Delete
-                    </button>
-                  )}
+                <div className="card-actions justify-end pt-1">
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={() => void handleSaveGitHub()}
                     disabled={savingType === 'github'}
                   >
                     {savingType === 'github' ? <span className="loading loading-spinner loading-xs"></span> : <KeyRound className="h-4 w-4" />}
-                    {githubCredential ? 'Update' : 'Save'}
+                    Add Credential
                   </button>
                 </div>
+
+                <div className="divider my-0"></div>
+
+                {githubCredentials.length === 0 ? (
+                  <div className="text-sm opacity-60">No GitHub credentials saved.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {githubCredentials.map((credential) => (
+                      <div key={credential.id} className="rounded-md border border-base-300 bg-base-100 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{credential.username}</div>
+                            <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                          </div>
+                          <button
+                            className="btn btn-error btn-outline btn-xs"
+                            onClick={() => void handleDelete(credential)}
+                            disabled={deletingId === credential.id}
+                          >
+                            {deletingId === credential.id ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-3.5 w-3.5" />}
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="card bg-base-200 shadow-xl">
-              <div className="card-body space-y-3">
-                <h2 className="card-title flex items-center gap-2">GitLab</h2>
-
-                <p className="text-sm opacity-80">
-                  {gitlabCredential && gitlabCredential.type === 'gitlab'
-                    ? `Configured for ${gitlabCredential.username} on ${gitlabCredential.serverUrl} (updated ${new Date(gitlabCredential.updatedAt).toLocaleString()}).`
-                    : 'No GitLab credential configured.'}
-                </p>
+              <div className="card-body space-y-4">
+                <h2 className="card-title">GitLab</h2>
 
                 <label className="form-control w-full gap-2">
                   <span className="label-text text-xs uppercase tracking-wide opacity-70">Server URL</span>
@@ -248,26 +255,44 @@ export default function CredentialsPage() {
                   />
                 </label>
 
-                <div className="card-actions justify-end gap-2 pt-2">
-                  {gitlabCredential && (
-                    <button
-                      className="btn btn-error btn-outline btn-sm"
-                      onClick={() => void handleDelete('gitlab')}
-                      disabled={deletingType === 'gitlab' || savingType === 'gitlab'}
-                    >
-                      {deletingType === 'gitlab' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-4 w-4" />}
-                      Delete
-                    </button>
-                  )}
+                <div className="card-actions justify-end pt-1">
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={() => void handleSaveGitLab()}
                     disabled={savingType === 'gitlab'}
                   >
                     {savingType === 'gitlab' ? <span className="loading loading-spinner loading-xs"></span> : <KeyRound className="h-4 w-4" />}
-                    {gitlabCredential ? 'Update' : 'Save'}
+                    Add Credential
                   </button>
                 </div>
+
+                <div className="divider my-0"></div>
+
+                {gitlabCredentials.length === 0 ? (
+                  <div className="text-sm opacity-60">No GitLab credentials saved.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {gitlabCredentials.map((credential) => (
+                      <div key={credential.id} className="rounded-md border border-base-300 bg-base-100 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{credential.username}</div>
+                            <div className="text-xs opacity-70 truncate">{credential.serverUrl}</div>
+                            <div className="text-xs opacity-60">Updated {new Date(credential.updatedAt).toLocaleString()}</div>
+                          </div>
+                          <button
+                            className="btn btn-error btn-outline btn-xs"
+                            onClick={() => void handleDelete(credential)}
+                            disabled={deletingId === credential.id}
+                          >
+                            {deletingId === credential.id ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-3.5 w-3.5" />}
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

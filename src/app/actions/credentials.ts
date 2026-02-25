@@ -1,12 +1,12 @@
 'use server';
 
 import {
+  createGitHubCredential,
+  createGitLabCredential,
   deleteCredential,
   getAllCredentials,
-  upsertGitHubCredential,
-  upsertGitLabCredential,
 } from '@/lib/credentials';
-import type { Credential, CredentialType } from '@/lib/credentials';
+import type { Credential } from '@/lib/credentials';
 
 type ListCredentialsResult =
   | { success: true; credentials: Credential[] }
@@ -27,7 +27,7 @@ type SaveCredentialResult =
   | { success: false; error: string };
 
 export async function saveGitHubCredential(token: string): Promise<SaveCredentialResult> {
-  const result = await upsertGitHubCredential(token);
+  const result = await createGitHubCredential(token);
   if (!result.success || !result.credential) {
     return { success: false, error: result.error || 'Failed to save GitHub credential.' };
   }
@@ -36,7 +36,7 @@ export async function saveGitHubCredential(token: string): Promise<SaveCredentia
 }
 
 export async function saveGitLabCredential(serverUrl: string, token: string): Promise<SaveCredentialResult> {
-  const result = await upsertGitLabCredential(serverUrl, token);
+  const result = await createGitLabCredential(serverUrl, token);
   if (!result.success || !result.credential) {
     return { success: false, error: result.error || 'Failed to save GitLab credential.' };
   }
@@ -48,9 +48,9 @@ type RemoveCredentialResult =
   | { success: true }
   | { success: false; error: string };
 
-export async function removeCredential(type: CredentialType): Promise<RemoveCredentialResult> {
+export async function removeCredential(id: string): Promise<RemoveCredentialResult> {
   try {
-    const result = await deleteCredential(type);
+    const result = await deleteCredential(id);
     if (!result.success) {
       return { success: false, error: result.error || 'Failed to remove credential.' };
     }

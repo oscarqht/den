@@ -177,6 +177,7 @@ export interface SessionViewProps {
     startupScript?: string;
     devServerScript?: string;
     initialMessage?: string;
+    attachmentNames?: string[];
     title?: string;
     sessionMode?: 'fast' | 'plan';
     onExit: (force?: boolean) => void;
@@ -196,6 +197,7 @@ export function SessionView({
     startupScript,
     devServerScript,
     initialMessage,
+    attachmentNames,
     title,
     sessionMode = 'fast',
     onExit,
@@ -1618,10 +1620,23 @@ export function SessionView({
                                 if (safeTitle) taskParts.push(safeTitle);
                                 if (trimmedInitialMessage) taskParts.push(trimmedInitialMessage);
                                 const taskContent = taskParts.join('\n\n');
+                                const attachmentPaths = (attachmentNames || [])
+                                    .map((name) => name.trim())
+                                    .filter(Boolean)
+                                    .map((name) => `${worktree || repo}-attachments/${name}`);
+                                const taskSections: string[] = [];
+                                if (taskContent) taskSections.push(taskContent);
+                                if (attachmentPaths.length > 0) {
+                                    taskSections.push([
+                                        'Attachments:',
+                                        ...attachmentPaths.map((attachmentPath) => `- ${attachmentPath}`),
+                                    ].join('\n'));
+                                }
+                                const fullTaskContent = taskSections.join('\n\n');
                                 let safeMessage = '';
 
-                                // Only send an initial prompt if the user provided title or message.
-                                if (taskContent) {
+                                // Send startup prompt when user provided a task or attachments.
+                                if (fullTaskContent) {
                                     const instructionLines: string[] = [];
                                     if (sessionMode === 'plan') {
                                         instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
@@ -1635,7 +1650,7 @@ export function SessionView({
                                         '',
                                         '# Task',
                                         '',
-                                        taskContent,
+                                        fullTaskContent,
                                     ].join('\n');
 
                                     try {

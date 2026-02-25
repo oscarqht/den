@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Play } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Play, KeyRound, Settings } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -20,6 +20,8 @@ import {
 import { resolveRepositoryByName } from '@/app/actions/repository';
 import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
+import { listCredentials } from '@/app/actions/credentials';
+import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
@@ -42,6 +44,7 @@ type AgentProvider = {
 };
 
 type SessionMode = 'fast' | 'plan';
+type RepoCredentialPreference = 'auto' | 'github' | 'gitlab';
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
@@ -77,10 +80,14 @@ export default function GitRepoSelector({
 }: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
+  const [isRepoSettingsDialogOpen, setIsRepoSettingsDialogOpen] = useState(false);
 
   const [config, setConfig] = useState<Config | null>(null);
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
+  const [repoCredentialPreference, setRepoCredentialPreference] = useState<RepoCredentialPreference>('auto');
+  const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
   const router = useRouter();
 
@@ -114,6 +121,9 @@ export default function GitRepoSelector({
   const [loginCommand, setLoginCommand] = useState('');
   const [loginCommandInjected, setLoginCommandInjected] = useState(false);
   const [loginModalError, setLoginModalError] = useState<string | null>(null);
+  const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
+  const [isLoadingCredentialOptions, setIsLoadingCredentialOptions] = useState(false);
+  const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
   const loginTerminalRef = useRef<HTMLIFrameElement>(null);
 
   const collapsedSessionSetupLabel = selectedProvider && selectedModel
@@ -143,6 +153,23 @@ export default function GitRepoSelector({
     if (value === 'gemini' || value === 'codex' || value === 'agent') return value;
     return null;
   }, []);
+
+  const getRepoCredentialPreference = useCallback((repo: string): RepoCredentialPreference => {
+    const value = config?.repoSettings?.[repo]?.credentialPreference;
+    if (value === 'github' || value === 'gitlab') {
+      return value;
+    }
+    return 'auto';
+  }, [config]);
+
+  const dismissRepoSettingsDialog = useCallback(() => {
+    if (isSavingRepoSettings) return;
+    setIsRepoSettingsDialogOpen(false);
+    setRepoForSettings(null);
+    setRepoCredentialPreference('auto');
+    setRepoSettingsError(null);
+    setIsLoadingCredentialOptions(false);
+  }, [isSavingRepoSettings]);
 
   // Load config and all sessions on mount
   useEffect(() => {
@@ -758,6 +785,51 @@ export default function GitRepoSelector({
     }
   };
 
+  const handleOpenRepoSettings = async (e: React.MouseEvent, repo: string) => {
+    e.stopPropagation();
+
+    setRepoForSettings(repo);
+    setRepoCredentialPreference(getRepoCredentialPreference(repo));
+    setRepoSettingsError(null);
+    setIsRepoSettingsDialogOpen(true);
+    setIsLoadingCredentialOptions(true);
+
+    try {
+      const result = await listCredentials();
+      if (!result.success) {
+        setRepoSettingsError(result.error);
+        setCredentialOptions([]);
+      } else {
+        setCredentialOptions(result.credentials);
+      }
+    } catch (err) {
+      console.error(err);
+      setRepoSettingsError('Failed to load credentials.');
+      setCredentialOptions([]);
+    } finally {
+      setIsLoadingCredentialOptions(false);
+    }
+  };
+
+  const handleSaveRepoSettings = async () => {
+    if (!repoForSettings) return;
+
+    setIsSavingRepoSettings(true);
+    setRepoSettingsError(null);
+    try {
+      const newConfig = await updateRepoSettings(repoForSettings, {
+        credentialPreference: repoCredentialPreference,
+      });
+      setConfig(newConfig);
+      dismissRepoSettingsDialog();
+    } catch (err) {
+      console.error(err);
+      setRepoSettingsError('Failed to save repository settings.');
+    } finally {
+      setIsSavingRepoSettings(false);
+    }
+  };
+
   const handleLoginTerminalLoad = useCallback(() => {
     if (!isLoginModalOpen || !loginCommand || !loginTerminalRef.current) {
       return;
@@ -985,6 +1057,13 @@ export default function GitRepoSelector({
     canConfirm: !loading,
   });
 
+  useDialogKeyboardShortcuts({
+    enabled: mode === 'home' && isRepoSettingsDialogOpen && !!repoForSettings,
+    onConfirm: handleSaveRepoSettings,
+    onDismiss: dismissRepoSettingsDialog,
+    canConfirm: !isSavingRepoSettings,
+  });
+
   const handleResumeSession = async (session: SessionMetadata) => {
     if (!selectedRepo) return;
     setLoading(true);
@@ -1053,6 +1132,8 @@ export default function GitRepoSelector({
   const selectableRepos = selectedRepo
     ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
     : recentRepos;
+  const githubCredential = credentialOptions.find((credential) => credential.type === 'github') || null;
+  const gitlabCredential = credentialOptions.find((credential) => credential.type === 'gitlab') || null;
 
   return (
     <>
@@ -1065,6 +1146,14 @@ export default function GitRepoSelector({
                 Viba
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  className="btn btn-ghost btn-sm gap-2"
+                  onClick={() => router.push('/credentials')}
+                  title="Manage GitHub/GitLab credentials"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Credentials
+                </button>
                 <button
                   className="btn btn-ghost btn-sm gap-2"
                   onClick={() => setIsSelectingRoot(true)}
@@ -1096,6 +1185,13 @@ export default function GitRepoSelector({
                 ) : (
                   <div className="flex flex-col gap-2">
                     {config.recentRepos.map(repo => {
+                      const credentialPreference = getRepoCredentialPreference(repo);
+                      const credentialLabel = credentialPreference === 'auto'
+                        ? 'Auto'
+                        : credentialPreference === 'github'
+                          ? 'GitHub'
+                          : 'GitLab';
+
                       return (
                         <div
                           key={repo}
@@ -1107,9 +1203,21 @@ export default function GitRepoSelector({
                             <div className="flex flex-col overflow-hidden">
                               <span className="font-medium truncate">{getBaseName(repo)}</span>
                               <span className="text-xs opacity-50 truncate">{repo}</span>
+                              <span className="text-[10px] opacity-60 mt-0.5">
+                                Credential: {credentialLabel}
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                void handleOpenRepoSettings(e, repo);
+                              }}
+                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100"
+                              title="Repository settings"
+                            >
+                              <Settings className="w-3 h-3" />
+                            </button>
                             <button
                               onClick={(e) => handleRemoveRecent(e, repo)}
                               className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"
@@ -1124,6 +1232,78 @@ export default function GitRepoSelector({
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'home' && isRepoSettingsDialogOpen && repoForSettings && (
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-base-content/60 p-4">
+          <div className="w-full max-w-xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
+            <div className="space-y-4 p-5 md:p-6">
+              <h3 className="text-xl font-semibold">Repository Settings</h3>
+              <p className="text-sm opacity-75">
+                Choose which credential this repository should use for authenticated Git operations.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wide opacity-70">Repository</label>
+                <div className="rounded-md border border-base-300 bg-base-200 px-3 py-2 font-mono text-xs break-all">
+                  {repoForSettings}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
+                <select
+                  className="select select-bordered w-full"
+                  value={repoCredentialPreference}
+                  onChange={(event) => setRepoCredentialPreference(event.target.value as RepoCredentialPreference)}
+                  disabled={isSavingRepoSettings}
+                >
+                  <option value="auto">Auto (match repository remote)</option>
+                  <option value="github">
+                    GitHub{githubCredential ? ` (${githubCredential.username})` : ' (not configured)'}
+                  </option>
+                  <option value="gitlab">
+                    GitLab
+                    {gitlabCredential && gitlabCredential.type === 'gitlab'
+                      ? ` (${gitlabCredential.username} @ ${gitlabCredential.serverUrl})`
+                      : ' (not configured)'}
+                  </option>
+                </select>
+              </div>
+
+              {isLoadingCredentialOptions && (
+                <div className="text-sm opacity-70 flex items-center gap-2">
+                  <span className="loading loading-spinner loading-xs"></span>
+                  Loading credentials...
+                </div>
+              )}
+
+              {repoSettingsError && (
+                <div className="alert alert-error text-sm py-2">
+                  {repoSettingsError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  className="btn btn-ghost"
+                  onClick={dismissRepoSettingsDialog}
+                  disabled={isSavingRepoSettings}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void handleSaveRepoSettings()}
+                  disabled={isSavingRepoSettings || isLoadingCredentialOptions}
+                >
+                  {isSavingRepoSettings ? <span className="loading loading-spinner loading-xs"></span> : null}
+                  Save
+                </button>
               </div>
             </div>
           </div>

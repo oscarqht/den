@@ -54,9 +54,9 @@ const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 const PLAN_MODE_STARTUP_INSTRUCTION =
-    'Plan mode requirements: study the repository thoroughly first, then present a concrete implementation plan, and wait for explicit user approval before making file changes or running write operations.';
+    'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
 const AUTO_COMMIT_INSTRUCTION =
-    'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. The commit message must include a clear title and a detailed body describing what changed and why, not just a title. No need to confirm when creating commits. If GITHUB_TOKEN or GITLAB_TOKEN is provided, after each round where changes are committed, push the current branch to remote and create a Pull Request (for GitHub remotes) or a Merge Request (for GitLab remotes) with an appropriate title and description. Include the PR/MR link in your reply when this is the first push in the session.';
+    'After each round, if work is complete and files changed, commit all changes without confirmation. Use a commit message with a clear title and a detailed body explaining what changed and why. If GITHUB_TOKEN or GITLAB_TOKEN is set, push the current branch after committed rounds and create (or update) a GitHub Pull Request or GitLab Merge Request with an appropriate title and description; include the PR/MR link in the first push reply.';
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 

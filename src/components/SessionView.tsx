@@ -8,6 +8,8 @@ import {
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
     mergeSessionToBase,
+    prepareSessionAgentReplyMcp,
+    readSessionAgentReplyEvents,
     rebaseSessionOntoBase,
     updateSessionBaseBranch,
     writeSessionPromptFile
@@ -60,6 +62,7 @@ const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 const AGENT_REPLY_NOTIFICATION_COOLDOWN_MS = 5000;
+const AGENT_REPLY_EVENT_POLL_INTERVAL_MS = 2000;
 const PLAN_MODE_STARTUP_INSTRUCTION =
     'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
 const AUTO_COMMIT_INSTRUCTION =
@@ -228,6 +231,10 @@ export function SessionView({
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
     const agentReplyMonitorCleanupRef = useRef<(() => void) | null>(null);
+    const agentReplyEventPollTimerRef = useRef<number | null>(null);
+    const agentReplyEventCursorRef = useRef<number>(Date.now());
+    const agentReplyMcpReadyRef = useRef(false);
+    const agentReplyMcpInstructionRef = useRef('');
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
         timer: null,
@@ -413,13 +420,65 @@ export function SessionView({
         }
     }, [sessionName]);
 
-    const armAgentReplyNotifications = useCallback((term: TerminalWindow['term']) => {
-        const state = agentReplyNotificationStateRef.current;
-        const isBusy = !isShellPromptReady(term);
-        state.armed = true;
-        state.previousBusy = isBusy;
-        state.hasSeenBusySinceArm = isBusy;
-    }, [isShellPromptReady]);
+    const stopAgentReplyEventPolling = useCallback(() => {
+        if (agentReplyEventPollTimerRef.current !== null) {
+            window.clearTimeout(agentReplyEventPollTimerRef.current);
+            agentReplyEventPollTimerRef.current = null;
+        }
+    }, []);
+
+    const startAgentReplyEventPolling = useCallback(() => {
+        stopAgentReplyEventPolling();
+
+        const poll = async () => {
+            try {
+                const result = await readSessionAgentReplyEvents(sessionName, agentReplyEventCursorRef.current);
+                if (result.success) {
+                    agentReplyEventCursorRef.current = Math.max(agentReplyEventCursorRef.current, result.latestTimestamp);
+                    if (result.events.length > 0) {
+                        const now = Date.now();
+                        const previousNotifiedAt = agentReplyNotificationStateRef.current.lastNotifiedAt;
+                        if (now - previousNotifiedAt >= AGENT_REPLY_NOTIFICATION_COOLDOWN_MS) {
+                            agentReplyNotificationStateRef.current.lastNotifiedAt = now;
+                            emitAgentReplyNotification();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to poll MCP agent reply events:', error);
+            } finally {
+                agentReplyEventPollTimerRef.current = window.setTimeout(poll, AGENT_REPLY_EVENT_POLL_INTERVAL_MS);
+            }
+        };
+
+        void poll();
+    }, [emitAgentReplyNotification, sessionName, stopAgentReplyEventPolling]);
+
+    const ensureAgentReplyMcp = useCallback(async (): Promise<string> => {
+        if (!agent) return '';
+        if (agentReplyMcpReadyRef.current) {
+            return agentReplyMcpInstructionRef.current;
+        }
+
+        const result = await prepareSessionAgentReplyMcp(sessionName, agent);
+        if (!result.success || !result.enabled) {
+            if (!result.success) {
+                console.error('Failed to configure MCP reply notifications:', result.error);
+            }
+            agentReplyMcpReadyRef.current = false;
+            agentReplyMcpInstructionRef.current = '';
+            stopAgentReplyEventPolling();
+            return '';
+        }
+
+        if (!agentReplyMcpReadyRef.current) {
+            agentReplyEventCursorRef.current = Date.now();
+            startAgentReplyEventPolling();
+        }
+        agentReplyMcpReadyRef.current = true;
+        agentReplyMcpInstructionRef.current = result.instruction?.trim() || '';
+        return agentReplyMcpInstructionRef.current;
+    }, [agent, sessionName, startAgentReplyEventPolling, stopAgentReplyEventPolling]);
 
     const disarmAgentReplyNotifications = useCallback(() => {
         const state = agentReplyNotificationStateRef.current;
@@ -434,77 +493,6 @@ export function SessionView({
             agentReplyMonitorCleanupRef.current = null;
         }
     }, []);
-
-    const startAgentReplyMonitor = useCallback((
-        iframe: HTMLIFrameElement,
-        term: NonNullable<TerminalWindow['term']>
-    ) => {
-        stopAgentReplyMonitor();
-
-        let disposed = false;
-        let writeDisposable: { dispose?: () => void } | null = null;
-        let mutationObserver: MutationObserver | null = null;
-        let intervalId: number | null = null;
-
-        const updateReplyState = () => {
-            if (disposed) return;
-
-            const isBusy = !isShellPromptReady(term);
-            const state = agentReplyNotificationStateRef.current;
-            const wasBusy = state.previousBusy;
-
-            state.previousBusy = isBusy;
-
-            if (!state.armed) {
-                return;
-            }
-
-            if (isBusy) {
-                state.hasSeenBusySinceArm = true;
-                return;
-            }
-
-            if (wasBusy && state.hasSeenBusySinceArm) {
-                const now = Date.now();
-                if (now - state.lastNotifiedAt >= AGENT_REPLY_NOTIFICATION_COOLDOWN_MS) {
-                    state.lastNotifiedAt = now;
-                    emitAgentReplyNotification();
-                }
-            }
-
-            state.hasSeenBusySinceArm = false;
-        };
-
-        updateReplyState();
-        intervalId = window.setInterval(updateReplyState, 1000);
-
-        try {
-            const xterm = term as TerminalWithOnWriteParsed;
-            if (typeof xterm.onWriteParsed === 'function') {
-                writeDisposable = xterm.onWriteParsed(updateReplyState) || null;
-            } else {
-                const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
-                if (screen) {
-                    mutationObserver = new MutationObserver(updateReplyState);
-                    mutationObserver.observe(screen, { childList: true, subtree: true, characterData: true });
-                }
-            }
-        } catch (error) {
-            console.error('Failed to setup agent reply monitor:', error);
-        }
-
-        agentReplyMonitorCleanupRef.current = () => {
-            disposed = true;
-            if (intervalId !== null) {
-                window.clearInterval(intervalId);
-                intervalId = null;
-            }
-            if (writeDisposable && typeof writeDisposable.dispose === 'function') {
-                writeDisposable.dispose();
-            }
-            mutationObserver?.disconnect();
-        };
-    }, [emitAgentReplyNotification, isShellPromptReady, stopAgentReplyMonitor]);
 
     const stopTerminalProcessMonitor = useCallback(() => {
         if (terminalProcessMonitorCleanupRef.current) {
@@ -563,18 +551,23 @@ export function SessionView({
 
     useEffect(() => {
         return () => {
+            stopAgentReplyEventPolling();
             stopAgentReplyMonitor();
             stopTerminalProcessMonitor();
         };
-    }, [stopAgentReplyMonitor, stopTerminalProcessMonitor]);
+    }, [stopAgentReplyEventPolling, stopAgentReplyMonitor, stopTerminalProcessMonitor]);
 
     useEffect(() => {
         setIsTerminalForegroundProcessRunning(false);
+        stopAgentReplyEventPolling();
         stopAgentReplyMonitor();
         disarmAgentReplyNotifications();
         stopTerminalProcessMonitor();
+        agentReplyMcpReadyRef.current = false;
+        agentReplyMcpInstructionRef.current = '';
+        agentReplyEventCursorRef.current = Date.now();
         notificationPermissionRequestedRef.current = false;
-    }, [disarmAgentReplyNotifications, sessionName, stopAgentReplyMonitor, stopTerminalProcessMonitor]);
+    }, [disarmAgentReplyNotifications, sessionName, stopAgentReplyEventPolling, stopAgentReplyMonitor, stopTerminalProcessMonitor]);
 
     const injectTerminalStartupScript = useCallback((
         iframe: HTMLIFrameElement,
@@ -1040,7 +1033,7 @@ export function SessionView({
                         return;
                     }
 
-                    armAgentReplyNotifications(win.term);
+                    void ensureAgentReplyMcp();
                     win.term.paste(prompt);
 
                     const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -1068,7 +1061,7 @@ export function SessionView({
 
             checkAndSend();
         });
-    }, [armAgentReplyNotifications, branch, currentBaseBranch, sessionName]);
+    }, [branch, currentBaseBranch, ensureAgentReplyMcp, sessionName]);
 
     const handleCommit = async () => {
         setIsRequestingCommit(true);
@@ -1684,6 +1677,7 @@ export function SessionView({
     const handleIframeLoad = () => {
         if (!iframeRef.current) return;
         const iframe = iframeRef.current;
+        stopAgentReplyEventPolling();
         stopAgentReplyMonitor();
         disarmAgentReplyNotifications();
 
@@ -1719,7 +1713,6 @@ export function SessionView({
                 if (win && win.term) {
                     ensureTmuxStatusBarHidden('agent');
                     const term = win.term;
-                    startAgentReplyMonitor(iframe, term);
                     attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef, {
                         directOpenBehavior: 'new_tab',
                         modifierOpenBehavior: 'new_tab',
@@ -1737,9 +1730,11 @@ export function SessionView({
                     const shouldSkipResumeInjection = Boolean(isResume) && terminalPersistenceMode === 'tmux';
                     if (alreadyBootstrapped || shouldSkipResumeInjection) {
                         if (agent) {
-                            armAgentReplyNotifications(term);
+                            void ensureAgentReplyMcp();
                         } else {
-                            disarmAgentReplyNotifications();
+                            stopAgentReplyEventPolling();
+                            agentReplyMcpReadyRef.current = false;
+                            agentReplyMcpInstructionRef.current = '';
                         }
                         if (shouldSkipResumeInjection && !alreadyBootstrapped) {
                             markTerminalBootstrapped('agent');
@@ -1760,9 +1755,11 @@ export function SessionView({
 
                     if (!beginTerminalBootstrap('agent')) {
                         if (agent) {
-                            armAgentReplyNotifications(term);
+                            void ensureAgentReplyMcp();
                         } else {
-                            disarmAgentReplyNotifications();
+                            stopAgentReplyEventPolling();
+                            agentReplyMcpReadyRef.current = false;
+                            agentReplyMcpInstructionRef.current = '';
                         }
                         setFeedback('Reconnected to terminal');
                         win.focus();
@@ -1806,15 +1803,16 @@ export function SessionView({
                     if (agent) {
                         const startAgentProcess = async () => {
                             let agentCmd = '';
+                            const mcpInstruction = await ensureAgentReplyMcp();
 
                             if (isResume) {
                                 // Resume logic (keep startup runtime flags but do not override model)
                                 if (agent.toLowerCase().includes('gemini')) {
-                                    agentCmd = `gemini --resume latest --yolo`;
+                                    agentCmd = `gemini --resume latest --yolo --allowed-mcp-server-names viba_notify`;
                                 } else if (agent.toLowerCase().includes('codex')) {
                                     agentCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
-                                    agentCmd = `agent resume`;
+                                    agentCmd = `agent --approve-mcps resume`;
                                 } else {
                                     // Generic fallback: <agent> resume
                                     agentCmd = `${quoteShellArg(agent)} resume`;
@@ -1841,13 +1839,18 @@ export function SessionView({
                                 const fullTaskContent = taskSections.join('\n\n');
                                 let safeMessage = '';
 
-                                // Send startup prompt when user provided a task or attachments.
-                                if (fullTaskContent) {
+                                const shouldSendStartupPrompt = Boolean(fullTaskContent) || Boolean(mcpInstruction);
+
+                                // Send startup prompt when there is a task, or when MCP notification instructions are required.
+                                if (shouldSendStartupPrompt) {
                                     const instructionLines: string[] = [];
                                     if (sessionMode === 'plan') {
                                         instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
                                     }
                                     instructionLines.push(AUTO_COMMIT_INSTRUCTION);
+                                    if (mcpInstruction) {
+                                        instructionLines.push(mcpInstruction);
+                                    }
 
                                     const fullMessage = [
                                         '# Instructions',
@@ -1856,7 +1859,7 @@ export function SessionView({
                                         '',
                                         '# Task',
                                         '',
-                                        fullTaskContent,
+                                        fullTaskContent || 'No initial task provided. Wait for user instructions before making changes.',
                                     ].join('\n');
 
                                     try {
@@ -1880,10 +1883,10 @@ export function SessionView({
                                     agentCmd = `codex${modelArg} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
                                 } else if (agent.toLowerCase().includes('gemini')) {
                                     // Gemini: gemini --model gemini-3-pro-preview --yolo
-                                    agentCmd = `gemini${modelArg} --yolo${safeMessage}`;
+                                    agentCmd = `gemini${modelArg} --yolo --allowed-mcp-server-names viba_notify${safeMessage}`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                     // Cursor: agent --model opus-4.6-thinking
-                                    agentCmd = `agent${modelArg}${safeMessage}`;
+                                    agentCmd = `agent --approve-mcps${modelArg}${safeMessage}`;
                                 } else {
                                     // Generic fallback: <agent> --model <model>
                                     agentCmd = `${quoteShellArg(agent)}${modelArg}${safeMessage}`;
@@ -1893,7 +1896,12 @@ export function SessionView({
                             if (agentCmd) {
                                 term.paste(agentCmd);
                                 pressEnter();
-                                armAgentReplyNotifications(term);
+                                if (isResume && mcpInstruction) {
+                                    window.setTimeout(() => {
+                                        term.paste(mcpInstruction);
+                                        pressEnter();
+                                    }, 1200);
+                                }
                                 setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
 
                                 if (!isResume && onSessionStart) {
@@ -1904,7 +1912,9 @@ export function SessionView({
 
                         setTimeout(() => startAgentProcess(), 500); // Wait a bit for cd to finish
                     } else {
-                        disarmAgentReplyNotifications();
+                        stopAgentReplyEventPolling();
+                        agentReplyMcpReadyRef.current = false;
+                        agentReplyMcpInstructionRef.current = '';
                         setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
                         if (!isResume && onSessionStart) {
                             onSessionStart();
@@ -1921,6 +1931,9 @@ export function SessionView({
                     setTimeout(() => checkAndInject(attempts + 1), 500);
                 }
             } catch (e) {
+                stopAgentReplyEventPolling();
+                agentReplyMcpReadyRef.current = false;
+                agentReplyMcpInstructionRef.current = '';
                 stopAgentReplyMonitor();
                 disarmAgentReplyNotifications();
                 resetTerminalBootstrap('agent');

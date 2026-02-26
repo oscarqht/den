@@ -68,7 +68,7 @@ const CLEAR_LIGHT_THEME: Record<string, string> = {
 };
 const CLEAR_LIGHT_FONT_FAMILY = 'SF Mono, Monaco, Menlo, Consolas, monospace';
 const CLEAR_LIGHT_FONT_SIZE = 13;
-const CLEAR_LIGHT_LINE_HEIGHT = 1.2;
+const CLEAR_LIGHT_LINE_HEIGHT = 1.1;
 
 function applyClearLightTerminalStyle(term: TerminalInstance): void {
     term.options.fontFamily = CLEAR_LIGHT_FONT_FAMILY;

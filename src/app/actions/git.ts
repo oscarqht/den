@@ -50,8 +50,7 @@ const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
   },
 };
 const AGENT_BROWSER_SKILL_NAME = 'agent-browser';
-const AGENT_BROWSER_SKILL_REPO = 'https://github.com/vercel-labs/agent-browser.git';
-const AGENT_BROWSER_SKILL_REPO_PATH = 'skills/agent-browser';
+const AGENT_BROWSER_SKILL_REPO_URL = 'https://github.com/vercel-labs/agent-browser';
 const AGENT_BROWSER_SKILL_SOURCE_URL = 'https://skills.sh/vercel-labs/agent-browser/agent-browser';
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
@@ -111,8 +110,7 @@ function getCodexSkillsDirectory(): string {
 
 async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
   const skillsDirectory = getCodexSkillsDirectory();
-  const targetSkillDirectory = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME);
-  const targetSkillManifest = path.join(targetSkillDirectory, 'SKILL.md');
+  const targetSkillManifest = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME, 'SKILL.md');
 
   try {
     await fs.access(targetSkillManifest);
@@ -121,66 +119,31 @@ async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
     // Install when missing.
   }
 
-  const gitVersionResult = await runProcess('git', ['--version']);
-  if (gitVersionResult.exitCode !== 0) {
-    console.warn('Skipping Codex agent-browser skill installation: git is not available.');
+  const npxVersionResult = await runProcess('npx', ['--version']);
+  if (npxVersionResult.exitCode !== 0) {
+    console.warn('Skipping Codex agent-browser skill installation: npx is not available.');
+    return;
+  }
+  const addResult = await runProcess('npx', [
+    'skills',
+    'add',
+    AGENT_BROWSER_SKILL_REPO_URL,
+    '--skill',
+    AGENT_BROWSER_SKILL_NAME,
+    '-g',
+    '-y',
+  ]);
+  if (addResult.exitCode !== 0) {
+    console.warn(`Failed to install Codex agent-browser skill via npx skills add: ${addResult.output || 'unknown error'}`);
     return;
   }
 
-  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'viba-agent-browser-'));
-  const repositoryDirectory = path.join(tempDirectory, 'repo');
-
   try {
-    const cloneResult = await runProcess('git', [
-      'clone',
-      '--depth',
-      '1',
-      '--filter=blob:none',
-      '--sparse',
-      AGENT_BROWSER_SKILL_REPO,
-      repositoryDirectory,
-    ]);
-    if (cloneResult.exitCode !== 0) {
-      console.warn(`Failed to clone ${AGENT_BROWSER_SKILL_REPO}: ${cloneResult.output || 'unknown clone failure'}`);
-      return;
-    }
-
-    const sparseResult = await runProcess('git', [
-      '-C',
-      repositoryDirectory,
-      'sparse-checkout',
-      'set',
-      AGENT_BROWSER_SKILL_REPO_PATH,
-    ]);
-    if (sparseResult.exitCode !== 0) {
-      console.warn(`Failed to checkout ${AGENT_BROWSER_SKILL_REPO_PATH}: ${sparseResult.output || 'unknown sparse-checkout failure'}`);
-      return;
-    }
-
-    const sourceSkillDirectory = path.join(repositoryDirectory, AGENT_BROWSER_SKILL_REPO_PATH);
-    const sourceSkillManifest = path.join(sourceSkillDirectory, 'SKILL.md');
-    try {
-      await fs.access(sourceSkillManifest);
-    } catch {
-      console.warn(
-        `Expected ${AGENT_BROWSER_SKILL_REPO_PATH}/SKILL.md in ${AGENT_BROWSER_SKILL_REPO} (source: ${AGENT_BROWSER_SKILL_SOURCE_URL}), but it was not found.`
-      );
-      return;
-    }
-
-    await fs.mkdir(skillsDirectory, { recursive: true });
-    await fs.cp(sourceSkillDirectory, targetSkillDirectory, {
-      recursive: true,
-      force: false,
-      errorOnExist: true,
-    });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === 'EEXIST') {
-      return;
-    }
-    console.warn('Failed to install Codex agent-browser skill:', error);
-  } finally {
-    await fs.rm(tempDirectory, { recursive: true, force: true });
+    await fs.access(targetSkillManifest);
+  } catch {
+    console.warn(
+      `Expected ${targetSkillManifest} after installing from ${AGENT_BROWSER_SKILL_SOURCE_URL}, but it was not found.`
+    );
   }
 }
 

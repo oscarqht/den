@@ -16,8 +16,7 @@ const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 3200;
 const AGENT_BROWSER_SKILL_NAME = "agent-browser";
 const AGENT_BROWSER_SKILL_SOURCE_URL = "https://skills.sh/vercel-labs/agent-browser/agent-browser";
-const AGENT_BROWSER_SKILL_REPO = "https://github.com/vercel-labs/agent-browser.git";
-const AGENT_BROWSER_SKILL_REPO_PATH = "skills/agent-browser";
+const AGENT_BROWSER_SKILL_REPO_URL = "https://github.com/vercel-labs/agent-browser";
 
 function getNextBin() {
   return require.resolve("next/dist/bin/next");
@@ -193,69 +192,26 @@ function getCodexSkillsDirectory() {
 
 function ensureAgentBrowserSkillInstalled() {
   const skillsDirectory = getCodexSkillsDirectory();
-  const targetSkillDirectory = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME);
-  const targetSkillManifest = path.join(targetSkillDirectory, "SKILL.md");
+  const targetSkillManifest = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME, "SKILL.md");
 
   if (fs.existsSync(targetSkillManifest)) {
     return;
   }
 
-  if (!isCommandAvailable("git")) {
-    console.warn("Skipping Codex agent-browser skill installation: git is not available.");
+  if (!isCommandAvailable("npx")) {
+    console.warn("Skipping Codex agent-browser skill installation: npx is not available.");
     return;
   }
 
-  let tempDirectory = "";
-  try {
-    console.log(`Ensuring Codex skill '${AGENT_BROWSER_SKILL_NAME}' is installed from ${AGENT_BROWSER_SKILL_SOURCE_URL}...`);
-
-    tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "viba-agent-browser-"));
-    const repositoryDirectory = path.join(tempDirectory, "repo");
-
-    const cloneResult = spawnSync(
-      "git",
-      ["clone", "--depth", "1", "--filter=blob:none", "--sparse", AGENT_BROWSER_SKILL_REPO, repositoryDirectory],
-      { env: process.env, stdio: "pipe" },
-    );
-    if (cloneResult.status !== 0) {
-      const detail = cloneResult.stderr?.toString().trim() || "unknown clone failure";
-      console.warn(`Failed to clone ${AGENT_BROWSER_SKILL_REPO}: ${detail}`);
-      return;
-    }
-
-    const sparseResult = spawnSync(
-      "git",
-      ["-C", repositoryDirectory, "sparse-checkout", "set", AGENT_BROWSER_SKILL_REPO_PATH],
-      { env: process.env, stdio: "pipe" },
-    );
-    if (sparseResult.status !== 0) {
-      const detail = sparseResult.stderr?.toString().trim() || "unknown sparse-checkout failure";
-      console.warn(`Failed to checkout ${AGENT_BROWSER_SKILL_REPO_PATH}: ${detail}`);
-      return;
-    }
-
-    const sourceSkillDirectory = path.join(repositoryDirectory, AGENT_BROWSER_SKILL_REPO_PATH);
-    const sourceSkillManifest = path.join(sourceSkillDirectory, "SKILL.md");
-    if (!fs.existsSync(sourceSkillManifest)) {
-      console.warn(
-        `Expected ${AGENT_BROWSER_SKILL_REPO_PATH}/SKILL.md in ${AGENT_BROWSER_SKILL_REPO}, but it was not found.`,
-      );
-      return;
-    }
-
-    fs.mkdirSync(skillsDirectory, { recursive: true });
-    fs.cpSync(sourceSkillDirectory, targetSkillDirectory, { recursive: true, force: false, errorOnExist: true });
-    console.log(`Installed Codex skill '${AGENT_BROWSER_SKILL_NAME}' to ${targetSkillDirectory}.`);
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
-      return;
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`Failed to install Codex agent-browser skill: ${detail}`);
-  } finally {
-    if (tempDirectory) {
-      fs.rmSync(tempDirectory, { recursive: true, force: true });
-    }
+  console.log(`Ensuring Codex skill '${AGENT_BROWSER_SKILL_NAME}' is installed from ${AGENT_BROWSER_SKILL_SOURCE_URL}...`);
+  const addResult = spawnSync(
+    "npx",
+    ["skills", "add", AGENT_BROWSER_SKILL_REPO_URL, "--skill", AGENT_BROWSER_SKILL_NAME, "-g", "-y"],
+    { cwd: APP_ROOT, env: process.env, stdio: "pipe" },
+  );
+  if (addResult.status !== 0) {
+    const detail = addResult.stderr?.toString().trim() || addResult.stdout?.toString().trim() || "unknown error";
+    console.warn(`Failed to install Codex agent-browser skill via npx skills add: ${detail}`);
   }
 }
 

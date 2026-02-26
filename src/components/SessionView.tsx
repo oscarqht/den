@@ -42,6 +42,12 @@ type TerminalOnWriteParsedDisposable = { dispose?: () => void };
 type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
     onWriteParsed?: (callback: () => void) => TerminalOnWriteParsedDisposable | void;
 };
+type AgentReplyNotificationState = {
+    armed: boolean;
+    previousBusy: boolean | null;
+    hasSeenBusySinceArm: boolean;
+    lastNotifiedAt: number;
+};
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -53,6 +59,7 @@ const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
+const AGENT_REPLY_NOTIFICATION_COOLDOWN_MS = 5000;
 const PLAN_MODE_STARTUP_INSTRUCTION =
     'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
 const AUTO_COMMIT_INSTRUCTION =
@@ -220,10 +227,18 @@ export function SessionView({
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
+    const agentReplyMonitorCleanupRef = useRef<(() => void) | null>(null);
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
         timer: null,
     });
+    const agentReplyNotificationStateRef = useRef<AgentReplyNotificationState>({
+        armed: false,
+        previousBusy: null,
+        hasSeenBusySinceArm: false,
+        lastNotifiedAt: 0,
+    });
+    const notificationPermissionRequestedRef = useRef(false);
     const agentTerminalSrc = useMemo(
         () => agentTerminalSrcOverride || buildTtydTerminalSrc(sessionName, 'agent'),
         [agentTerminalSrcOverride, sessionName],
@@ -361,6 +376,136 @@ export function SessionView({
         return false;
     }, []);
 
+    const emitAgentReplyNotification = useCallback(() => {
+        setFeedback('Agent finished replying');
+
+        if (typeof window === 'undefined' || typeof window.Notification === 'undefined') {
+            return;
+        }
+
+        const showNotification = () => {
+            try {
+                new window.Notification('Agent finished replying', {
+                    body: `Session ${sessionName}`,
+                    tag: `viba-agent-reply-${sessionName}`,
+                });
+            } catch (error) {
+                console.error('Failed to show agent reply notification:', error);
+            }
+        };
+
+        if (window.Notification.permission === 'granted') {
+            showNotification();
+            return;
+        }
+
+        if (window.Notification.permission === 'default' && !notificationPermissionRequestedRef.current) {
+            notificationPermissionRequestedRef.current = true;
+            window.Notification.requestPermission()
+                .then((permission) => {
+                    if (permission === 'granted') {
+                        showNotification();
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to request notification permission:', error);
+                });
+        }
+    }, [sessionName]);
+
+    const armAgentReplyNotifications = useCallback((term: TerminalWindow['term']) => {
+        const state = agentReplyNotificationStateRef.current;
+        const isBusy = !isShellPromptReady(term);
+        state.armed = true;
+        state.previousBusy = isBusy;
+        state.hasSeenBusySinceArm = isBusy;
+    }, [isShellPromptReady]);
+
+    const disarmAgentReplyNotifications = useCallback(() => {
+        const state = agentReplyNotificationStateRef.current;
+        state.armed = false;
+        state.previousBusy = null;
+        state.hasSeenBusySinceArm = false;
+    }, []);
+
+    const stopAgentReplyMonitor = useCallback(() => {
+        if (agentReplyMonitorCleanupRef.current) {
+            agentReplyMonitorCleanupRef.current();
+            agentReplyMonitorCleanupRef.current = null;
+        }
+    }, []);
+
+    const startAgentReplyMonitor = useCallback((
+        iframe: HTMLIFrameElement,
+        term: NonNullable<TerminalWindow['term']>
+    ) => {
+        stopAgentReplyMonitor();
+
+        let disposed = false;
+        let writeDisposable: { dispose?: () => void } | null = null;
+        let mutationObserver: MutationObserver | null = null;
+        let intervalId: number | null = null;
+
+        const updateReplyState = () => {
+            if (disposed) return;
+
+            const isBusy = !isShellPromptReady(term);
+            const state = agentReplyNotificationStateRef.current;
+            const wasBusy = state.previousBusy;
+
+            state.previousBusy = isBusy;
+
+            if (!state.armed) {
+                return;
+            }
+
+            if (isBusy) {
+                state.hasSeenBusySinceArm = true;
+                return;
+            }
+
+            if (wasBusy && state.hasSeenBusySinceArm) {
+                const now = Date.now();
+                if (now - state.lastNotifiedAt >= AGENT_REPLY_NOTIFICATION_COOLDOWN_MS) {
+                    state.lastNotifiedAt = now;
+                    emitAgentReplyNotification();
+                }
+            }
+
+            state.hasSeenBusySinceArm = false;
+        };
+
+        updateReplyState();
+        intervalId = window.setInterval(updateReplyState, 1000);
+
+        try {
+            const xterm = term as TerminalWithOnWriteParsed;
+            if (typeof xterm.onWriteParsed === 'function') {
+                writeDisposable = xterm.onWriteParsed(updateReplyState) || null;
+            } else {
+                const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
+                if (screen) {
+                    mutationObserver = new MutationObserver(updateReplyState);
+                    mutationObserver.observe(screen, { childList: true, subtree: true, characterData: true });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to setup agent reply monitor:', error);
+        }
+
+        agentReplyMonitorCleanupRef.current = () => {
+            disposed = true;
+            if (intervalId !== null) {
+                window.clearInterval(intervalId);
+                intervalId = null;
+            }
+            if (writeDisposable && typeof writeDisposable.dispose === 'function') {
+                writeDisposable.dispose();
+            }
+            mutationObserver?.disconnect();
+        };
+    }, [emitAgentReplyNotification, isShellPromptReady, stopAgentReplyMonitor]);
+
     const stopTerminalProcessMonitor = useCallback(() => {
         if (terminalProcessMonitorCleanupRef.current) {
             terminalProcessMonitorCleanupRef.current();
@@ -418,14 +563,18 @@ export function SessionView({
 
     useEffect(() => {
         return () => {
+            stopAgentReplyMonitor();
             stopTerminalProcessMonitor();
         };
-    }, [stopTerminalProcessMonitor]);
+    }, [stopAgentReplyMonitor, stopTerminalProcessMonitor]);
 
     useEffect(() => {
         setIsTerminalForegroundProcessRunning(false);
+        stopAgentReplyMonitor();
+        disarmAgentReplyNotifications();
         stopTerminalProcessMonitor();
-    }, [sessionName, stopTerminalProcessMonitor]);
+        notificationPermissionRequestedRef.current = false;
+    }, [disarmAgentReplyNotifications, sessionName, stopAgentReplyMonitor, stopTerminalProcessMonitor]);
 
     const injectTerminalStartupScript = useCallback((
         iframe: HTMLIFrameElement,
@@ -891,6 +1040,7 @@ export function SessionView({
                         return;
                     }
 
+                    armAgentReplyNotifications(win.term);
                     win.term.paste(prompt);
 
                     const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -918,7 +1068,7 @@ export function SessionView({
 
             checkAndSend();
         });
-    }, [branch, currentBaseBranch, sessionName]);
+    }, [armAgentReplyNotifications, branch, currentBaseBranch, sessionName]);
 
     const handleCommit = async () => {
         setIsRequestingCommit(true);
@@ -1534,6 +1684,8 @@ export function SessionView({
     const handleIframeLoad = () => {
         if (!iframeRef.current) return;
         const iframe = iframeRef.current;
+        stopAgentReplyMonitor();
+        disarmAgentReplyNotifications();
 
         // Safety check for Same-Origin to avoid errors if proxy isn't working
         try {
@@ -1567,6 +1719,7 @@ export function SessionView({
                 if (win && win.term) {
                     ensureTmuxStatusBarHidden('agent');
                     const term = win.term;
+                    startAgentReplyMonitor(iframe, term);
                     attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef, {
                         directOpenBehavior: 'new_tab',
                         modifierOpenBehavior: 'new_tab',
@@ -1583,6 +1736,11 @@ export function SessionView({
                     const alreadyBootstrapped = hasTerminalBootstrapped('agent');
                     const shouldSkipResumeInjection = Boolean(isResume) && terminalPersistenceMode === 'tmux';
                     if (alreadyBootstrapped || shouldSkipResumeInjection) {
+                        if (agent) {
+                            armAgentReplyNotifications(term);
+                        } else {
+                            disarmAgentReplyNotifications();
+                        }
                         if (shouldSkipResumeInjection && !alreadyBootstrapped) {
                             markTerminalBootstrapped('agent');
                             setFeedback('Attached to persisted terminal');
@@ -1601,6 +1759,11 @@ export function SessionView({
                     }
 
                     if (!beginTerminalBootstrap('agent')) {
+                        if (agent) {
+                            armAgentReplyNotifications(term);
+                        } else {
+                            disarmAgentReplyNotifications();
+                        }
                         setFeedback('Reconnected to terminal');
                         win.focus();
                         const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -1730,6 +1893,7 @@ export function SessionView({
                             if (agentCmd) {
                                 term.paste(agentCmd);
                                 pressEnter();
+                                armAgentReplyNotifications(term);
                                 setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
 
                                 if (!isResume && onSessionStart) {
@@ -1740,6 +1904,7 @@ export function SessionView({
 
                         setTimeout(() => startAgentProcess(), 500); // Wait a bit for cd to finish
                     } else {
+                        disarmAgentReplyNotifications();
                         setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
                         if (!isResume && onSessionStart) {
                             onSessionStart();
@@ -1756,6 +1921,8 @@ export function SessionView({
                     setTimeout(() => checkAndInject(attempts + 1), 500);
                 }
             } catch (e) {
+                stopAgentReplyMonitor();
+                disarmAgentReplyNotifications();
                 resetTerminalBootstrap('agent');
                 console.error("Access error during injection:", e);
                 setFeedback('Error accessing terminal: ' + String(e));

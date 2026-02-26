@@ -62,6 +62,8 @@ const CODEX_SKILL_DEFINITIONS = [
     sourceUrl: 'https://github.com/obra/superpowers',
   },
 ] as const;
+const TTYD_THEME_PROFILE = 'clear-light-v1';
+const TTYD_THEME_JSON = '{"background":"rgba(255, 255, 255, 0.85)","foreground":"#000000","cursor":"#545454","selectionBackground":"#A5CDFF","black":"#000000","red":"#FF3B30","green":"#28CD41","yellow":"#FFCC00","blue":"#007AFF","magenta":"#FF2D55","cyan":"#5AC8FA","white":"#E5E5EA","brightBlack":"#8E8E93","brightRed":"#FF453A","brightGreen":"#32D74B","brightYellow":"#FFD60A","brightBlue":"#0A84FF","brightMagenta":"#FF375F","brightCyan":"#64D2FF","brightWhite":"#FFFFFF"}';
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
   if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
@@ -367,6 +369,7 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
 declare global {
   var ttydProcess: ReturnType<typeof import('child_process').spawn> | undefined;
   var ttydPersistenceMode: 'tmux' | 'shell' | undefined;
+  var ttydThemeProfile: string | undefined;
 }
 
 type TerminalSessionSources = {
@@ -505,19 +508,48 @@ export async function getSessionTerminalSources(
 
 export async function startTtydProcess(): Promise<{ success: boolean; persistenceMode?: 'tmux' | 'shell'; error?: string }> {
   if (global.ttydProcess) {
-    if (global.ttydPersistenceMode === 'tmux' && os.platform() !== 'win32') {
+    if (global.ttydThemeProfile !== TTYD_THEME_PROFILE) {
+      const existingProcess = global.ttydProcess;
+      global.ttydProcess = undefined;
+      global.ttydPersistenceMode = undefined;
+      global.ttydThemeProfile = undefined;
+
       try {
-        const { spawnSync } = await import('child_process');
-        // Re-apply tmux defaults for already-running instances so wheel scrollback stays available.
-        spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
-          stdio: 'ignore',
-          env: process.env,
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+          };
+
+          existingProcess.once('exit', finish);
+          const killed = existingProcess.kill('SIGTERM');
+          if (!killed) {
+            finish();
+            return;
+          }
+
+          setTimeout(finish, 1200);
         });
       } catch (error) {
-        console.error('Failed to apply tmux mouse option:', error);
+        console.error('Failed to restart stale ttyd process for updated theme profile:', error);
       }
+    } else {
+      if (global.ttydPersistenceMode === 'tmux' && os.platform() !== 'win32') {
+        try {
+          const { spawnSync } = await import('child_process');
+          // Re-apply tmux defaults for already-running instances so wheel scrollback stays available.
+          spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
+            stdio: 'ignore',
+            env: process.env,
+          });
+        } catch (error) {
+          console.error('Failed to apply tmux mouse option:', error);
+        }
+      }
+      return { success: true, persistenceMode: global.ttydPersistenceMode || 'shell' };
     }
-    return { success: true, persistenceMode: global.ttydPersistenceMode || 'shell' };
   }
 
   try {
@@ -533,6 +565,38 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     const workingDir = os.homedir();
     const isWindows = os.platform() === 'win32';
+    if (!isWindows) {
+      // Clean up orphaned ttyd listeners on the managed port so style/config updates take effect.
+      const stalePidResult = spawnSync('lsof', ['-nP', '-iTCP:7681', '-sTCP:LISTEN', '-t'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: process.env,
+        encoding: 'utf8',
+      });
+      const stalePids = stalePidResult.stdout
+        .split(/\s+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      for (const pid of stalePids) {
+        const commandResult = spawnSync('ps', ['-p', pid, '-o', 'comm='], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+          env: process.env,
+          encoding: 'utf8',
+        });
+        const commandName = commandResult.stdout.trim().toLowerCase();
+        if (!commandName.includes('ttyd')) continue;
+
+        spawnSync('kill', ['-TERM', pid], {
+          stdio: 'ignore',
+          env: process.env,
+        });
+      }
+
+      if (stalePids.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
     const commandProbe = isWindows ? 'where' : 'which';
     const hasTmux =
       !isWindows &&
@@ -543,7 +607,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     const ttydArgs = [
       '-p', '7681',
-      '-t', 'theme={"background":"rgba(255, 255, 255, 0.85)","foreground":"#000000","cursor":"#545454","selectionBackground":"#A5CDFF","black":"#000000","red":"#FF3B30","green":"#28CD41","yellow":"#FFCC00","blue":"#007AFF","magenta":"#FF2D55","cyan":"#5AC8FA","white":"#E5E5EA","brightBlack":"#8E8E93","brightRed":"#FF453A","brightGreen":"#32D74B","brightYellow":"#FFD60A","brightBlue":"#0A84FF","brightMagenta":"#FF375F","brightCyan":"#64D2FF","brightWhite":"#FFFFFF"}',
+      '-t', `theme=${TTYD_THEME_JSON}`,
       '-t', 'disableResizeOverlay=true',
       '-t', 'fontFamily=SF Mono, Monaco, Menlo, Consolas, monospace',
       '-t', 'fontSize=13',
@@ -592,15 +656,18 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       console.error('Failed to start ttyd:', err);
       global.ttydProcess = undefined;
       global.ttydPersistenceMode = undefined;
+      global.ttydThemeProfile = undefined;
     });
 
     child.on('exit', () => {
       global.ttydProcess = undefined;
       global.ttydPersistenceMode = undefined;
+      global.ttydThemeProfile = undefined;
     });
 
     global.ttydProcess = child;
     global.ttydPersistenceMode = persistenceMode;
+    global.ttydThemeProfile = TTYD_THEME_PROFILE;
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 

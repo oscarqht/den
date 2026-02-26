@@ -42,6 +42,44 @@ type TerminalOnWriteParsedDisposable = { dispose?: () => void };
 type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
     onWriteParsed?: (callback: () => void) => TerminalOnWriteParsedDisposable | void;
 };
+type TerminalInstance = NonNullable<TerminalWindow['term']>;
+
+const CLEAR_LIGHT_THEME: Record<string, string> = {
+    background: 'rgba(255, 255, 255, 0.85)',
+    foreground: '#000000',
+    cursor: '#545454',
+    selectionBackground: '#A5CDFF',
+    black: '#000000',
+    red: '#FF3B30',
+    green: '#28CD41',
+    yellow: '#FFCC00',
+    blue: '#007AFF',
+    magenta: '#FF2D55',
+    cyan: '#5AC8FA',
+    white: '#E5E5EA',
+    brightBlack: '#8E8E93',
+    brightRed: '#FF453A',
+    brightGreen: '#32D74B',
+    brightYellow: '#FFD60A',
+    brightBlue: '#0A84FF',
+    brightMagenta: '#FF375F',
+    brightCyan: '#64D2FF',
+    brightWhite: '#FFFFFF',
+};
+const CLEAR_LIGHT_FONT_FAMILY = 'SF Mono, Monaco, Menlo, Consolas, monospace';
+const CLEAR_LIGHT_FONT_SIZE = 13;
+const CLEAR_LIGHT_LINE_HEIGHT = 1.2;
+
+function applyClearLightTerminalStyle(term: TerminalInstance): void {
+    term.options.fontFamily = CLEAR_LIGHT_FONT_FAMILY;
+    term.options.fontSize = CLEAR_LIGHT_FONT_SIZE;
+    term.options.lineHeight = CLEAR_LIGHT_LINE_HEIGHT;
+    term.options.allowTransparency = true;
+    term.options.theme = {
+        ...(term.options.theme || {}),
+        ...CLEAR_LIGHT_THEME,
+    };
+}
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -1580,12 +1618,9 @@ export function SessionView({
                         modifierOpenBehavior: 'new_tab',
                     });
 
-                    // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
+                    // Apply terminal typography and Clear Light theme at runtime.
                     try {
-                        term.options.theme = {
-                            ...(term.options.theme || {}),
-                            selectionBackground: '#A5CDFF',
-                        };
+                        applyClearLightTerminalStyle(term);
                     } catch { /* ignore if API unavailable */ }
 
                     const alreadyBootstrapped = hasTerminalBootstrapped('agent');
@@ -1825,12 +1860,9 @@ export function SessionView({
                         modifierOpenBehavior: 'new_tab',
                     });
 
-                    // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
+                    // Apply terminal typography and Clear Light theme at runtime.
                     try {
-                        term.options.theme = {
-                            ...(term.options.theme || {}),
-                            selectionBackground: '#A5CDFF',
-                        };
+                        applyClearLightTerminalStyle(term);
                     } catch { /* ignore if API unavailable */ }
 
                     startTerminalProcessMonitor(iframe, term);

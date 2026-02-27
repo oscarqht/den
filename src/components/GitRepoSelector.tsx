@@ -50,6 +50,7 @@ function getCredentialOptionLabel(credential: Credential): string {
 }
 
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
+const SESSION_TITLE_MAX_LENGTH = 120;
 const AGENT_LOGIN_COMMANDS: Record<SupportedAgentCli, string> = {
   codex: 'codex',
 };
@@ -69,6 +70,16 @@ type GitRepoSelectorProps = {
   fromRepoName?: string | null;
   prefillFromSession?: string | null;
 };
+
+function deriveSessionTitleFromTaskDescription(taskDescription: string): string | undefined {
+  const firstNonEmptyLine = taskDescription
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  if (!firstNonEmptyLine) return undefined;
+  return firstNonEmptyLine.slice(0, SESSION_TITLE_MAX_LENGTH);
+}
 
 export default function GitRepoSelector({
   mode = 'home',
@@ -106,7 +117,6 @@ export default function GitRepoSelector({
   const [devServerScript, setDevServerScript] = useState<string>('');
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>('');
-  const [title, setTitle] = useState<string>('');
   const [sessionMode, setSessionMode] = useState<SessionMode>('fast');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
@@ -507,7 +517,6 @@ export default function GitRepoSelector({
         return;
       }
 
-      setTitle(context.title || '');
       setInitialMessage(context.initialMessage || '');
       setPrefilledAttachmentNames(context.attachmentNames || []);
       setPrefillSourceSessionName(context.sourceSessionName);
@@ -1017,11 +1026,12 @@ export default function GitRepoSelector({
       // 2. Create Session Worktree
       // Use current selected branch as base
       const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
+      const derivedTitle = deriveSessionTitleFromTaskDescription(initialMessage);
 
       const wtResult = await createSession(selectedRepo, baseBranch, {
         agent: 'codex',
         model: '',
-        title: title,
+        title: derivedTitle,
         devServerScript: resolvedDevServerScript || undefined
       });
 
@@ -1074,7 +1084,7 @@ export default function GitRepoSelector({
 
         // 3. Persist launch context for the new session
         const launchContextResult = await saveSessionLaunchContext(wtResult.sessionName, {
-          title: title || undefined,
+          title: derivedTitle,
           initialMessage: processedMessage || undefined,
           rawInitialMessage: trimmedInitialMessage || undefined,
           startupScript: startupScript || undefined,
@@ -1766,23 +1776,6 @@ export default function GitRepoSelector({
                         </select>
                       </label>
 
-                      <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Task Title</span>
-                        <input
-                          type="text"
-                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                          placeholder="Task Title"
-                          value={title}
-                          onChange={(event) => setTitle(event.target.value)}
-                          onKeyDown={(event) => {
-                            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                              event.preventDefault();
-                              handleStartSession();
-                            }
-                          }}
-                          disabled={loading}
-                        />
-                      </label>
                     </div>
                   )}
                 </div>

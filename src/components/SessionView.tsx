@@ -1657,12 +1657,8 @@ export function SessionView({
                                 const resumeCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 agentCmd = withCodexApiKeyLogin(resumeCmd);
                             } else {
-                                const safeTitle = title?.trim() || '';
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
-                                const taskParts: string[] = [];
-                                if (safeTitle) taskParts.push(safeTitle);
-                                if (trimmedInitialMessage) taskParts.push(trimmedInitialMessage);
-                                const taskContent = taskParts.join('\n\n');
+                                const taskContent = trimmedInitialMessage;
                                 const attachmentPaths = (attachmentNames || [])
                                     .map((name) => name.trim())
                                     .filter(Boolean)

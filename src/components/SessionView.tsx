@@ -13,7 +13,7 @@ import {
 } from '@/app/actions/session';
 import { setTmuxSessionMouseMode, setTmuxSessionStatusVisibility } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, MousePointer2, ArrowLeft, ArrowRight, RotateCw, ScrollText, TextCursorInput, X } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
@@ -1208,6 +1208,17 @@ export function SessionView({
         }
     }, [postPreviewControlMessage, previewUrl]);
 
+    const handleUnloadPreview = useCallback(() => {
+        if (!previewUrl) {
+            setFeedback('Preview is already unloaded');
+            return;
+        }
+
+        setPreviewUrl('');
+        setIsPreviewPickerActive(false);
+        setFeedback('Preview unloaded');
+    }, [previewUrl]);
+
     const handlePreviewIframeLoad = useCallback(() => {
         postPreviewControlMessage({ type: 'viba:preview-location-request' });
     }, [postPreviewControlMessage]);
@@ -2028,7 +2039,7 @@ export function SessionView({
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
                                 <button
-                                    className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60 ${terminalInteractionMode === 'select' ? 'text-warning' : ''}`}
+                                    className={`btn btn-ghost btn-xs h-6 min-h-6 w-7 rounded-none border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60 ${terminalInteractionMode === 'select' ? 'text-warning' : ''}`}
                                     onClick={handleToggleTerminalInteractionMode}
                                     disabled={terminalPersistenceMode !== 'tmux' || isUpdatingTerminalInteractionMode}
                                     title={terminalPersistenceMode === 'tmux'
@@ -2036,13 +2047,15 @@ export function SessionView({
                                             ? 'Switch to text select mode for easier copy'
                                             : 'Switch to scroll mode for wheel scrollback')
                                         : 'Mode toggle is available only in tmux persistence mode'}
+                                    aria-label={terminalInteractionMode === 'scroll' ? 'Switch to text mode' : 'Switch to scroll mode'}
                                 >
                                     {isUpdatingTerminalInteractionMode ? (
                                         <span className="loading loading-spinner loading-xs"></span>
                                     ) : (
-                                        <MousePointer2 className="h-3 w-3" />
+                                        terminalInteractionMode === 'scroll'
+                                            ? <ScrollText className="h-3.5 w-3.5" />
+                                            : <TextCursorInput className="h-3.5 w-3.5" />
                                     )}
-                                    <span>{terminalInteractionMode === 'scroll' ? 'Scroll Mode' : 'Text Mode'}</span>
                                 </button>
                             </div>
                         </div>
@@ -2108,6 +2121,16 @@ export function SessionView({
                             >
                                 <RotateCw className="h-3.5 w-3.5" />
                             </button>
+                            <button
+                                className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
+                                type="button"
+                                onClick={handleUnloadPreview}
+                                disabled={!previewUrl}
+                                title="Unload preview"
+                                aria-label="Unload preview"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
                             <input
                                 ref={previewAddressInputRef}
                                 type="text"
@@ -2131,12 +2154,13 @@ export function SessionView({
                                 )}
                             </button>
                             <button
-                                className="btn btn-xs h-7 min-h-7 gap-1 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
                                 type="button"
                                 onClick={handleOpenPreviewInNewTab}
+                                title="Open preview in new tab"
+                                aria-label="Open preview in new tab"
                             >
                                 <ExternalLink className="h-3.5 w-3.5" />
-                                Open in new tab
                             </button>
                         </form>
                         <div className="min-h-0 flex-1 bg-slate-50 dark:bg-[#0d1117]">

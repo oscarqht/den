@@ -1988,17 +1988,12 @@ export default function GitRepoSelector({
         </div>
       )}
 
-      {mode === 'new' && !selectedRepo && (
-        <div className="card w-full max-w-2xl bg-base-200 shadow-xl">
-          <div className="card-body">
-            {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
-            <h2 className="card-title">Select a Repository</h2>
-            <p className="opacity-70 text-sm">Choose a repository first, then start or resume a session.</p>
-            <div className="card-actions justify-end mt-4">
-              <button className="btn btn-primary" onClick={() => router.push('/')}>
-                Go to Home
-              </button>
-            </div>
+      {mode === 'new' && !selectedRepo && !!repoPath && !error && (
+        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <span className="loading loading-spinner loading-lg text-primary"></span>
+            <h2 className="text-lg font-semibold text-slate-900">Loading repository...</h2>
+            <p className="text-sm text-slate-500">Preparing your task workspace.</p>
           </div>
         </div>
       )}

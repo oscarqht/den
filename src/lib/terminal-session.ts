@@ -1,7 +1,7 @@
 export type TerminalSessionRole = 'agent' | 'terminal';
 export type GitRemoteProvider = 'github' | 'gitlab';
 export type TerminalSessionEnvironment = {
-  name: 'GITHUB_TOKEN' | 'GITLAB_TOKEN';
+  name: string;
   value: string;
 };
 type DetectGitRemoteProviderOptions = {
@@ -89,14 +89,21 @@ export function detectGitRemoteProvider(
 export function buildTtydTerminalSrc(
   sessionName: string,
   role: TerminalSessionRole,
-  environment?: TerminalSessionEnvironment | null,
+  environment?: TerminalSessionEnvironment | TerminalSessionEnvironment[] | null,
 ): string {
   const tmuxSession = getTmuxSessionName(sessionName, role);
   const params = new URLSearchParams();
   params.append('arg', 'new-session');
-  if (environment?.value) {
+  const environments = Array.isArray(environment)
+    ? environment
+    : environment
+      ? [environment]
+      : [];
+
+  for (const env of environments) {
+    if (!env.value) continue;
     params.append('arg', '-e');
-    params.append('arg', `${environment.name}=${environment.value}`);
+    params.append('arg', `${env.name}=${env.value}`);
   }
   params.append('arg', '-A');
   params.append('arg', '-s');

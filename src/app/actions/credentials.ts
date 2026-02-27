@@ -7,6 +7,15 @@ import {
   getAllCredentials,
 } from '@/lib/credentials';
 import type { Credential } from '@/lib/credentials';
+import {
+  createOrUpdateAgentApiCredential,
+  deleteAgentApiCredential,
+  getAllAgentApiCredentials,
+} from '@/lib/agent-api-credentials';
+import type {
+  AgentApiCredential,
+  AgentApiCredentialAgent,
+} from '@/lib/agent-api-credentials';
 
 type ListCredentialsResult =
   | { success: true; credentials: Credential[] }
@@ -44,6 +53,37 @@ export async function saveGitLabCredential(serverUrl: string, token: string): Pr
   return { success: true, credential: result.credential };
 }
 
+type ListAgentApiCredentialsResult =
+  | { success: true; credentials: AgentApiCredential[] }
+  | { success: false; error: string };
+
+export async function listAgentApiCredentials(): Promise<ListAgentApiCredentialsResult> {
+  try {
+    const credentials = await getAllAgentApiCredentials();
+    return { success: true, credentials };
+  } catch (error) {
+    console.error('Failed to list agent API credentials:', error);
+    return { success: false, error: 'Failed to load agent API credentials.' };
+  }
+}
+
+type SaveAgentApiCredentialResult =
+  | { success: true; credential: AgentApiCredential }
+  | { success: false; error: string };
+
+export async function saveAgentApiCredential(
+  agent: AgentApiCredentialAgent,
+  apiKey: string,
+  apiProxy: string,
+): Promise<SaveAgentApiCredentialResult> {
+  const result = await createOrUpdateAgentApiCredential(agent, apiKey, apiProxy);
+  if (!result.success || !result.credential) {
+    return { success: false, error: result.error || 'Failed to save agent API credential.' };
+  }
+
+  return { success: true, credential: result.credential };
+}
+
 type RemoveCredentialResult =
   | { success: true }
   | { success: false; error: string };
@@ -59,5 +99,19 @@ export async function removeCredential(id: string): Promise<RemoveCredentialResu
   } catch (error) {
     console.error('Failed to remove credential:', error);
     return { success: false, error: 'Failed to remove credential.' };
+  }
+}
+
+export async function removeAgentApiCredential(agent: AgentApiCredentialAgent): Promise<RemoveCredentialResult> {
+  try {
+    const result = await deleteAgentApiCredential(agent);
+    if (!result.success) {
+      return { success: false, error: result.error || 'Failed to remove agent API credential.' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to remove agent API credential:', error);
+    return { success: false, error: 'Failed to remove agent API credential.' };
   }
 }

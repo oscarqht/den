@@ -5,6 +5,7 @@ import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
 import { getConfig } from '@/app/actions/config';
+import { getAgentApiCredentialSecret } from '@/lib/agent-api-credentials';
 import { getAllCredentials, getCredentialById, getCredentialToken } from '@/lib/credentials';
 import type { Credential } from '@/lib/credentials';
 import {
@@ -28,7 +29,7 @@ export type GitBranch = {
   current: boolean;
 };
 
-export type SupportedAgentCli = 'gemini' | 'codex' | 'agent';
+export type SupportedAgentCli = 'codex';
 
 type AgentCliConfig = {
   executable: string;
@@ -36,20 +37,12 @@ type AgentCliConfig = {
 };
 
 const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
-  gemini: {
-    executable: 'gemini',
-    installCommand: 'npm install -g google/gemini-cli',
-  },
   codex: {
     executable: 'codex',
     installCommand: 'npm i -g openai/codex',
   },
-  agent: {
-    executable: 'agent',
-    installCommand: 'curl https://cursor.com/install -fsS | bash',
-  },
 };
-const CODEX_SKILL_TARGET_AGENTS = ['codex', 'cursor', 'gemini-cli'] as const;
+const CODEX_SKILL_TARGET_AGENTS = ['codex'] as const;
 const CODEX_SKILL_DEFINITIONS = [
   {
     name: 'agent-browser',
@@ -64,7 +57,7 @@ const CODEX_SKILL_DEFINITIONS = [
 ] as const;
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
-  if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
+  if (agentCli === 'codex') {
     return agentCli;
   }
   return null;
@@ -439,7 +432,31 @@ async function getPrimaryRemoteUrl(repoPath: string): Promise<string | null> {
   return null;
 }
 
-async function resolveTerminalSessionEnvironment(repoPath: string): Promise<TerminalSessionEnvironment | null> {
+function resolveAgentCliFromSession(agentCli: string | undefined): SupportedAgentCli | null {
+  if (!agentCli) return null;
+
+  const exact = normalizeAgentCli(agentCli);
+  if (exact) return exact;
+
+  const lower = agentCli.toLowerCase();
+  if (lower.includes('codex')) return 'codex';
+
+  return null;
+}
+
+function toAgentTerminalSessionEnvironments(
+  agentCli: SupportedAgentCli,
+  apiKey: string,
+  apiProxy: string | undefined,
+): TerminalSessionEnvironment[] {
+  if (agentCli !== 'codex') return [];
+  return [
+    { name: 'OPENAI_API_KEY', value: apiKey },
+    ...(apiProxy ? [{ name: 'OPENAI_BASE_URL', value: apiProxy }] : []),
+  ];
+}
+
+async function resolveGitTerminalSessionEnvironments(repoPath: string): Promise<TerminalSessionEnvironment[]> {
   const config = await getConfig();
   const repoSettings = config.repoSettings?.[repoPath];
 
@@ -448,13 +465,13 @@ async function resolveTerminalSessionEnvironment(repoPath: string): Promise<Term
     if (selectedCredential) {
       const token = await getCredentialToken(selectedCredential.id);
       if (token) {
-        return toTerminalSessionEnvironment(selectedCredential, token);
+        return [toTerminalSessionEnvironment(selectedCredential, token)];
       }
     }
   }
 
   const remoteUrl = await getPrimaryRemoteUrl(repoPath);
-  if (!remoteUrl) return null;
+  if (!remoteUrl) return [];
 
   const allCredentials = await getAllCredentials();
   const provider = detectGitRemoteProvider(remoteUrl, {
@@ -464,23 +481,34 @@ async function resolveTerminalSessionEnvironment(repoPath: string): Promise<Term
       return host ? [host] : [];
     }),
   });
-  if (!provider) return null;
+  if (!provider) return [];
 
   const remoteHost = parseGitRemoteHost(remoteUrl);
 
   const credential = pickCandidateCredential(allCredentials, provider, remoteHost);
 
-  if (!credential) return null;
+  if (!credential) return [];
 
   const token = await getCredentialToken(credential.id);
-  if (!token) return null;
+  if (!token) return [];
 
-  return toTerminalSessionEnvironment(credential, token);
+  return [toTerminalSessionEnvironment(credential, token)];
+}
+
+async function resolveAgentApiTerminalSessionEnvironments(agentCli: string | undefined): Promise<TerminalSessionEnvironment[]> {
+  const normalizedAgentCli = resolveAgentCliFromSession(agentCli);
+  if (!normalizedAgentCli) return [];
+
+  const credential = await getAgentApiCredentialSecret(normalizedAgentCli);
+  if (!credential || !credential.apiKey) return [];
+
+  return toAgentTerminalSessionEnvironments(normalizedAgentCli, credential.apiKey, credential.apiProxy);
 }
 
 export async function getSessionTerminalSources(
   sessionName: string,
   repoPath: string,
+  agentCli?: string,
 ): Promise<TerminalSessionSources> {
   const fallback: TerminalSessionSources = {
     agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent'),
@@ -492,10 +520,15 @@ export async function getSessionTerminalSources(
   }
 
   try {
-    const environment = await resolveTerminalSessionEnvironment(repoPath);
+    const [gitEnvironments, agentEnvironments] = await Promise.all([
+      resolveGitTerminalSessionEnvironments(repoPath),
+      resolveAgentApiTerminalSessionEnvironments(agentCli),
+    ]);
+    const environments = [...gitEnvironments, ...agentEnvironments];
+
     return {
-      agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environment),
-      floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', environment),
+      agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environments),
+      floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', environments),
     };
   } catch (error) {
     console.error('Failed to resolve terminal session environment:', error);

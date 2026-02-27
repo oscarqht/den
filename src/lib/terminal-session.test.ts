@@ -52,4 +52,28 @@ describe('buildTtydTerminalSrc', () => {
       'viba-session-1-agent',
     ]);
   });
+
+  it('includes multiple tmux environment variables when provided', () => {
+    const url = buildTtydTerminalSrc('session-1', 'agent', [
+      {
+        name: 'OPENAI_API_KEY',
+        value: 'sk-example',
+      },
+      {
+        name: 'OPENAI_BASE_URL',
+        value: 'https://proxy.example.com/v1',
+      },
+    ]);
+    const params = new URLSearchParams(url.split('?')[1] || '');
+    assert.deepStrictEqual(params.getAll('arg'), [
+      'new-session',
+      '-e',
+      'OPENAI_API_KEY=sk-example',
+      '-e',
+      'OPENAI_BASE_URL=https://proxy.example.com/v1',
+      '-A',
+      '-s',
+      'viba-session-1-agent',
+    ]);
+  });
 });

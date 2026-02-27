@@ -33,7 +33,6 @@ export default function SessionPage() {
     const [startupScript, setStartupScript] = useState<string | undefined>(undefined);
     const [contextTitle, setContextTitle] = useState<string | undefined>(undefined);
     const [contextAgentProvider, setContextAgentProvider] = useState<string | undefined>(undefined);
-    const [contextModel, setContextModel] = useState<string | undefined>(undefined);
     const [contextSessionMode, setContextSessionMode] = useState<'fast' | 'plan' | undefined>(undefined);
     const [contextAttachmentNames, setContextAttachmentNames] = useState<string[]>([]);
 
@@ -199,7 +198,11 @@ export default function SessionPage() {
                 }
 
                 setMetadata(data);
-                const resolvedTerminalSources = await getSessionTerminalSources(data.sessionName, data.repoPath);
+                const resolvedTerminalSources = await getSessionTerminalSources(
+                    data.sessionName,
+                    data.repoPath,
+                    data.agent,
+                );
                 setTerminalSources(resolvedTerminalSources);
 
                 // Determine fresh start vs resume purely from the initialized flag:
@@ -217,7 +220,6 @@ export default function SessionPage() {
                         setStartupScript(ctx.startupScript);
                         setContextTitle(ctx.title);
                         setContextAgentProvider(ctx.agentProvider);
-                        setContextModel(ctx.model);
                         setContextSessionMode(ctx.sessionMode);
                         setContextAttachmentNames(ctx.attachmentNames || []);
                     }
@@ -302,7 +304,6 @@ export default function SessionPage() {
             baseBranch={metadata.baseBranch}
             sessionName={metadata.sessionName}
             agent={contextAgentProvider || metadata.agent}
-            model={contextModel || metadata.model}
             startupScript={startupScript}
             devServerScript={metadata.devServerScript}
             initialMessage={initialMessage}

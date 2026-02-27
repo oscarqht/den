@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, Plus, X, ChevronRight, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search } from 'lucide-react';
+import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -1675,20 +1675,23 @@ export default function GitRepoSelector({
                 <div className="space-y-4">
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-slate-700">Select Repository</span>
-                    <select
-                      className="h-12 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={selectedRepo}
-                      onChange={(event) => {
-                        void handleCurrentRepoChange(event);
-                      }}
-                      disabled={loading || selectableRepos.length === 0}
-                    >
-                      {selectableRepos.map((repo) => (
-                        <option key={repo} value={repo}>
-                          {getBaseName(repo)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedRepo}
+                        onChange={(event) => {
+                          void handleCurrentRepoChange(event);
+                        }}
+                        disabled={loading || selectableRepos.length === 0}
+                      >
+                        {selectableRepos.map((repo) => (
+                          <option key={repo} value={repo}>
+                            {getBaseName(repo)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    </div>
                     <span className="truncate font-mono text-[11px] text-slate-500" title={selectedRepo}>
                       {selectedRepo}
                     </span>
@@ -1698,7 +1701,7 @@ export default function GitRepoSelector({
                     <span className="text-sm font-medium text-slate-700">Base Branch</span>
                     <div className="relative">
                       <select
-                        className="h-12 w-full rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                         value={currentBranchName}
                         onChange={handleBranchChange}
                         disabled={loading}
@@ -1710,7 +1713,9 @@ export default function GitRepoSelector({
                           </option>
                         ))}
                       </select>
-                      {loading && <span className="loading loading-spinner loading-xs absolute right-3 top-1/2 -translate-y-1/2"></span>}
+                      {loading
+                        ? <span className="loading loading-spinner loading-xs absolute right-3 top-1/2 -translate-y-1/2"></span>
+                        : <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />}
                     </div>
                   </label>
 
@@ -1959,13 +1964,6 @@ export default function GitRepoSelector({
                   <span className="mr-auto hidden text-xs text-slate-400 sm:block">
                     Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px]">Ctrl + Enter</kbd> to submit
                   </span>
-                  <button
-                    type="button"
-                    className="rounded-lg px-5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
-                    disabled={loading}
-                  >
-                    Save Draft
-                  </button>
                   <button
                     type="button"
                     className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"

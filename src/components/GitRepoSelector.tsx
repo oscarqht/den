@@ -1381,7 +1381,7 @@ export default function GitRepoSelector({
                       onMouseLeave={handleRepoCardMouseLeave}
                       role="button"
                       tabIndex={0}
-                      className="repo-card-tilt-wrapper group relative h-[248px] cursor-pointer text-left transition-transform duration-200 hover:-translate-y-1"
+                      className="repo-card-tilt-wrapper group relative h-[248px] cursor-pointer text-left transition-transform duration-200"
                     >
                       <div
                         className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/70 bg-white/55 dark:border-slate-700/40 dark:bg-[#141a25]/64 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)] dark:hover:border-slate-600/55"

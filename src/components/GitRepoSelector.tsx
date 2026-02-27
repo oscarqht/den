@@ -1247,31 +1247,31 @@ export default function GitRepoSelector({
     <>
       {mode === 'home' && (
         <div className="w-full max-w-7xl">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.4)]">
-            <header className="relative z-10 flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-7">
+          <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.4)] transition-colors dark:overflow-visible dark:rounded-none dark:border-transparent dark:bg-transparent dark:shadow-none">
+            <header className="relative z-10 flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:mx-auto dark:mt-4 dark:h-16 dark:w-full dark:max-w-7xl dark:flex-row dark:gap-6 dark:rounded-xl dark:border dark:border-white/5 dark:bg-[#151b26]/80 dark:px-6 dark:py-0 dark:backdrop-blur-md">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
                   <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">Viba</h2>
-                  <p className="text-xs text-slate-500">AI Coding Agent Dashboard</p>
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Viba</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">AI Coding Agent Dashboard</p>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none md:w-72">
-                  <Search className="h-4 w-4 text-slate-400" />
+                <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
+                  <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
-                    className="grow text-sm"
+                    className="grow text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500"
                     placeholder="Search repositories..."
                     value={homeSearchQuery}
                     onChange={(event) => setHomeSearchQuery(event.target.value)}
                   />
                 </label>
                 <button
-                  className="btn btn-ghost btn-sm gap-2 text-slate-700"
+                  className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   onClick={() => router.push('/credentials')}
                   title="Manage GitHub/GitLab credentials"
                 >
@@ -1287,18 +1287,18 @@ export default function GitRepoSelector({
 
             <div className="relative z-10 px-4 py-5 md:px-7 md:py-7">
               {error && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/50 dark:bg-red-950/40 dark:text-red-200">
                   {error}
                 </div>
               )}
 
               {!isLoaded ? (
-                <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70">
+                <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70 dark:border-white/10 dark:bg-[#151b26]/70">
                   <span className="loading loading-spinner loading-md text-primary"></span>
                 </div>
               ) : filteredRecentRepos.length === 0 ? (
-                <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center">
-                  <p className="text-sm text-slate-500">
+                <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center dark:border-white/10 dark:bg-[#151b26]/70">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
                   </p>
                   {!homeSearchQuery.trim() && (
@@ -1327,14 +1327,14 @@ export default function GitRepoSelector({
                         }}
                         role="button"
                         tabIndex={0}
-                        className="group relative h-[248px] cursor-pointer overflow-hidden rounded-2xl border border-white/70 text-left shadow-[0_14px_40px_-24px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_24px_48px_-26px_rgba(15,23,42,0.55)]"
+                        className="group relative h-[248px] cursor-pointer overflow-hidden rounded-2xl border border-white/70 text-left shadow-[0_14px_40px_-24px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_24px_48px_-26px_rgba(15,23,42,0.55)] dark:border-white/10 dark:ring-1 dark:ring-white/10 dark:shadow-[0_20px_46px_-28px_rgba(0,0,0,0.9)] dark:hover:ring-primary/40"
                         style={cardGradient}
                       >
-                        <div className="absolute inset-0 bg-white/40" />
+                        <div className="absolute inset-0 bg-white/40 dark:bg-[#141a25]/60" />
                         <div className="relative flex h-full flex-col justify-between p-5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="relative">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#1e2532] dark:text-slate-200">
                                 <FolderGit2 className="h-5 w-5" />
                               </div>
                               {runningSessionCount > 0 && (
@@ -1351,14 +1351,14 @@ export default function GitRepoSelector({
                                 onClick={(event) => {
                                   void handleOpenRepoSettings(event, repo);
                                 }}
-                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100"
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
                                 title="Repository settings"
                               >
                                 <Settings className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={(event) => handleRemoveRecent(event, repo)}
-                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-500 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-rose-600 group-hover:opacity-100"
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-500 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-rose-600 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-400 dark:hover:bg-[#252d3d] dark:hover:text-rose-300"
                                 title="Remove from history"
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -1367,16 +1367,16 @@ export default function GitRepoSelector({
                           </div>
 
                           <div className="space-y-1.5">
-                            <h3 className="truncate text-lg font-bold text-slate-900">
+                            <h3 className="truncate text-lg font-bold text-slate-900 dark:text-white">
                               {getBaseName(repo)}
                             </h3>
-                            <p className="truncate font-mono text-xs text-slate-600">{repo}</p>
-                            <p className="truncate text-[11px] font-medium text-slate-500">
+                            <p className="truncate font-mono text-xs text-slate-600 dark:text-slate-300">{repo}</p>
+                            <p className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
                               Credential: {credentialLabel}
                             </p>
                           </div>
 
-                          <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+                          <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200">
                             <span>Open repository</span>
                             <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                           </div>
@@ -1387,15 +1387,15 @@ export default function GitRepoSelector({
 
                   <button
                     onClick={openCloneRemoteDialog}
-                    className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white"
+                    className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white dark:border-slate-700/60 dark:bg-[#151b26] dark:text-slate-400 dark:hover:bg-[#1e2532]"
                   >
-                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105 dark:border dark:border-slate-700/40 dark:bg-[#1e2532]">
                       <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
                     </span>
                     <span className="text-lg font-semibold transition-colors group-hover:text-primary">
                       Add Repository
                     </span>
-                    <span className="text-sm text-slate-400">Import from local or git URL</span>
+                    <span className="text-sm text-slate-400 dark:text-slate-500">Import from local or git URL</span>
                   </button>
                 </div>
               )}
@@ -1406,11 +1406,11 @@ export default function GitRepoSelector({
 
       {mode === 'home' && isRepoSettingsDialogOpen && repoForSettings && (
         <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6">
-              <h3 className="text-lg font-bold text-slate-900">Repository Settings</h3>
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Repository Settings</h3>
               <button
-                className="btn btn-circle btn-ghost btn-sm text-slate-500"
+                className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                 onClick={dismissRepoSettingsDialog}
                 disabled={isSavingRepoSettings}
               >
@@ -1419,21 +1419,21 @@ export default function GitRepoSelector({
             </div>
 
             <div className="space-y-4 p-5 md:p-6">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Choose which credential this repository should use for authenticated Git operations.
               </p>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository</label>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 break-all">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Repository</label>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 break-all dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200">
                   {repoForSettings}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credential</label>
                 <select
-                  className="select w-full border-slate-200 bg-slate-50 text-slate-700 focus:border-primary focus:outline-none"
+                  className="select w-full border-slate-200 bg-slate-50 text-slate-700 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
                   value={repoCredentialSelection}
                   onChange={(event) => setRepoCredentialSelection(event.target.value)}
                   disabled={isSavingRepoSettings}
@@ -1446,42 +1446,42 @@ export default function GitRepoSelector({
                   ))}
                 </select>
                 {credentialOptions.length === 0 && !isLoadingCredentialOptions && (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
                     No credentials found. Add credentials from the Credentials page.
                   </div>
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start Up Command</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Up Command</label>
                 <input
-                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
                   value={repoStartupCommand}
                   onChange={(event) => setRepoStartupCommand(event.target.value)}
                   placeholder={DEFAULT_REPO_STARTUP_COMMAND}
                   disabled={isSavingRepoSettings}
                 />
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   Default: <span className="font-mono">{DEFAULT_REPO_STARTUP_COMMAND}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dev Server Command</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dev Server Command</label>
                 <input
-                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
                   value={repoDevServerCommand}
                   onChange={(event) => setRepoDevServerCommand(event.target.value)}
                   placeholder={DEFAULT_REPO_DEV_SERVER_COMMAND}
                   disabled={isSavingRepoSettings}
                 />
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   Default: <span className="font-mono">{DEFAULT_REPO_DEV_SERVER_COMMAND}</span>
                 </div>
               </div>
 
               {isLoadingCredentialOptions && (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
+                <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                   <span className="loading loading-spinner loading-xs"></span>
                   Loading credentials...
                 </div>
@@ -1493,9 +1493,9 @@ export default function GitRepoSelector({
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-white/10">
                 <button
-                  className="btn btn-ghost text-slate-700"
+                  className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   onClick={dismissRepoSettingsDialog}
                   disabled={isSavingRepoSettings}
                 >
@@ -1517,24 +1517,24 @@ export default function GitRepoSelector({
 
       {mode === 'home' && isCloneRemoteDialogOpen && (
         <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Add New Repository</h3>
-                <p className="text-sm text-slate-500">Connect a local folder or clone from URL</p>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add New Repository</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Connect a local folder or clone from URL</p>
               </div>
-              <button className="btn btn-circle btn-ghost btn-sm text-slate-500" onClick={dismissCloneRemoteDialog} disabled={isCloningRemote}>
+              <button className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white" onClick={dismissCloneRemoteDialog} disabled={isCloningRemote}>
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="flex flex-1 flex-col overflow-y-auto md:flex-row">
-              <div className="flex-1 space-y-4 border-b border-slate-100 p-5 md:border-b-0 md:border-r md:p-6">
-                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Browse Local</h4>
-                <p className="text-sm text-slate-600">
+              <div className="flex-1 space-y-4 border-b border-slate-100 p-5 md:border-b-0 md:border-r md:p-6 dark:border-white/10">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Browse Local</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   Select an existing Git repository folder from your local machine.
                 </p>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-300">
                   Default root: <span className="font-mono">{config?.defaultRoot || '~'}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1549,7 +1549,7 @@ export default function GitRepoSelector({
                     Browse Local Repository
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm gap-2 text-slate-700"
+                    className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                     onClick={() => {
                       dismissCloneRemoteDialog();
                       setIsSelectingRoot(true);
@@ -1561,16 +1561,16 @@ export default function GitRepoSelector({
                 </div>
               </div>
 
-              <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6">
-                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Clone Remote</h4>
-                <p className="text-sm text-slate-600">
+              <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6 dark:bg-[#111722]">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Clone Remote</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   Clone into <span className="font-mono">~/.viba/repos</span> and open it immediately.
                 </p>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository URL</label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Repository URL</label>
                   <input
-                    className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                    className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
                     placeholder="https://github.com/org/repo.git"
                     value={remoteRepoUrl}
                     onChange={(event) => setRemoteRepoUrl(event.target.value)}
@@ -1579,9 +1579,9 @@ export default function GitRepoSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credential</label>
                   <select
-                    className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none"
+                    className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
                     value={cloneCredentialSelection}
                     onChange={(event) => setCloneCredentialSelection(event.target.value)}
                     disabled={isCloningRemote || isLoadingCloneCredentialOptions}
@@ -1594,21 +1594,21 @@ export default function GitRepoSelector({
                     ))}
                   </select>
                   {credentialOptions.length === 0 && !isLoadingCloneCredentialOptions && (
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       No credentials found. Clone uses anonymous access unless remote auth is configured.
                     </div>
                   )}
                 </div>
 
                 {isLoadingCloneCredentialOptions && (
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                     <span className="loading loading-spinner loading-xs"></span>
                     Loading credentials...
                   </div>
                 )}
 
                 {isCloningRemote && (
-                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-300">
                     <span className="loading loading-spinner loading-xs"></span>
                     Cloning repository...
                   </div>
@@ -1620,9 +1620,9 @@ export default function GitRepoSelector({
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-white/10">
                   <button
-                    className="btn btn-ghost text-slate-700"
+                    className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                     onClick={dismissCloneRemoteDialog}
                     disabled={isCloningRemote}
                   >

@@ -1251,13 +1251,48 @@ export default function GitRepoSelector({
   const handleCycleThemeMode = () => {
     setThemeMode(nextThemeMode);
   };
+  const handleRepoCardMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const wrapper = event.currentTarget;
+    const card = wrapper.querySelector<HTMLElement>('.repo-card-tilt');
+    if (!card) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    if (centerX <= 0 || centerY <= 0) return;
+
+    const rotateX = ((y - centerY) / centerY) * -12;
+    const rotateY = ((x - centerX) / centerX) * 12;
+    const bgPosX = 50 + (((x - centerX) / centerX) * 40);
+    const bgPosY = 50 + (((y - centerY) / centerY) * 40);
+
+    card.style.setProperty('--tilt-mouse-x', `${x}px`);
+    card.style.setProperty('--tilt-mouse-y', `${y}px`);
+    card.style.setProperty('--tilt-bg-pos-x', `${bgPosX}%`);
+    card.style.setProperty('--tilt-bg-pos-y', `${bgPosY}%`);
+    card.style.setProperty('--tilt-rotate-x', `${rotateX.toFixed(2)}deg`);
+    card.style.setProperty('--tilt-rotate-y', `${rotateY.toFixed(2)}deg`);
+    card.style.setProperty('--tilt-scale', '1.02');
+  }, []);
+  const handleRepoCardMouseLeave = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const card = event.currentTarget.querySelector<HTMLElement>('.repo-card-tilt');
+    if (!card) return;
+
+    card.style.setProperty('--tilt-rotate-x', '0deg');
+    card.style.setProperty('--tilt-rotate-y', '0deg');
+    card.style.setProperty('--tilt-scale', '1');
+    card.style.setProperty('--tilt-bg-pos-x', '50%');
+    card.style.setProperty('--tilt-bg-pos-y', '50%');
+  }, []);
 
   return (
     <>
       {mode === 'home' && (
         <div className="w-full max-w-7xl">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.4)] transition-colors dark:border-slate-800/70 dark:bg-[#101726]/85 dark:shadow-[0_26px_78px_-40px_rgba(0,0,0,0.85)]">
-            <header className="relative z-10 flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-slate-800/75 dark:bg-[#131b2b]/72 dark:backdrop-blur-sm">
+          <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white/82 px-4 py-4 shadow-[0_14px_36px_-24px_rgba(15,23,42,0.4)] backdrop-blur-md transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-slate-700/75 dark:bg-[#131b2b]/72 dark:shadow-[0_18px_44px_-30px_rgba(0,0,0,0.75)]">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
                   <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
@@ -1300,58 +1335,63 @@ export default function GitRepoSelector({
                   <ThemeModeIcon className="h-4 w-4" />
                 </button>
               </div>
-            </header>
+          </header>
 
-            <div className="relative z-10 px-4 py-5 md:px-7 md:py-7">
-              {error && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/50 dark:bg-red-950/40 dark:text-red-200">
-                  {error}
-                </div>
-              )}
+          <div className="relative z-10 px-1 py-5 md:py-7">
+            {error && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/50 dark:bg-red-950/40 dark:text-red-200">
+                {error}
+              </div>
+            )}
 
-              {!isLoaded ? (
-                <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70 dark:border-slate-700/55 dark:bg-[#141d2e]/70">
-                  <span className="loading loading-spinner loading-md text-primary"></span>
-                </div>
-              ) : filteredRecentRepos.length === 0 ? (
-                <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center dark:border-slate-700/55 dark:bg-[#141d2e]/70">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
-                  </p>
-                  {!homeSearchQuery.trim() && (
-                    <button className="btn btn-primary btn-sm mt-3 gap-2" onClick={openCloneRemoteDialog}>
-                      <Plus className="h-4 w-4" />
-                      Add your first repository
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredRecentRepos.map((repo) => {
-                    const credentialLabel = getRepoCredentialLabel(repo);
-                    const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
-                    const cardGradient = getStableRepoCardGradient(getBaseName(repo));
+            {!isLoaded ? (
+              <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70 dark:border-slate-700/55 dark:bg-[#141d2e]/70">
+                <span className="loading loading-spinner loading-md text-primary"></span>
+              </div>
+            ) : filteredRecentRepos.length === 0 ? (
+              <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center dark:border-slate-700/55 dark:bg-[#141d2e]/70">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
+                </p>
+                {!homeSearchQuery.trim() && (
+                  <button className="btn btn-primary btn-sm mt-3 gap-2" onClick={openCloneRemoteDialog}>
+                    <Plus className="h-4 w-4" />
+                    Add your first repository
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {filteredRecentRepos.map((repo) => {
+                  const credentialLabel = getRepoCredentialLabel(repo);
+                  const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
+                  const cardGradient = getStableRepoCardGradient(getBaseName(repo));
 
-                    return (
+                  return (
+                    <div
+                      key={repo}
+                      onClick={() => handleSelectRepo(repo)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          void handleSelectRepo(repo);
+                        }
+                      }}
+                      onMouseMove={handleRepoCardMouseMove}
+                      onMouseLeave={handleRepoCardMouseLeave}
+                      role="button"
+                      tabIndex={0}
+                      className="repo-card-tilt-wrapper group relative h-[248px] cursor-pointer text-left transition-transform duration-200 hover:-translate-y-1"
+                    >
                       <div
-                        key={repo}
-                        onClick={() => handleSelectRepo(repo)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            void handleSelectRepo(repo);
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        className="group relative h-[248px] cursor-pointer overflow-hidden rounded-2xl border border-white/70 text-left shadow-[0_14px_40px_-24px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_24px_48px_-26px_rgba(15,23,42,0.55)] dark:border-slate-700/40 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)] dark:hover:border-slate-600/55"
+                        className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/70 bg-white/55 dark:border-slate-700/40 dark:bg-[#141a25]/64 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)] dark:hover:border-slate-600/55"
                         style={isDarkThemeActive ? undefined : cardGradient}
                       >
-                        <div className="absolute inset-0 bg-white/40 dark:bg-[#141a25]/58" />
-                        <div className="relative flex h-full flex-col justify-between p-5">
+                        <div className="absolute inset-0 bg-white/38 dark:bg-[#141a25]/58" />
+                        <div className="repo-card-tilt-content relative flex h-full flex-col justify-between p-5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="relative">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#1e2532] dark:text-slate-200">
+                              <div className="repo-card-tilt-icon flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#1e2532] dark:text-slate-200">
                                 <FolderGit2 className="h-5 w-5" />
                               </div>
                               {runningSessionCount > 0 && (
@@ -1399,24 +1439,24 @@ export default function GitRepoSelector({
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
 
-                  <button
-                    onClick={openCloneRemoteDialog}
-                    className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white dark:border-slate-700/35 dark:bg-[#131b2a] dark:text-slate-400 dark:hover:border-slate-600/50 dark:hover:bg-[#1d2638]"
-                  >
-                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105 dark:border dark:border-slate-700/40 dark:bg-[#1e2532]">
-                      <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
-                    </span>
-                    <span className="text-lg font-semibold transition-colors group-hover:text-primary">
-                      Add Repository
-                    </span>
-                    <span className="text-sm text-slate-400 dark:text-slate-500">Import from local or git URL</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                <button
+                  onClick={openCloneRemoteDialog}
+                  className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white dark:border-slate-700/35 dark:bg-[#131b2a] dark:text-slate-400 dark:hover:border-slate-600/50 dark:hover:bg-[#1d2638]"
+                >
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105 dark:border dark:border-slate-700/40 dark:bg-[#1e2532]">
+                    <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
+                  </span>
+                  <span className="text-lg font-semibold transition-colors group-hover:text-primary">
+                    Add Repository
+                  </span>
+                  <span className="text-sm text-slate-400 dark:text-slate-500">Import from local or git URL</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

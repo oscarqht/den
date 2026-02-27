@@ -25,6 +25,6 @@ describe('repo-card-gradient', () => {
     const gradient = getStableRepoCardGradient('visual-test-repo');
     assert.match(gradient.backgroundImage, /radial-gradient/);
     assert.match(gradient.backgroundImage, /linear-gradient/);
-    assert.match(gradient.backgroundImage, /hsl\(/);
+    assert.match(gradient.backgroundImage, /(rgba|hsla)\(/);
   });
 });

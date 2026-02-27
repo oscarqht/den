@@ -2,8 +2,49 @@ export type RepoCardGradient = {
   backgroundImage: string;
 };
 
-const MIN_LIGHTNESS = 86;
-const MAX_LIGHTNESS = 94;
+type GradientFamily = {
+  highlight: string;
+  secondary: string;
+  baseStart: string;
+  baseEnd: string;
+  anchorA: [number, number];
+  anchorB: [number, number];
+};
+
+const GRADIENT_FAMILIES: GradientFamily[] = [
+  {
+    highlight: '#dce4ff',
+    secondary: '#c7d2fe',
+    baseStart: '#f8fafc',
+    baseEnd: '#f3f6ff',
+    anchorA: [12, 10],
+    anchorB: [86, 84],
+  },
+  {
+    highlight: '#dcfce7',
+    secondary: '#bbf7d0',
+    baseStart: '#f8fafc',
+    baseEnd: '#effcf4',
+    anchorA: [86, 14],
+    anchorB: [14, 84],
+  },
+  {
+    highlight: '#fae8ff',
+    secondary: '#f5d0fe',
+    baseStart: '#f8fafc',
+    baseEnd: '#fbf2ff',
+    anchorA: [50, 8],
+    anchorB: [50, 90],
+  },
+  {
+    highlight: '#ffedd5',
+    secondary: '#fed7aa',
+    baseStart: '#f8fafc',
+    baseEnd: '#fff7ed',
+    anchorA: [35, 35],
+    anchorB: [84, 86],
+  },
+];
 
 function hashString(value: string): number {
   let hash = 2166136261;
@@ -22,34 +63,52 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function createHsl(h: number, s: number, l: number): string {
-  const hue = ((h % 360) + 360) % 360;
-  const sat = clamp(s, 20, 70);
-  const light = clamp(l, MIN_LIGHTNESS, MAX_LIGHTNESS);
-  return `hsl(${hue} ${sat}% ${light}%)`;
+function hexToRgba(hexColor: string, alpha: number): string {
+  const hex = hexColor.replace('#', '');
+  const expandedHex = hex.length === 3
+    ? hex.split('').map((part) => `${part}${part}`).join('')
+    : hex;
+  const value = Number.parseInt(expandedHex, 16);
+
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+
+  return `rgba(${red}, ${green}, ${blue}, ${clamp(alpha, 0, 1)})`;
+}
+
+function clampPoint(point: [number, number]): [number, number] {
+  return [
+    clamp(point[0], 0, 100),
+    clamp(point[1], 0, 100),
+  ];
 }
 
 export function getStableRepoCardGradient(repoName: string): RepoCardGradient {
   const normalizedName = normalizeName(repoName);
   const hash = hashString(normalizedName || 'repo');
+  const family = GRADIENT_FAMILIES[hash % GRADIENT_FAMILIES.length];
 
-  const hueA = hash % 360;
-  const hueB = (hueA + 35 + (hash % 75)) % 360;
-  const hueC = (hueA + 220 + (hash % 60)) % 360;
+  const jitterA: [number, number] = [
+    ((hash >>> 3) % 13) - 6,
+    ((hash >>> 7) % 13) - 6,
+  ];
+  const jitterB: [number, number] = [
+    ((hash >>> 11) % 13) - 6,
+    ((hash >>> 15) % 13) - 6,
+  ];
+  const anchorA = clampPoint([family.anchorA[0] + jitterA[0], family.anchorA[1] + jitterA[1]]);
+  const anchorB = clampPoint([family.anchorB[0] + jitterB[0], family.anchorB[1] + jitterB[1]]);
 
-  const satA = 32 + (hash % 16);
-  const satB = 30 + ((hash >>> 5) % 16);
-  const satC = 24 + ((hash >>> 10) % 14);
-
-  const lightA = 90 + ((hash >>> 2) % 3);
-  const lightB = 87 + ((hash >>> 6) % 4);
-  const lightC = 93;
+  const accentHue = hash % 360;
+  const accentAlpha = 0.16 + ((hash >>> 20) % 10) / 100;
 
   return {
     backgroundImage: [
-      `radial-gradient(circle at 15% 15%, ${createHsl(hueA, satA, lightA)} 0%, transparent 58%)`,
-      `radial-gradient(circle at 85% 82%, ${createHsl(hueB, satB, lightB)} 0%, transparent 62%)`,
-      `linear-gradient(145deg, ${createHsl(hueC, satC, lightC)} 0%, hsl(210 40% 98%) 100%)`,
+      `radial-gradient(circle at ${anchorA[0]}% ${anchorA[1]}%, ${hexToRgba(family.highlight, 0.82)} 0%, transparent 74%)`,
+      `radial-gradient(circle at ${anchorB[0]}% ${anchorB[1]}%, ${hexToRgba(family.secondary, 0.78)} 0%, transparent 74%)`,
+      `radial-gradient(circle at 50% 100%, hsla(${accentHue} 82% 86% / ${accentAlpha}) 0%, transparent 78%)`,
+      `linear-gradient(145deg, ${family.baseStart} 0%, ${family.baseEnd} 100%)`,
     ].join(', '),
   };
 }

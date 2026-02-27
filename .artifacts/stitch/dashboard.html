@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Coding Agent Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#135bec",
+                        "primary-light": "#eef4ff",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                    fontFamily: {
+                        display: ["Space Grotesk", "sans-serif"],
+                        sans: ["Inter", "sans-serif"]
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .perspective-container {
+            perspective: 2000px;}
+        .card-wrapper {
+            position: relative;
+            z-index: 10;
+            perspective: 1200px;transform-style: preserve-3d;overflow: visible !important; 
+        }
+        .hit-area {
+            position: absolute;
+            inset: -40px;
+            z-index: 50;
+            cursor: pointer;transform: translateZ(100px); 
+        }
+        .tilt-card {
+            transform-style: preserve-3d;
+            transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease;
+            will-change: transform;
+            position: relative;box-shadow: 
+                0 30px 60px -10px rgba(0, 0, 0, 0.2),
+                0 0 20px rgba(255, 255, 255, 0.2);
+            height: 100%;border-radius: 1.25rem;border: 1px solid rgba(255, 255, 255, 0.4); 
+            transform: rotateX(0deg) rotateY(0deg);
+        }.tilt-card::after {
+            content: "";
+            position: absolute;
+            inset: -2px;border-radius: 1.25rem;
+            background: linear-gradient(
+                115deg, 
+                transparent 0%, 
+                rgba(255, 255, 255, 0.0) 30%, 
+                rgba(255, 255, 255, 0.6) 45%, 
+                rgba(255, 255, 255, 0.9) 50%, 
+                rgba(255, 255, 255, 0.6) 55%, 
+                rgba(255, 255, 255, 0.0) 70%, 
+                transparent 100%
+            );
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 30;
+            mix-blend-mode: overlay;background-size: 250% 250%; 
+            background-position: var(--bg-pos-x, 50%) var(--bg-pos-y, 50%);filter: blur(3px); 
+        }.tilt-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 1.25rem;
+            background: radial-gradient(
+                1000px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), 
+                rgba(255, 255, 255, 0.7) 0%, 
+                rgba(255, 255, 255, 0.2) 25%, 
+                transparent 60%
+            );
+            opacity: 0;
+            z-index: 25;
+            pointer-events: none;
+            mix-blend-mode: soft-light;
+            transition: opacity 0.3s ease;
+        }
+        .card-wrapper:hover .tilt-card::after,
+        .card-wrapper:hover .tilt-card::before {
+            opacity: 1;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);box-shadow: 
+                inset 0 0 40px rgba(255, 255, 255, 0.8),
+                inset 0 1px 0 rgba(255, 255, 255, 1);
+        }.bg-gradient-mesh-1 { background: radial-gradient(at top left, #dce4ff, transparent 80%), radial-gradient(at bottom right, #c7d2fe, transparent 80%), #f8fafc; }
+        .bg-gradient-mesh-2 { background: radial-gradient(at top right, #dcfce7, transparent 80%), radial-gradient(at bottom left, #bbf7d0, transparent 80%), #f8fafc; }
+        .bg-gradient-mesh-3 { background: radial-gradient(at top center, #fae8ff, transparent 80%), radial-gradient(at bottom center, #f5d0fe, transparent 80%), #f8fafc; }
+        .bg-gradient-mesh-4 { background: radial-gradient(at center, #ffedd5, transparent 80%), radial-gradient(at bottom right, #fed7aa, transparent 80%), #f8fafc; }
+        .card-content {
+            transform: translateZ(50px);
+            transition: transform 0.1s;
+        }
+        .card-icon-depth {
+            transform: translateZ(30px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body class="bg-background-light text-slate-900 font-display antialiased overflow-hidden">
+<div class="flex h-screen w-full overflow-hidden">
+<main class="flex-1 flex flex-col h-full overflow-hidden relative w-full items-center">
+<header class="h-16 flex items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 w-full max-w-7xl mx-auto mt-4 rounded-xl">
+<div class="flex items-center gap-4 text-slate-900">
+<h2 class="text-xl font-bold tracking-tight">Viba</h2>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-slate-400 group-focus-within:text-primary transition-colors">search</span>
+</div>
+<input class="block w-64 pl-10 pr-3 py-2 border-none rounded-lg leading-5 bg-slate-100 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:bg-white transition-all sm:text-sm h-10" placeholder="Search repositories..." type="text"/>
+<div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+<span class="text-slate-400 text-xs font-mono border border-slate-300 rounded px-1.5 py-0.5">⌘K</span>
+</div>
+</div>
+<div class="h-6 w-px bg-slate-200"></div>
+<button class="flex items-center gap-2 h-10 px-4 bg-primary text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-md shadow-primary/20">
+<span class="material-symbols-outlined text-[20px]">add</span>
+                    New Repository
+                </button>
+<button class="flex items-center justify-center h-10 w-10 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors hover:text-slate-900">
+<span class="material-symbols-outlined text-[24px]">settings</span>
+</button>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto w-full scroll-smooth flex justify-center perspective-container">
+<div class="w-full max-w-7xl px-8 pb-20 pt-8">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
+<div class="card-wrapper h-[300px]" onmouseleave="handleMouseLeave(event)" onmousemove="handleMouseMove(event)">
+<div class="hit-area"></div>
+<div class="tilt-card group relative flex flex-col justify-between rounded-2xl p-6 glass-card bg-gradient-mesh-1">
+<div class="absolute top-6 right-6 flex items-center justify-center card-content">
+<div class="h-8 w-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-red-500/30">3</div>
+</div>
+<div class="flex flex-col gap-6 relative z-10 mt-6 card-content">
+<div class="w-14 h-14 rounded-2xl bg-white shadow-lg shadow-blue-100/50 flex items-center justify-center text-blue-600 card-icon-depth">
+<img alt="React Logo" class="w-8 h-8" data-alt="React Framework Logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCl8Ff67s7XAVuNfa6hqP8R4-CvbTsIS1KPtL7RhSCZdXY8oMwsyNAGdkDWoilqXxpqEX_Q7ArUV8vjwqPzsZK_ROhEmrnCtCEQntgiSbroXBaMsjwWv6_P9tbnL0fqFWqxCKpGz3m6YMlwhOyzS9euaVg4m6cLmfvMDW5Mqyib0RH_5SNr8iNDVJ_nU00w0FKfizKfxQE_tUVLuwmUauIdKwkFnRb0ZViqlzwP9i5VBKmTx7bS2bOBA03nk585nCLvhHVZcRdb4j49"/>
+</div>
+<div>
+<h3 class="text-2xl font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight">finance-dashboard-v2</h3>
+<div class="flex items-center gap-1.5 mt-2 text-slate-500 text-xs font-mono bg-white/50 w-fit px-2 py-1 rounded-md border border-white/60">
+<span class="material-symbols-outlined text-[14px]">folder</span>
+                                        /local/sites/finance-dashboard
+                                    </div>
+</div>
+</div>
+</div>
+</div>
+<div class="card-wrapper h-[300px]" onmouseleave="handleMouseLeave(event)" onmousemove="handleMouseMove(event)">
+<div class="hit-area"></div>
+<div class="tilt-card group relative flex flex-col justify-between rounded-2xl p-6 glass-card bg-gradient-mesh-2">
+<div class="absolute top-6 right-6 flex items-start justify-end card-content">
+<div class="relative pointer-events-auto">
+<button class="h-8 w-8 rounded-full hover:bg-white/80 text-slate-600 flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 group/menu backdrop-blur-sm relative z-50">
+<span class="material-symbols-outlined text-[20px]">more_horiz</span>
+</button>
+<div class="absolute right-0 mt-2 w-32 rounded-lg bg-white/95 backdrop-blur-xl shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none hidden group-hover/menu:block group-focus-within/menu:block z-50">
+<div class="py-1">
+<a class="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-50 hover:text-red-600 transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+                                                Delete
+                                            </a>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6 relative z-10 mt-6 card-content">
+<div class="w-14 h-14 rounded-2xl bg-white shadow-lg shadow-green-100/50 flex items-center justify-center card-icon-depth">
+<img alt="Python Logo" class="w-8 h-8" data-alt="Python Language Logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxNaK5O1TyGiecSR2aDw79RxbVZndLIjSfqwV4IJLWaliWXOBkVE-Hso6tbUDJemToc-MxarYxQy8KGZ21Ab-317aUW6R8dM_Z4kdotLXOgPdxHNWy5DFcdP95qIdPInCXJh5T-OEJAD4WGUByZ0LGrJ87Lyp0U_8iTcW8uqueOmXFb5Y_Dr0YKBgnOAifONCkJI0sAm2lWOwfJZPGro6dfbXef6tWo8ttQ7bLHlAtZfOEEzFmPbIytr7cZ7PrZFHt8NAgKqbUP1Lc"/>
+</div>
+<div>
+<h3 class="text-2xl font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight">backend-api-service</h3>
+<div class="flex items-center gap-1.5 mt-2 text-slate-500 text-xs font-mono bg-white/50 w-fit px-2 py-1 rounded-md border border-white/60">
+<span class="material-symbols-outlined text-[14px]">folder</span>
+                                        /local/api/core-service
+                                    </div>
+</div>
+</div>
+</div>
+</div>
+<div class="card-wrapper h-[300px]" onmouseleave="handleMouseLeave(event)" onmousemove="handleMouseMove(event)">
+<div class="hit-area"></div>
+<div class="tilt-card group relative flex flex-col justify-between rounded-2xl p-6 glass-card bg-gradient-mesh-3">
+<div class="absolute top-6 right-6 flex items-center justify-center card-content">
+<div class="h-8 w-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-red-500/30">8</div>
+</div>
+<div class="flex flex-col gap-6 relative z-10 mt-6 card-content">
+<div class="w-14 h-14 rounded-2xl bg-white shadow-lg shadow-purple-100/50 flex items-center justify-center card-icon-depth">
+<i class="fa-brands fa-github text-3xl text-slate-900"></i>
+</div>
+<div>
+<h3 class="text-2xl font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight">customer-onboarding</h3>
+<div class="flex items-center gap-1.5 mt-2 text-slate-500 text-xs font-mono bg-white/50 w-fit px-2 py-1 rounded-md border border-white/60">
+<span class="material-symbols-outlined text-[14px]">folder</span>
+                                        /local/apps/onboarding
+                                    </div>
+</div>
+</div>
+</div>
+</div>
+<div class="card-wrapper h-[300px]" onmouseleave="handleMouseLeave(event)" onmousemove="handleMouseMove(event)">
+<div class="hit-area"></div>
+<div class="tilt-card group relative flex flex-col justify-between rounded-2xl p-6 glass-card bg-gradient-mesh-4">
+<div class="absolute top-6 right-6 flex items-center justify-center card-content">
+<div class="h-8 w-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-red-500/30">1</div>
+</div>
+<div class="flex flex-col gap-6 relative z-10 mt-6 card-content">
+<div class="w-14 h-14 rounded-2xl bg-white shadow-lg shadow-orange-100/50 flex items-center justify-center card-icon-depth">
+<img alt="Go Logo" class="w-10 h-10" data-alt="Go Language Logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsProJ7hk0PNfFVmrS5kik5LnmQ6xQakpCgb6qhS1fJwHMSMsm98NCNK46ZtT0nQNw3UNT18QEwHqRUNnghFFfAwcm64sQ2pjdFIRsXlN4XGmxXIyVX2ma2Kgb2w6ge2iNfsVKT18XQwJabvIcdtVxKaHw8i7jDeTEz4v_BCQOurcgSjCHMzaEqdXIoJpI0Fu5tTtLDXEBiM-gqcGO9A8VHZcocOjtlQyjNbC0xvWCKlfaHTPAu7SdvbzVuQ7FV8c4g7wp_8uqZ_QK"/>
+</div>
+<div>
+<h3 class="text-2xl font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight">microservice-auth</h3>
+<div class="flex items-center gap-1.5 mt-2 text-slate-500 text-xs font-mono bg-white/50 w-fit px-2 py-1 rounded-md border border-white/60">
+<span class="material-symbols-outlined text-[14px]">folder</span>
+                                        /local/services/auth
+                                    </div>
+</div>
+</div>
+</div>
+</div>
+<button class="group flex flex-col items-center justify-center h-[300px] rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/50 hover:bg-white hover:border-primary/50 transition-all duration-300 backdrop-blur-sm">
+<div class="h-16 w-16 rounded-full bg-white shadow-md flex items-center justify-center mb-4 group-hover:scale-110 transition-transform group-hover:shadow-xl">
+<span class="material-symbols-outlined text-4xl text-slate-400 group-hover:text-primary transition-colors">add</span>
+</div>
+<span class="text-slate-600 font-bold text-lg group-hover:text-primary transition-colors">Add Repository</span>
+<span class="text-slate-400 text-sm mt-1">Import from local or git</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script>
+    function handleMouseMove(e) {
+        const wrapper = e.currentTarget;
+        const card = wrapper.querySelector('.tilt-card');
+        const rect = wrapper.getBoundingClientRect();
+        // Calculate position
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        // Calculate rotation (Increased range for better 3D feel)
+        const rotateX = ((y - centerY) / centerY) * -12; // Inverted for natural tilt
+        const rotateY = ((x - centerX) / centerX) * 12;
+        // Calculate sheen gradient movement
+        // We move the gradient background position to simulate light sweeping across
+        const bgPosX = 50 + (((x - centerX) / centerX) * 40);
+        const bgPosY = 50 + (((y - centerY) / centerY) * 40);
+        // Update properties
+        card.style.setProperty('--mouse-x', `${x}px`);
+        card.style.setProperty('--mouse-y', `${y}px`);
+        card.style.setProperty('--bg-pos-x', `${bgPosX}%`);
+        card.style.setProperty('--bg-pos-y', `${bgPosY}%`);
+        // Apply transform
+        // scale3d prevents edge anti-aliasing artifacts during rotation
+        card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+    }
+    function handleMouseLeave(e) {
+        const wrapper = e.currentTarget;
+        const card = wrapper.querySelector('.tilt-card');
+        // Reset transform smoothly
+        card.style.transform = 'rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+        // Optional: Animate opacity out or reset position if needed
+        // Keeping last position can sometimes feel nicer, but resetting is cleaner
+    }
+</script>
+
+</body></html>

@@ -916,3 +916,64 @@ export async function saveAttachments(worktreePath: string, formData: FormData):
     return [];
   }
 }
+
+function toSafeAttachmentFileName(fileName: string): string {
+  const normalized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return normalized.length > 0 ? normalized : 'attachment';
+}
+
+function getUniqueAttachmentName(candidateName: string, usedNames: Set<string>): string {
+  const dotIndex = candidateName.lastIndexOf('.');
+  const hasExtension = dotIndex > 0;
+  const namePart = hasExtension ? candidateName.slice(0, dotIndex) : candidateName;
+  const extension = hasExtension ? candidateName.slice(dotIndex) : '';
+
+  let resolvedName = candidateName;
+  let counter = 1;
+  while (usedNames.has(resolvedName)) {
+    counter += 1;
+    resolvedName = `${namePart}-${counter}${extension}`;
+  }
+  usedNames.add(resolvedName);
+  return resolvedName;
+}
+
+export async function saveAttachmentsFromPaths(
+  worktreePath: string,
+  sourceFilePaths: string[],
+): Promise<{ savedAttachmentNames: string[]; failedSourcePaths: string[] }> {
+  try {
+    const attachmentsDir = `${worktreePath}-attachments`;
+    await fs.mkdir(attachmentsDir, { recursive: true });
+
+    const savedAttachmentNames: string[] = [];
+    const failedSourcePaths: string[] = [];
+    const usedNames = new Set<string>();
+    const uniqueSourcePaths = Array.from(new Set(sourceFilePaths.map((entry) => entry.trim()).filter(Boolean)));
+
+    for (const sourceFilePath of uniqueSourcePaths) {
+      try {
+        const stats = await fs.stat(sourceFilePath);
+        if (!stats.isFile()) {
+          failedSourcePaths.push(sourceFilePath);
+          continue;
+        }
+
+        const baseName = path.basename(sourceFilePath);
+        const safeBaseName = toSafeAttachmentFileName(baseName);
+        const attachmentFileName = getUniqueAttachmentName(safeBaseName, usedNames);
+        const destinationPath = path.join(attachmentsDir, attachmentFileName);
+
+        await fs.copyFile(sourceFilePath, destinationPath);
+        savedAttachmentNames.push(attachmentFileName);
+      } catch {
+        failedSourcePaths.push(sourceFilePath);
+      }
+    }
+
+    return { savedAttachmentNames, failedSourcePaths };
+  } catch (error) {
+    console.error('Failed to save attachments from file paths:', error);
+    return { savedAttachmentNames: [], failedSourcePaths: sourceFilePaths };
+  }
+}

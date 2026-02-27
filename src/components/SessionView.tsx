@@ -45,7 +45,7 @@ type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
-const TERMINAL_HEADER_HEIGHT = 40;
+const TERMINAL_HEADER_HEIGHT = 36;
 const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
@@ -2206,10 +2206,10 @@ export function SessionView({
                     )}
 
                     <div
-                        className={`${isTerminalMinimized ? 'h-10' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
+                        className={`${isTerminalMinimized ? 'h-9' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
                         style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
                     >
-                        <div className="flex h-10 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
+                        <div className="flex h-9 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
                             <span className="flex items-center gap-2 uppercase tracking-wide">
                                 <span className="h-2 w-2 rounded-full bg-amber-500"></span>
                                 Terminal

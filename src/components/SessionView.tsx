@@ -1872,50 +1872,7 @@ export function SessionView({
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 dark:border-[#30363d] dark:bg-[#0d1117]">
-                        <select
-                            className="select select-xs h-6 min-h-6 rounded-none border-none bg-base-200 pr-7 text-slate-700 focus:outline-none dark:bg-[#161b22] dark:text-slate-300"
-                            value={selectedIde}
-                            onChange={handleIdeChange}
-                        >
-                            {SUPPORTED_IDES.map(ide => (
-                                <option key={ide.id} value={ide.id}>{ide.name}</option>
-                            ))}
-                        </select>
-                        <div className="h-4 w-[1px] bg-base-content/20 dark:bg-[#30363d]"></div>
-                        <button
-                            className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                            onClick={handleOpenIde}
-                            title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
-                        >
-                            <ExternalLink className="w-3 h-3" />
-                            <span className={headerButtonLabelClass}>Open</span>
-                        </button>
-                    </div>
-
                     <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
-                        <button
-                            className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                            onClick={handleShowDiffWithTrident}
-                            disabled={!worktree || !branch}
-                            title="Open this worktree and branch in Trident"
-                        >
-                            <GitBranch className="w-3 h-3" />
-                            <span className={headerButtonLabelClass}>Diff</span>
-                        </button>
-                    </div>
-
-                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
-                        <button
-                            className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                            onClick={() => setIsFileBrowserOpen(true)}
-                            disabled={isInsertingFilePaths}
-                            title="Browse files and insert absolute paths into the agent input"
-                        >
-                            {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="w-3 h-3" />}
-                            <span className={headerButtonLabelClass}>Add Files</span>
-                        </button>
-                        <div className="h-4 w-[1px] bg-base-content/10 dark:bg-[#30363d]"></div>
                         <button
                             className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
                             onClick={handleNewAttempt}
@@ -1925,40 +1882,6 @@ export function SessionView({
                             <span className={headerButtonLabelClass}>New Attempt</span>
                         </button>
                     </div>
-
-                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
-                        <button
-                            className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                            onClick={handleStartDevServer}
-                            disabled={isDevButtonDisabled}
-                            title={devButtonTitle}
-                        >
-                            {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
-                            <span className={headerButtonLabelClass}>Dev</span>
-                        </button>
-                    </div>
-
-                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
-                        <button
-                            className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60 ${terminalInteractionMode === 'select' ? 'text-warning' : ''}`}
-                            onClick={handleToggleTerminalInteractionMode}
-                            disabled={terminalPersistenceMode !== 'tmux' || isUpdatingTerminalInteractionMode}
-                            title={terminalPersistenceMode === 'tmux'
-                                ? (terminalInteractionMode === 'scroll'
-                                    ? 'Switch to text select mode for easier copy'
-                                    : 'Switch to scroll mode for wheel scrollback')
-                                : 'Mode toggle is available only in tmux persistence mode'}
-                        >
-                            {isUpdatingTerminalInteractionMode ? (
-                                <span className="loading loading-spinner loading-xs"></span>
-                            ) : (
-                                <MousePointer2 className="w-3 h-3" />
-                            )}
-                            <span>{terminalInteractionMode === 'scroll' ? 'Scroll Mode' : 'Text Select'}</span>
-                        </button>
-                    </div>
-
-
 
                     <div className="relative flex items-center rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]" ref={rebaseDropdownRef}>
                         <div className="relative">
@@ -2055,9 +1978,74 @@ export function SessionView({
                     className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]"
                     style={{ width: `${agentPaneRatio * 100}%` }}
                 >
-                    <div className="flex h-9 items-center gap-2 border-b border-slate-200 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
-                        <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                        Agent Activity
+                    <div className="flex h-9 items-center justify-between gap-3 border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
+                        <span className="flex shrink-0 items-center gap-2 uppercase tracking-wide">
+                            <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                            Agent Activity
+                        </span>
+                        <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto py-1 text-xs font-medium normal-case">
+                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
+                                <select
+                                    className="select select-xs h-6 min-h-6 rounded-none border-none bg-slate-100 pr-7 text-slate-700 focus:outline-none dark:bg-[#161b22] dark:text-slate-300"
+                                    value={selectedIde}
+                                    onChange={handleIdeChange}
+                                >
+                                    {SUPPORTED_IDES.map(ide => (
+                                        <option key={ide.id} value={ide.id}>{ide.name}</option>
+                                    ))}
+                                </select>
+                                <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#30363d]"></div>
+                                <button
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={handleOpenIde}
+                                    title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
+                                >
+                                    <ExternalLink className="h-3 w-3" />
+                                    <span className="hidden min-[1700px]:inline">Open in IDE</span>
+                                </button>
+                            </div>
+                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
+                                <button
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={handleShowDiffWithTrident}
+                                    disabled={!worktree || !branch}
+                                    title="Open this worktree and branch in Trident"
+                                >
+                                    <GitBranch className="h-3 w-3" />
+                                    <span className="hidden min-[1700px]:inline">Diff</span>
+                                </button>
+                            </div>
+                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
+                                <button
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={() => setIsFileBrowserOpen(true)}
+                                    disabled={isInsertingFilePaths}
+                                    title="Browse files and insert absolute paths into the agent input"
+                                >
+                                    {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="h-3 w-3" />}
+                                    <span className="hidden min-[1700px]:inline">Add Files</span>
+                                </button>
+                            </div>
+                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
+                                <button
+                                    className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60 ${terminalInteractionMode === 'select' ? 'text-warning' : ''}`}
+                                    onClick={handleToggleTerminalInteractionMode}
+                                    disabled={terminalPersistenceMode !== 'tmux' || isUpdatingTerminalInteractionMode}
+                                    title={terminalPersistenceMode === 'tmux'
+                                        ? (terminalInteractionMode === 'scroll'
+                                            ? 'Switch to text select mode for easier copy'
+                                            : 'Switch to scroll mode for wheel scrollback')
+                                        : 'Mode toggle is available only in tmux persistence mode'}
+                                >
+                                    {isUpdatingTerminalInteractionMode ? (
+                                        <span className="loading loading-spinner loading-xs"></span>
+                                    ) : (
+                                        <MousePointer2 className="h-3 w-3" />
+                                    )}
+                                    <span>{terminalInteractionMode === 'scroll' ? 'Scroll Mode' : 'Text Mode'}</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <iframe
                         ref={iframeRef}
@@ -2197,18 +2185,33 @@ export function SessionView({
                         className={`${isTerminalMinimized ? 'h-10' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
                         style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
                     >
-                        <button
-                            className="flex h-10 w-full items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-[#30363d] dark:text-slate-300 dark:hover:bg-[#30363d]/40"
-                            onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                            title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
-                            type="button"
-                        >
-                            <span className="flex items-center gap-2">
+                        <div className="flex h-10 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
+                            <span className="flex items-center gap-2 uppercase tracking-wide">
                                 <span className="h-2 w-2 rounded-full bg-amber-500"></span>
                                 Terminal
                             </span>
-                            <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
-                        </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={handleStartDevServer}
+                                    disabled={isDevButtonDisabled}
+                                    title={devButtonTitle}
+                                    type="button"
+                                >
+                                    {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
+                                    <span className="hidden min-[1700px]:inline">Dev</span>
+                                </button>
+                                <button
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                                    title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                    aria-label={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                    type="button"
+                                >
+                                    <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
+                                </button>
+                            </div>
+                        </div>
                         <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
                             <iframe
                                 ref={terminalRef}

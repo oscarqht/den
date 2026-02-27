@@ -2151,7 +2151,7 @@ export function SessionView({
                     className={`relative h-full transition-[width,min-width,flex-basis] duration-300 ease-in-out ${isRightPanelCollapsed ? 'w-0 min-w-0 flex-none' : 'min-w-[360px] flex-1'}`}
                 >
                     <button
-                        className="btn btn-ghost btn-xs absolute left-0 top-3 z-20 h-8 w-8 min-h-8 -translate-x-full rounded-r-none rounded-l-lg border border-r-0 border-slate-200 bg-white/95 p-0 text-slate-600 shadow-sm hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#161b22]/95 dark:text-slate-300 dark:hover:bg-[#30363d]/80"
+                        className="btn btn-ghost btn-xs absolute left-0 top-3 z-20 h-7 w-7 min-h-7 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 p-0 text-slate-600 shadow-sm hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#161b22]/95 dark:text-slate-300 dark:hover:bg-[#30363d]/80"
                         onClick={handleToggleRightPanelCollapse}
                         type="button"
                         title={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}

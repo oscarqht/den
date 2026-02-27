@@ -195,27 +195,29 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
               {items.map((item) => (
                 <div
                   key={item.path}
-                  className="flex items-center justify-between p-2 hover:bg-base-100 rounded-md cursor-pointer transition-colors"
+                  className="group flex items-center justify-between p-2 hover:bg-base-100 rounded-md cursor-pointer transition-colors"
                   onClick={() => handleNavigate(item.path)}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
                     <Folder className={`w-5 h-5 ${item.isGitRepo ? 'text-primary' : 'text-base-content/70'}`} />
                     <span className="truncate">{item.name}</span>
                     {item.isGitRepo && (
-                      <span className="badge badge-xs badge-primary">git</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600 border border-slate-300 uppercase tracking-wide">
+                        GIT
+                      </span>
                     )}
                   </div>
                   {item.isGitRepo && (
                     <button
-                      className="btn btn-xs btn-primary"
+                      className="flex items-center justify-center p-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleSelectPath(item.path);
                       }}
                       title={`Select ${item.name}`}
                     >
-                      <Check className="w-3 h-3" />
-                      Select
+                      <Check className="h-[18px] w-[18px]" />
+                      <span className="sr-only">Select</span>
                     </button>
                   )}
                 </div>

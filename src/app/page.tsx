@@ -18,7 +18,7 @@ export default function Home() {
           <Image src="/github.png" alt="GitHub" width={22} height={22} priority className="rotate-45" />
         </span>
       </a>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-base-100 p-4 md:p-24">
+      <main className="flex min-h-screen flex-col items-center justify-start bg-[radial-gradient(circle_at_top_left,_#e0e7ff,_#f5f7fb_55%)] p-4 md:p-6">
         <GitRepoSelector mode="home" />
       </main>
     </>

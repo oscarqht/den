@@ -5,7 +5,6 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import {
     deleteSessionInBackground,
     getSessionDivergence,
-    getSessionUncommittedFileCount,
     listSessionBaseBranches,
     mergeSessionToBase,
     rebaseSessionOntoBase,
@@ -14,7 +13,7 @@ import {
 } from '@/app/actions/session';
 import { setTmuxSessionMouseMode, setTmuxSessionStatusVisibility } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
@@ -47,8 +46,6 @@ const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
 const TERMINAL_HEADER_HEIGHT = 40;
-const TERMINAL_PANEL_RIGHT_GAP = 16;
-const TERMINAL_MINIMIZED_VISIBLE_WIDTH = 40;
 const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
@@ -520,7 +517,6 @@ export function SessionView({
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isTerminalForegroundProcessRunning, setIsTerminalForegroundProcessRunning] = useState(false);
-    const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
     const [isRebasing, setIsRebasing] = useState(false);
     const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
@@ -532,8 +528,7 @@ export function SessionView({
     const isLoadingBaseBranchesRef = useRef(false);
     const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
-    const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [isPreviewVisible, setIsPreviewVisible] = useState(true);
     const [previewInputUrl, setPreviewInputUrl] = useState('');
     const [previewUrl, setPreviewUrl] = useState('');
     const [isPreviewPickerActive, setIsPreviewPickerActive] = useState(false);
@@ -541,7 +536,7 @@ export function SessionView({
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
 
-    const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
+    const [isTerminalMinimized, setIsTerminalMinimized] = useState(false);
 
     // Terminal resize state
     const [terminalSize, setTerminalSize] = useState({ width: 460, height: 320 });
@@ -858,85 +853,6 @@ export function SessionView({
         await runCleanup(true);
     };
 
-    const sendPromptToAgentIframe = useCallback((prompt: string, action: string): Promise<boolean> => {
-        return new Promise((resolve) => {
-            const iframe = iframeRef.current;
-            if (!iframe) {
-                resolve(false);
-                return;
-            }
-
-            const checkAndSend = (attempts = 0) => {
-                if (attempts > 30) {
-                    resolve(false);
-                    return;
-                }
-
-                try {
-                    const win = iframe.contentWindow as TerminalWindow | null;
-                    if (!win) {
-                        setTimeout(() => checkAndSend(attempts + 1), 300);
-                        return;
-                    }
-
-                    win.postMessage(
-                        {
-                            type: 'viba:agent-request',
-                            action,
-                            prompt,
-                            sessionName,
-                            branch,
-                            baseBranch: currentBaseBranch || undefined,
-                            timestamp: Date.now(),
-                        },
-                        '*'
-                    );
-
-                    if (!win.term) {
-                        setTimeout(() => checkAndSend(attempts + 1), 300);
-                        return;
-                    }
-
-                    win.term.paste(prompt);
-
-                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                    if (textarea) {
-                        textarea.dispatchEvent(new KeyboardEvent('keypress', {
-                            bubbles: true,
-                            cancelable: true,
-                            charCode: 13,
-                            keyCode: 13,
-                            key: 'Enter',
-                            view: win
-                        }));
-                        (textarea as HTMLElement).focus();
-                    } else {
-                        win.term.paste('\r');
-                    }
-
-                    win.focus();
-                    resolve(true);
-                } catch (e) {
-                    console.error('Failed to send prompt to agent iframe:', e);
-                    setTimeout(() => checkAndSend(attempts + 1), 300);
-                }
-            };
-
-            checkAndSend();
-        });
-    }, [branch, currentBaseBranch, sessionName]);
-
-    const handleCommit = async () => {
-        setIsRequestingCommit(true);
-        setFeedback('Requesting commit from agent...');
-
-        const prompt = 'Please create a git commit with the current changes in this worktree.';
-        const sent = await sendPromptToAgentIframe(prompt, 'commit');
-
-        setFeedback(sent ? 'Commit request sent to agent' : 'Failed to send commit request to agent');
-        setIsRequestingCommit(false);
-    };
-
     const pasteIntoAgentIframe = useCallback((text: string): Promise<boolean> => {
         return new Promise((resolve) => {
             const iframe = iframeRef.current;
@@ -1119,30 +1035,6 @@ export function SessionView({
             setIsUpdatingBaseBranch(false);
         }
     };
-
-    const loadUncommittedFileCount = useCallback(async () => {
-        if (!sessionName) return;
-
-        try {
-            const result = await getSessionUncommittedFileCount(sessionName);
-            if (result.success && typeof result.count === 'number') {
-                setUncommittedFileCount(result.count);
-            }
-        } catch (e) {
-            console.error('Failed to load uncommitted file count:', e);
-        }
-    }, [sessionName]);
-
-    useEffect(() => {
-        if (!sessionName) return;
-
-        void loadUncommittedFileCount();
-        const timer = window.setInterval(() => {
-            void loadUncommittedFileCount();
-        }, 10000);
-
-        return () => window.clearInterval(timer);
-    }, [loadUncommittedFileCount, sessionName]);
 
     const runMerge = async (): Promise<boolean> => {
         if (!sessionName) return false;
@@ -1482,6 +1374,19 @@ export function SessionView({
         void loadPreviewViaProxy(previewInputUrl, true);
     };
 
+    const handleOpenPreviewInNewTab = useCallback(() => {
+        const preferredTarget = previewInputUrl.trim() || previewUrl;
+        const normalizedTarget = normalizePreviewUrl(preferredTarget);
+
+        if (!normalizedTarget) {
+            setFeedback('Please enter a preview URL');
+            return;
+        }
+
+        window.open(normalizedTarget, '_blank', 'noopener,noreferrer');
+        setFeedback(`Opened preview in new tab: ${normalizedTarget}`);
+    }, [previewInputUrl, previewUrl]);
+
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current || isTerminalForegroundProcessRunning) return;
@@ -1657,12 +1562,8 @@ export function SessionView({
                                 const resumeCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 agentCmd = withCodexApiKeyLogin(resumeCmd);
                             } else {
-                                const safeTitle = title?.trim() || '';
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
-                                const taskParts: string[] = [];
-                                if (safeTitle) taskParts.push(safeTitle);
-                                if (trimmedInitialMessage) taskParts.push(trimmedInitialMessage);
-                                const taskContent = taskParts.join('\n\n');
+                                const taskContent = trimmedInitialMessage;
                                 const attachmentPaths = (attachmentNames || [])
                                     .map((name) => name.trim())
                                     .filter(Boolean)
@@ -1934,9 +1835,6 @@ export function SessionView({
         ...(currentBaseBranch ? [currentBaseBranch] : []),
         ...baseBranchOptions
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
-    const terminalPanelRight = isTerminalMinimized
-        ? `calc(${TERMINAL_MINIMIZED_VISIBLE_WIDTH}px - min(${terminalSize.width}px, calc(100vw - 2rem)))`
-        : TERMINAL_PANEL_RIGHT_GAP;
     const hasDevServerScript = Boolean(devServerScript?.trim());
     const isDevButtonDisabled = !hasDevServerScript || isStartingDevServer || isTerminalForegroundProcessRunning;
     const devButtonTitle = !hasDevServerScript
@@ -1946,11 +1844,11 @@ export function SessionView({
             : 'Run dev server script in terminal';
 
     return (
-        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
+        <div className={`flex h-screen w-full flex-col overflow-hidden bg-[#f6f6f8] ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
             {(isResizing || isSplitResizing) && (
-                <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-nwse-resize' : 'cursor-col-resize'}`} />
+                <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
-            <div className="z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm border-b border-base-content/10">
+            <div className="z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 text-xs font-mono shadow-sm">
                 <div className="flex items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 hover:bg-base-content/10"
@@ -2005,16 +1903,6 @@ export function SessionView({
                             <GitBranch className="w-3 h-3" />
                             <span className={headerButtonLabelClass}>Diff</span>
                         </button>
-                        <div className="w-[1px] h-4 bg-base-content/10"></div>
-                        <button
-                            className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
-                            onClick={handleCommit}
-                            disabled={isRequestingCommit}
-                            title="Ask agent to create a commit with current changes"
-                        >
-                            {isRequestingCommit ? <span className="loading loading-spinner loading-xs"></span> : <GitCommitHorizontal className="w-3 h-3" />}
-                            <span className={headerButtonLabelClass}>Commit ({uncommittedFileCount})</span>
-                        </button>
                     </div>
 
                     <div className="flex items-center border border-base-content/20 rounded overflow-hidden bg-base-100">
@@ -2047,15 +1935,6 @@ export function SessionView({
                         >
                             {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
                             <span className={headerButtonLabelClass}>Dev</span>
-                        </button>
-                        <div className="w-[1px] h-4 bg-base-content/10"></div>
-                        <button
-                            className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
-                            onClick={() => setIsPreviewVisible((previous) => !previous)}
-                            title={isPreviewVisible ? 'Hide preview panel' : 'Show preview panel'}
-                        >
-                            <Globe className="w-3 h-3" />
-                            <span className={headerButtonLabelClass}>{isPreviewVisible ? 'Close' : 'Preview'}</span>
                         </button>
                     </div>
 
@@ -2144,7 +2023,7 @@ export function SessionView({
                             title="Clean up and exit"
                         >
                             <Trash2 className="w-3 h-3" />
-                            <span className={headerButtonLabelClass}>Purge</span>
+                            <span className={headerButtonLabelClass}>Delete</span>
                         </button>
                     </div>
 
@@ -2171,11 +2050,15 @@ export function SessionView({
                 </div>
             </div>
 
-            <div ref={splitContainerRef} className="flex min-h-0 flex-1 w-full">
+            <div ref={splitContainerRef} className="flex min-h-0 flex-1 gap-3 bg-[#f6f6f8] p-3">
                 <div
-                    className="h-full min-w-0"
-                    style={{ width: isPreviewVisible ? `${agentPaneRatio * 100}%` : '100%' }}
+                    className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                    style={{ width: `${agentPaneRatio * 100}%` }}
                 >
+                    <div className="flex h-9 items-center gap-2 border-b border-slate-200 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                        Agent Activity
+                    </div>
                     <iframe
                         ref={iframeRef}
                         src={agentTerminalSrc}
@@ -2185,140 +2068,157 @@ export function SessionView({
                     />
                 </div>
 
-                {isPreviewVisible && (
-                    <>
-                        <div
-                            className="relative h-full w-2 shrink-0 cursor-col-resize bg-base-300/40 hover:bg-base-content/20"
-                            onMouseDown={startSplitResize}
-                            role="separator"
-                            aria-orientation="vertical"
-                            aria-label="Resize preview panel"
-                            title="Drag to resize preview panel"
-                        >
-                            <div className="absolute left-1/2 top-1/2 h-12 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content/30" />
-                        </div>
-                        <div className="flex h-full min-w-0 flex-1 flex-col border-l border-base-content/10 bg-base-200/50">
-                            <form
-                                className="flex items-center gap-2 border-b border-base-content/10 bg-base-200 px-3 py-2"
-                                onSubmit={handlePreviewSubmit}
-                            >
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('back')}
-                                    disabled={!previewUrl}
-                                    title="Go back"
-                                    aria-label="Go back"
-                                >
-                                    <ArrowLeft className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('forward')}
-                                    disabled={!previewUrl}
-                                    title="Go forward"
-                                    aria-label="Go forward"
-                                >
-                                    <ArrowRight className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('reload')}
-                                    disabled={!previewUrl}
-                                    title="Reload preview"
-                                    aria-label="Reload preview"
-                                >
-                                    <RotateCw className="h-3.5 w-3.5" />
-                                </button>
-                                <input
-                                    ref={previewAddressInputRef}
-                                    type="text"
-                                    className="input input-xs input-bordered w-full font-mono"
-                                    value={previewInputUrl}
-                                    onChange={(event) => setPreviewInputUrl(event.target.value)}
-                                    placeholder="http://127.0.0.1:3000"
-                                    spellCheck={false}
-                                />
-                                <button
-                                    className={`btn btn-ghost btn-xs ${isPreviewPickerActive ? 'btn-active text-success' : ''}`}
-                                    type="button"
-                                    onClick={handleTogglePreviewPicker}
-                                    disabled={!previewUrl || isResolvingElement}
-                                    title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
-                                >
-                                    {isResolvingElement ? (
-                                        <span className="loading loading-spinner loading-xs w-3 h-3"></span>
-                                    ) : (
-                                        <MousePointer2 className="h-3 w-3" />
-                                    )}
-                                </button>
-                                <button className="btn btn-xs" type="submit">
-                                    Go
-                                </button>
-                            </form>
-                            <div className="min-h-0 flex-1">
-                                {previewUrl ? (
-                                    <iframe
-                                        ref={previewIframeRef}
-                                        src={previewUrl}
-                                        className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
-                                        title="Dev server preview"
-                                        onLoad={handlePreviewIframeLoad}
-                                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
-                                    />
-                                ) : (
-                                    <div className="flex h-full items-center justify-center px-6 text-center text-xs opacity-70">
-                                        Run the dev server, or enter a URL above to load a preview.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* floating terminal panel */}
-            <div
-                className={`absolute z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
-                style={{
-                    bottom: 80,
-                    right: terminalPanelRight,
-                    width: terminalSize.width,
-                    height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height,
-                    maxWidth: 'calc(100vw - 2rem)',
-                    maxHeight: 'calc(100vh - 2rem)'
-                }}
-            >
-                <button
-                    className={`absolute left-0 top-0 z-50 flex h-10 w-10 items-center justify-center text-base-content/30 hover:text-base-content/60 ${isTerminalMinimized ? 'cursor-pointer' : 'cursor-nwse-resize'}`}
-                    onMouseDown={!isTerminalMinimized ? startResize : undefined}
-                    onClick={isTerminalMinimized ? () => setIsTerminalMinimized(false) : undefined}
-                    title={isTerminalMinimized ? 'Expand terminal' : "Drag to resize"}
-                    type="button"
+                <div
+                    className="relative h-full w-2 shrink-0 cursor-col-resize rounded bg-slate-200 transition-colors hover:bg-primary/40"
+                    onMouseDown={startSplitResize}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize preview panel"
+                    title="Drag to resize preview panel"
                 >
-                    <Grip size={14} />
-                </button>
-                {!isTerminalMinimized && (
-                    <button
-                        className="flex h-10 w-full items-center justify-between px-3 pl-10 text-xs font-mono hover:bg-base-content/10"
-                        onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                        title="Minimize terminal"
-                        type="button"
+                    <div className="absolute left-1/2 top-1/2 h-12 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-400" />
+                </div>
+
+                <div className="flex h-full min-w-[360px] flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div className="min-h-0 flex flex-1 flex-col">
+                        <form
+                            className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2"
+                            onSubmit={handlePreviewSubmit}
+                        >
+                            <div className="mr-1 flex gap-1.5">
+                                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                                <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                            </div>
+                            <button
+                                className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100"
+                                type="button"
+                                onClick={() => handlePreviewNavigate('back')}
+                                disabled={!previewUrl}
+                                title="Go back"
+                                aria-label="Go back"
+                            >
+                                <ArrowLeft className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100"
+                                type="button"
+                                onClick={() => handlePreviewNavigate('forward')}
+                                disabled={!previewUrl}
+                                title="Go forward"
+                                aria-label="Go forward"
+                            >
+                                <ArrowRight className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100"
+                                type="button"
+                                onClick={() => handlePreviewNavigate('reload')}
+                                disabled={!previewUrl}
+                                title="Reload preview"
+                                aria-label="Reload preview"
+                            >
+                                <RotateCw className="h-3.5 w-3.5" />
+                            </button>
+                            <input
+                                ref={previewAddressInputRef}
+                                type="text"
+                                className="input input-xs h-7 min-h-7 w-full border-slate-200 bg-slate-100 font-mono text-slate-700"
+                                value={previewInputUrl}
+                                onChange={(event) => setPreviewInputUrl(event.target.value)}
+                                placeholder="http://127.0.0.1:3000"
+                                spellCheck={false}
+                            />
+                            <button
+                                className={`btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 ${isPreviewPickerActive ? 'text-success' : 'text-slate-500'} hover:bg-slate-100`}
+                                type="button"
+                                onClick={handleTogglePreviewPicker}
+                                disabled={!previewUrl || isResolvingElement}
+                                title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
+                            >
+                                {isResolvingElement ? (
+                                    <span className="loading loading-spinner loading-xs w-3 h-3"></span>
+                                ) : (
+                                    <MousePointer2 className="h-3 w-3" />
+                                )}
+                            </button>
+                            <button
+                                className="btn btn-xs h-7 min-h-7 gap-1 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                type="button"
+                                onClick={handleOpenPreviewInNewTab}
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Open in new tab
+                            </button>
+                        </form>
+                        <div className="min-h-0 flex-1 bg-slate-50">
+                            {!isPreviewVisible ? (
+                                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-slate-500">
+                                    <p>Preview is hidden. Use the header Preview button to show it.</p>
+                                    <button
+                                        type="button"
+                                        className="btn btn-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                        onClick={() => setIsPreviewVisible(true)}
+                                    >
+                                        Show Preview
+                                    </button>
+                                </div>
+                            ) : previewUrl ? (
+                                <iframe
+                                    ref={previewIframeRef}
+                                    src={previewUrl}
+                                    className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                    title="Dev server preview"
+                                    onLoad={handlePreviewIframeLoad}
+                                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
+                                />
+                            ) : (
+                                <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
+                                    Run the dev server, or enter a URL above to load a preview.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {!isTerminalMinimized && (
+                        <div
+                            className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100"
+                            onMouseDown={startResize}
+                            role="separator"
+                            aria-orientation="horizontal"
+                            aria-label="Resize build output panel"
+                            title="Drag to resize build output panel"
+                        >
+                            <Grip className="h-3 w-3 text-slate-400" />
+                        </div>
+                    )}
+
+                    <div
+                        className={`${isTerminalMinimized ? 'h-10' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50`}
+                        style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
                     >
-                        <span>Terminal</span>
-                        <span className="opacity-70">Hide</span>
-                    </button>
-                )}
-                <div className={isTerminalMinimized ? 'h-0 overflow-hidden' : 'h-[calc(100%-2.5rem)]'}>
-                    <iframe
-                        ref={terminalRef}
-                        src={floatingTerminalSrc}
-                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
-                        allow="clipboard-read; clipboard-write"
-                        onLoad={handleTerminalLoad}
-                    />
+                        <button
+                            className="flex h-10 w-full items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                            title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                            type="button"
+                        >
+                            <span className="flex items-center gap-2">
+                                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                                Terminal
+                            </span>
+                            <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
+                        </button>
+                        <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white'}`}>
+                            <iframe
+                                ref={terminalRef}
+                                src={floatingTerminalSrc}
+                                className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                allow="clipboard-read; clipboard-write"
+                                onLoad={handleTerminalLoad}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 

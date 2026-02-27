@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Trash2, Play, KeyRound, Settings, ExternalLink, CloudDownload } from 'lucide-react';
+import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -24,12 +24,15 @@ import { listAgentApiCredentials, listCredentials } from '@/app/actions/credenti
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
+import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 type SessionMode = 'fast' | 'plan';
 type RepoCredentialSelection = 'auto' | string;
+const DEFAULT_REPO_STARTUP_COMMAND = 'npm install';
+const DEFAULT_REPO_DEV_SERVER_COMMAND = 'npm run dev';
 
 function getCredentialOptionLabel(credential: Credential): string {
   if (credential.type === 'github') {
@@ -47,6 +50,7 @@ function getCredentialOptionLabel(credential: Credential): string {
 }
 
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
+const SESSION_TITLE_MAX_LENGTH = 120;
 const AGENT_LOGIN_COMMANDS: Record<SupportedAgentCli, string> = {
   codex: 'codex',
 };
@@ -66,6 +70,16 @@ type GitRepoSelectorProps = {
   fromRepoName?: string | null;
   prefillFromSession?: string | null;
 };
+
+function deriveSessionTitleFromTaskDescription(taskDescription: string): string | undefined {
+  const firstNonEmptyLine = taskDescription
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  if (!firstNonEmptyLine) return undefined;
+  return firstNonEmptyLine.slice(0, SESSION_TITLE_MAX_LENGTH);
+}
 
 export default function GitRepoSelector({
   mode = 'home',
@@ -88,6 +102,8 @@ export default function GitRepoSelector({
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
   const [repoCredentialSelection, setRepoCredentialSelection] = useState<RepoCredentialSelection>('auto');
+  const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_REPO_STARTUP_COMMAND);
+  const [repoDevServerCommand, setRepoDevServerCommand] = useState<string>(DEFAULT_REPO_DEV_SERVER_COMMAND);
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
   const router = useRouter();
@@ -101,7 +117,6 @@ export default function GitRepoSelector({
   const [devServerScript, setDevServerScript] = useState<string>('');
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>('');
-  const [title, setTitle] = useState<string>('');
   const [sessionMode, setSessionMode] = useState<SessionMode>('fast');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
@@ -118,6 +133,7 @@ export default function GitRepoSelector({
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginAgentCli, setLoginAgentCli] = useState<SupportedAgentCli | null>(null);
   const [loginCommand, setLoginCommand] = useState('');
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [loginCommandInjected, setLoginCommandInjected] = useState(false);
   const [loginModalError, setLoginModalError] = useState<string | null>(null);
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
@@ -183,6 +199,8 @@ export default function GitRepoSelector({
     setIsRepoSettingsDialogOpen(false);
     setRepoForSettings(null);
     setRepoCredentialSelection('auto');
+    setRepoStartupCommand(DEFAULT_REPO_STARTUP_COMMAND);
+    setRepoDevServerCommand(DEFAULT_REPO_DEV_SERVER_COMMAND);
     setRepoSettingsError(null);
     setIsLoadingCredentialOptions(false);
   }, [isSavingRepoSettings]);
@@ -499,7 +517,6 @@ export default function GitRepoSelector({
         return;
       }
 
-      setTitle(context.title || '');
       setInitialMessage(context.initialMessage || '');
       setPrefilledAttachmentNames(context.attachmentNames || []);
       setPrefillSourceSessionName(context.sourceSessionName);
@@ -826,8 +843,11 @@ export default function GitRepoSelector({
   const handleOpenRepoSettings = async (e: React.MouseEvent, repo: string) => {
     e.stopPropagation();
 
+    const settings = config?.repoSettings?.[repo];
     setRepoForSettings(repo);
     setRepoCredentialSelection(resolveRepoCredentialSelection(repo));
+    setRepoStartupCommand(settings?.startupScript?.trim() ? settings.startupScript : DEFAULT_REPO_STARTUP_COMMAND);
+    setRepoDevServerCommand(settings?.devServerScript?.trim() ? settings.devServerScript : DEFAULT_REPO_DEV_SERVER_COMMAND);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
     setIsLoadingCredentialOptions(true);
@@ -853,6 +873,8 @@ export default function GitRepoSelector({
   const handleSaveRepoSettings = async () => {
     if (!repoForSettings) return;
     const credentialId = repoCredentialSelection === 'auto' ? null : repoCredentialSelection;
+    const startupCommandToSave = repoStartupCommand.trim() || DEFAULT_REPO_STARTUP_COMMAND;
+    const devServerCommandToSave = repoDevServerCommand.trim() || DEFAULT_REPO_DEV_SERVER_COMMAND;
 
     if (credentialId && !credentialOptions.some((credential) => credential.id === credentialId)) {
       setRepoSettingsError('Selected credential no longer exists. Please choose another credential.');
@@ -864,6 +886,8 @@ export default function GitRepoSelector({
     try {
       const newConfig = await updateRepoSettings(repoForSettings, {
         credentialId,
+        startupScript: startupCommandToSave,
+        devServerScript: devServerCommandToSave,
         credentialPreference: undefined,
       });
       setConfig(newConfig);
@@ -1002,11 +1026,12 @@ export default function GitRepoSelector({
       // 2. Create Session Worktree
       // Use current selected branch as base
       const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
+      const derivedTitle = deriveSessionTitleFromTaskDescription(initialMessage);
 
       const wtResult = await createSession(selectedRepo, baseBranch, {
         agent: 'codex',
         model: '',
-        title: title,
+        title: derivedTitle,
         devServerScript: resolvedDevServerScript || undefined
       });
 
@@ -1059,7 +1084,7 @@ export default function GitRepoSelector({
 
         // 3. Persist launch context for the new session
         const launchContextResult = await saveSessionLaunchContext(wtResult.sessionName, {
-          title: title || undefined,
+          title: derivedTitle,
           initialMessage: processedMessage || undefined,
           rawInitialMessage: trimmedInitialMessage || undefined,
           startupScript: startupScript || undefined,
@@ -1204,7 +1229,16 @@ export default function GitRepoSelector({
     return counts;
   }, [allSessions]);
 
-  const recentRepos = config?.recentRepos ?? [];
+  const recentRepos = useMemo(() => config?.recentRepos ?? [], [config?.recentRepos]);
+  const filteredRecentRepos = useMemo(() => {
+    const normalizedQuery = homeSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return recentRepos;
+
+    return recentRepos.filter((repo) => {
+      const baseName = getBaseName(repo).toLowerCase();
+      return baseName.includes(normalizedQuery) || repo.toLowerCase().includes(normalizedQuery);
+    });
+  }, [homeSearchQuery, recentRepos]);
   const selectableRepos = selectedRepo
     ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
     : recentRepos;
@@ -1212,133 +1246,194 @@ export default function GitRepoSelector({
   return (
     <>
       {mode === 'home' && (
-        <div className="card w-full max-w-4xl bg-base-200 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Image src="/icon.png" alt="Viba" width={24} height={24} className="rounded-sm" />
-                Viba
+        <div className="w-full max-w-7xl">
+          <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.4)]">
+            <header className="relative z-10 flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-7">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm">
+                  <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">Viba</h2>
+                  <p className="text-xs text-slate-500">AI Coding Agent Dashboard</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none md:w-72">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    className="grow text-sm"
+                    placeholder="Search repositories..."
+                    value={homeSearchQuery}
+                    onChange={(event) => setHomeSearchQuery(event.target.value)}
+                  />
+                </label>
                 <button
-                  className="btn btn-ghost btn-sm gap-2"
+                  className="btn btn-ghost btn-sm gap-2 text-slate-700"
                   onClick={() => router.push('/credentials')}
                   title="Manage GitHub/GitLab credentials"
                 >
-                  <KeyRound className="w-4 h-4" />
+                  <KeyRound className="h-4 w-4" />
                   Credentials
                 </button>
-                <button
-                  className="btn btn-ghost btn-sm gap-2"
-                  onClick={() => setIsSelectingRoot(true)}
-                  title={config?.defaultRoot ? `Default: ${config.defaultRoot}` : "Set default browsing folder"}
-                >
-                  <FolderCog className="w-4 h-4" />
-                  {config?.defaultRoot ? "Change Default" : "Set Default Root"}
-                </button>
-                <button className="btn btn-secondary btn-sm gap-2" onClick={openCloneRemoteDialog}>
-                  <CloudDownload className="w-4 h-4" /> Clone Remote Repo
-                </button>
-                <button className="btn btn-primary btn-sm gap-2" onClick={() => setIsBrowsing(true)}>
-                  <Plus className="w-4 h-4" /> Open Local Repo
+                <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
+                  <CloudDownload className="h-4 w-4" />
+                  New Repository
                 </button>
               </div>
-            </h2>
+            </header>
 
-            {error && <div className="alert alert-error text-sm py-2 px-3 mt-2">{error}</div>}
+            <div className="relative z-10 px-4 py-5 md:px-7 md:py-7">
+              {error && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
 
-            <div className="mt-4 space-y-4">
+              {!isLoaded ? (
+                <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70">
+                  <span className="loading loading-spinner loading-md text-primary"></span>
+                </div>
+              ) : filteredRecentRepos.length === 0 ? (
+                <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center">
+                  <p className="text-sm text-slate-500">
+                    {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
+                  </p>
+                  {!homeSearchQuery.trim() && (
+                    <button className="btn btn-primary btn-sm mt-3 gap-2" onClick={openCloneRemoteDialog}>
+                      <Plus className="h-4 w-4" />
+                      Add your first repository
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredRecentRepos.map((repo) => {
+                    const credentialLabel = getRepoCredentialLabel(repo);
+                    const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
+                    const cardGradient = getStableRepoCardGradient(getBaseName(repo));
 
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold opacity-70 uppercase tracking-wide">Recent Repositories</h3>
-                {!isLoaded ? (
-                  <div className="flex items-center justify-center py-8 bg-base-100 rounded-lg">
-                    <span className="loading loading-spinner loading-md"></span>
-                  </div>
-                ) : (!config || config.recentRepos.length === 0) ? (
-                  <div className="text-center py-8 text-base-content/40 italic bg-base-100 rounded-lg">
-                    No recent repositories found.
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {config.recentRepos.map(repo => {
-                      const credentialLabel = getRepoCredentialLabel(repo);
-                      const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
-
-                      return (
-                        <div
-                          key={repo}
-                          onClick={() => handleSelectRepo(repo)}
-                          className="flex items-center justify-between p-3 bg-base-100 hover:bg-base-300 rounded-md cursor-pointer group transition-all border border-base-300"
-                        >
-                          <div className="flex items-center gap-3 overflow-hidden shrink min-w-0">
-                            <FolderGit2 className="w-5 h-5 text-secondary shrink-0" />
-                            <div className="flex flex-col overflow-hidden">
-                              <span className="font-medium truncate">{getBaseName(repo)}</span>
-                              <span className="text-xs opacity-50 truncate">{repo}</span>
-                              <span className="text-[10px] opacity-60 mt-0.5">
-                                Credential: {credentialLabel}
-                              </span>
+                    return (
+                      <div
+                        key={repo}
+                        onClick={() => handleSelectRepo(repo)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            void handleSelectRepo(repo);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="group relative h-[248px] cursor-pointer overflow-hidden rounded-2xl border border-white/70 text-left shadow-[0_14px_40px_-24px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_24px_48px_-26px_rgba(15,23,42,0.55)]"
+                        style={cardGradient}
+                      >
+                        <div className="absolute inset-0 bg-white/40" />
+                        <div className="relative flex h-full flex-col justify-between p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="relative">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm">
+                                <FolderGit2 className="h-5 w-5" />
+                              </div>
+                              {runningSessionCount > 0 && (
+                                <span
+                                  className="absolute -right-2 -top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-white shadow-sm"
+                                  title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
+                                >
+                                  {runningSessionCount}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(event) => {
+                                  void handleOpenRepoSettings(event, repo);
+                                }}
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100"
+                                title="Repository settings"
+                              >
+                                <Settings className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={(event) => handleRemoveRecent(event, repo)}
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-500 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-rose-600 group-hover:opacity-100"
+                                title="Remove from history"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {runningSessionCount > 0 && (
-                              <span
-                                className="badge badge-sm badge-secondary"
-                                title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
-                              >
-                                {runningSessionCount}
-                              </span>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                void handleOpenRepoSettings(e, repo);
-                              }}
-                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100"
-                              title="Repository settings"
-                            >
-                              <Settings className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => handleRemoveRecent(e, repo)}
-                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"
-                              title="Remove from history"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                            <ChevronRight className="w-4 h-4 opacity-30" />
+
+                          <div className="space-y-1.5">
+                            <h3 className="truncate text-lg font-bold text-slate-900">
+                              {getBaseName(repo)}
+                            </h3>
+                            <p className="truncate font-mono text-xs text-slate-600">{repo}</p>
+                            <p className="truncate text-[11px] font-medium text-slate-500">
+                              Credential: {credentialLabel}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+                            <span>Open repository</span>
+                            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    onClick={openCloneRemoteDialog}
+                    className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white"
+                  >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105">
+                      <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
+                    </span>
+                    <span className="text-lg font-semibold transition-colors group-hover:text-primary">
+                      Add Repository
+                    </span>
+                    <span className="text-sm text-slate-400">Import from local or git URL</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {mode === 'home' && isRepoSettingsDialogOpen && repoForSettings && (
-        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-base-content/60 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6">
+              <h3 className="text-lg font-bold text-slate-900">Repository Settings</h3>
+              <button
+                className="btn btn-circle btn-ghost btn-sm text-slate-500"
+                onClick={dismissRepoSettingsDialog}
+                disabled={isSavingRepoSettings}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
             <div className="space-y-4 p-5 md:p-6">
-              <h3 className="text-xl font-semibold">Repository Settings</h3>
-              <p className="text-sm opacity-75">
+              <p className="text-sm text-slate-600">
                 Choose which credential this repository should use for authenticated Git operations.
               </p>
 
               <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Repository</label>
-                <div className="rounded-md border border-base-300 bg-base-200 px-3 py-2 font-mono text-xs break-all">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository</label>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 break-all">
                   {repoForSettings}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
                 <select
-                  className="select select-bordered w-full"
+                  className="select w-full border-slate-200 bg-slate-50 text-slate-700 focus:border-primary focus:outline-none"
                   value={repoCredentialSelection}
                   onChange={(event) => setRepoCredentialSelection(event.target.value)}
                   disabled={isSavingRepoSettings}
@@ -1351,28 +1446,56 @@ export default function GitRepoSelector({
                   ))}
                 </select>
                 {credentialOptions.length === 0 && !isLoadingCredentialOptions && (
-                  <div className="text-xs opacity-60">
+                  <div className="text-xs text-slate-500">
                     No credentials found. Add credentials from the Credentials page.
                   </div>
                 )}
               </div>
 
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start Up Command</label>
+                <input
+                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                  value={repoStartupCommand}
+                  onChange={(event) => setRepoStartupCommand(event.target.value)}
+                  placeholder={DEFAULT_REPO_STARTUP_COMMAND}
+                  disabled={isSavingRepoSettings}
+                />
+                <div className="text-xs text-slate-500">
+                  Default: <span className="font-mono">{DEFAULT_REPO_STARTUP_COMMAND}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dev Server Command</label>
+                <input
+                  className="input w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                  value={repoDevServerCommand}
+                  onChange={(event) => setRepoDevServerCommand(event.target.value)}
+                  placeholder={DEFAULT_REPO_DEV_SERVER_COMMAND}
+                  disabled={isSavingRepoSettings}
+                />
+                <div className="text-xs text-slate-500">
+                  Default: <span className="font-mono">{DEFAULT_REPO_DEV_SERVER_COMMAND}</span>
+                </div>
+              </div>
+
               {isLoadingCredentialOptions && (
-                <div className="text-sm opacity-70 flex items-center gap-2">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
                   <span className="loading loading-spinner loading-xs"></span>
                   Loading credentials...
                 </div>
               )}
 
               {repoSettingsError && (
-                <div className="alert alert-error text-sm py-2">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {repoSettingsError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
-                  className="btn btn-ghost"
+                  className="btn btn-ghost text-slate-700"
                   onClick={dismissRepoSettingsDialog}
                   disabled={isSavingRepoSettings}
                 >
@@ -1393,83 +1516,127 @@ export default function GitRepoSelector({
       )}
 
       {mode === 'home' && isCloneRemoteDialogOpen && (
-        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-base-content/60 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
-            <div className="space-y-4 p-5 md:p-6">
-              <h3 className="text-xl font-semibold">Clone Remote Repository</h3>
-              <p className="text-sm opacity-75">
-                Clone into <span className="font-mono">~/.viba/repos</span> and open it as the selected repository.
-              </p>
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Add New Repository</h3>
+                <p className="text-sm text-slate-500">Connect a local folder or clone from URL</p>
+              </div>
+              <button className="btn btn-circle btn-ghost btn-sm text-slate-500" onClick={dismissCloneRemoteDialog} disabled={isCloningRemote}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Remote URL</label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  placeholder="https://github.com/org/repo.git"
-                  value={remoteRepoUrl}
-                  onChange={(event) => setRemoteRepoUrl(event.target.value)}
-                  disabled={isCloningRemote}
-                />
+            <div className="flex flex-1 flex-col overflow-y-auto md:flex-row">
+              <div className="flex-1 space-y-4 border-b border-slate-100 p-5 md:border-b-0 md:border-r md:p-6">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Browse Local</h4>
+                <p className="text-sm text-slate-600">
+                  Select an existing Git repository folder from your local machine.
+                </p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  Default root: <span className="font-mono">{config?.defaultRoot || '~'}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-primary btn-sm gap-2"
+                    onClick={() => {
+                      dismissCloneRemoteDialog();
+                      setIsBrowsing(true);
+                    }}
+                  >
+                    <FolderGit2 className="h-4 w-4" />
+                    Browse Local Repository
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm gap-2 text-slate-700"
+                    onClick={() => {
+                      dismissCloneRemoteDialog();
+                      setIsSelectingRoot(true);
+                    }}
+                  >
+                    <FolderCog className="h-4 w-4" />
+                    Set Default Folder
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
-                <select
-                  className="select select-bordered w-full"
-                  value={cloneCredentialSelection}
-                  onChange={(event) => setCloneCredentialSelection(event.target.value)}
-                  disabled={isCloningRemote || isLoadingCloneCredentialOptions}
-                >
-                  <option value="auto">Auto (match repository remote)</option>
-                  {credentialOptions.map((credential) => (
-                    <option key={credential.id} value={credential.id}>
-                      {getCredentialOptionLabel(credential)}
-                    </option>
-                  ))}
-                </select>
-                {credentialOptions.length === 0 && !isLoadingCloneCredentialOptions && (
-                  <div className="text-xs opacity-60">
-                    No credentials found. Clone will use anonymous access unless remote auth is otherwise configured.
+              <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Clone Remote</h4>
+                <p className="text-sm text-slate-600">
+                  Clone into <span className="font-mono">~/.viba/repos</span> and open it immediately.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository URL</label>
+                  <input
+                    className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                    placeholder="https://github.com/org/repo.git"
+                    value={remoteRepoUrl}
+                    onChange={(event) => setRemoteRepoUrl(event.target.value)}
+                    disabled={isCloningRemote}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
+                  <select
+                    className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none"
+                    value={cloneCredentialSelection}
+                    onChange={(event) => setCloneCredentialSelection(event.target.value)}
+                    disabled={isCloningRemote || isLoadingCloneCredentialOptions}
+                  >
+                    <option value="auto">Auto (match repository remote)</option>
+                    {credentialOptions.map((credential) => (
+                      <option key={credential.id} value={credential.id}>
+                        {getCredentialOptionLabel(credential)}
+                      </option>
+                    ))}
+                  </select>
+                  {credentialOptions.length === 0 && !isLoadingCloneCredentialOptions && (
+                    <div className="text-xs text-slate-500">
+                      No credentials found. Clone uses anonymous access unless remote auth is configured.
+                    </div>
+                  )}
+                </div>
+
+                {isLoadingCloneCredentialOptions && (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="loading loading-spinner loading-xs"></span>
+                    Loading credentials...
                   </div>
                 )}
-              </div>
 
-              {isLoadingCloneCredentialOptions && (
-                <div className="text-sm opacity-70 flex items-center gap-2">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  Loading credentials...
+                {isCloningRemote && (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    <span className="loading loading-spinner loading-xs"></span>
+                    Cloning repository...
+                  </div>
+                )}
+
+                {cloneRemoteError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {cloneRemoteError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <button
+                    className="btn btn-ghost text-slate-700"
+                    onClick={dismissCloneRemoteDialog}
+                    disabled={isCloningRemote}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary gap-2"
+                    onClick={() => void handleCloneRemoteRepo()}
+                    disabled={isCloningRemote || !remoteRepoUrl.trim() || isLoadingCloneCredentialOptions}
+                  >
+                    {isCloningRemote ? <span className="loading loading-spinner loading-xs"></span> : <CloudDownload className="h-4 w-4" />}
+                    Clone Repository
+                  </button>
                 </div>
-              )}
-
-              {isCloningRemote && (
-                <div className="alert py-2 text-sm flex items-center gap-2">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  Cloning repository...
-                </div>
-              )}
-
-              {cloneRemoteError && (
-                <div className="alert alert-error text-sm py-2">
-                  {cloneRemoteError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  className="btn btn-ghost"
-                  onClick={dismissCloneRemoteDialog}
-                  disabled={isCloningRemote}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => void handleCloneRemoteRepo()}
-                  disabled={isCloningRemote || !remoteRepoUrl.trim() || isLoadingCloneCredentialOptions}
-                >
-                  {isCloningRemote ? <span className="loading loading-spinner loading-xs"></span> : null}
-                  Clone
-                </button>
               </div>
             </div>
           </div>
@@ -1477,327 +1644,334 @@ export default function GitRepoSelector({
       )}
 
       {mode === 'new' && selectedRepo && (
-        <div className="w-full max-w-6xl space-y-4">
-          {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
-          <div className="flex flex-col gap-4 w-full">
-            <div className="card w-full bg-base-200 shadow-xl">
-              <div className="card-body">
-                <h2 className="card-title flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <FolderGit2 className="w-6 h-6 text-primary" />
-                    Git Repository Selector
-                  </div>
-                  <button className="btn btn-sm btn-ghost" onClick={() => router.push('/')}>
-                    Change Repo
-                  </button>
-                </h2>
+        <div className="w-full max-w-[1240px]">
+          {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
-                <div className="mt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 space-y-2">
-                      <label className="text-xs opacity-50 uppercase tracking-widest">Current Repository</label>
-                      <div className="join w-full">
-                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                          <FolderGit2 className="w-4 h-4 text-primary" />
-                        </div>
-                        <select
-                          className="select select-bordered join-item w-full font-mono focus:outline-none"
-                          value={selectedRepo}
-                          onChange={(e) => {
-                            void handleCurrentRepoChange(e);
-                          }}
-                          disabled={loading || selectableRepos.length === 0}
-                        >
-                          {selectableRepos.map(repo => (
-                            <option key={repo} value={repo}>
-                              {getBaseName(repo)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="text-[10px] opacity-50 font-mono truncate px-1" title={selectedRepo}>
-                        {selectedRepo}
-                      </div>
+          <div className="mb-8">
+            <div className="mb-2 flex items-center gap-4">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900"
+                onClick={() => router.push('/')}
+                aria-label="Back to home"
+              >
+                <ChevronRight className="h-6 w-6 rotate-180" />
+              </button>
+              <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl">Assign New Task</h1>
+            </div>
+            <p className="ml-14 text-sm text-slate-500 md:text-base">
+              Configure the environment and describe the work required for your AI agent.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div className="space-y-6 lg:col-span-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
+                  <FolderGit2 className="h-5 w-5 text-primary" />
+                  Context Setup
+                </h3>
+
+                <div className="space-y-4">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-slate-700">Select Repository</span>
+                    <div className="relative">
+                      <select
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedRepo}
+                        onChange={(event) => {
+                          void handleCurrentRepoChange(event);
+                        }}
+                        disabled={loading || selectableRepos.length === 0}
+                      >
+                        {selectableRepos.map((repo) => (
+                          <option key={repo} value={repo}>
+                            {getBaseName(repo)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                     </div>
+                    <span className="truncate font-mono text-[11px] text-slate-500" title={selectedRepo}>
+                      {selectedRepo}
+                    </span>
+                  </label>
 
-                    {/* Branch Selection */}
-                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-sm font-medium opacity-70 uppercase tracking-widest">Current Branch</label>
-                        {loading && <span className="loading loading-spinner loading-xs"></span>}
-                      </div>
+                  <label className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-slate-700">Base Branch</span>
+                    <div className="relative">
+                      <select
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={currentBranchName}
+                        onChange={handleBranchChange}
+                        disabled={loading}
+                      >
+                        {branches.map((branch) => (
+                          <option key={branch.name} value={branch.name}>
+                            {branch.name}
+                            {branch.current ? ' (checked out)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {loading
+                        ? <span className="loading loading-spinner loading-xs absolute right-3 top-1/2 -translate-y-1/2"></span>
+                        : <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />}
+                    </div>
+                  </label>
 
-                      <div className="join w-full">
-                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                          <GitBranchIcon className="w-4 h-4" />
-                        </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                    onClick={() => setShowSessionAdvanced((prev) => !prev)}
+                  >
+                    <ChevronRight className={`h-4 w-4 transition-transform ${showSessionAdvanced ? 'rotate-90' : ''}`} />
+                    {showSessionAdvanced ? 'Hide Advanced Setup' : collapsedSessionSetupLabel}
+                  </button>
+
+                  {showSessionAdvanced && (
+                    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start Up Command</span>
+                        <input
+                          type="text"
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          placeholder="npm install"
+                          value={startupScript}
+                          onChange={handleStartupScriptChange}
+                          onBlur={saveStartupScript}
+                          onKeyDown={(event) => {
+                            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                              event.preventDefault();
+                              handleStartSession();
+                            }
+                          }}
+                          disabled={loading}
+                        />
+                      </label>
+
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dev Server Command</span>
+                        <input
+                          type="text"
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          placeholder="npm run dev"
+                          value={devServerScript}
+                          onChange={handleDevServerScriptChange}
+                          onBlur={saveDevServerScript}
+                          onKeyDown={(event) => {
+                            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                              event.preventDefault();
+                              handleStartSession();
+                            }
+                          }}
+                          disabled={loading}
+                        />
+                      </label>
+
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session Mode</span>
                         <select
-                          className="select select-bordered join-item w-full font-mono focus:outline-none"
-                          value={currentBranchName}
-                          onChange={handleBranchChange}
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          value={sessionMode}
+                          onChange={handleSessionModeChange}
                           disabled={loading}
                         >
-                          {branches.map(branch => (
-                            <option key={branch.name} value={branch.name}>
-                              {branch.name} {branch.current ? '(checked out)' : ''}
-                            </option>
-                          ))}
+                          <option value="fast">Fast Mode (default)</option>
+                          <option value="plan">Plan Mode</option>
                         </select>
+                      </label>
+
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="mb-4 text-lg font-bold text-slate-900">Ongoing Tasks</h3>
+                <div className="space-y-2">
+                  {existingSessions.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                      No ongoing sessions for this repository.
+                    </div>
+                  )}
+
+                  {existingSessions.map((session) => (
+                    <div
+                      key={session.sessionName}
+                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50"
+                    >
+                      <div
+                        className={`h-2 w-2 flex-shrink-0 rounded-full ${
+                          deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">{session.title || session.sessionName}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {getBaseName(session.repoPath)} • {session.agent}
+                        </p>
                       </div>
-                      <div className="text-[10px] opacity-50 px-1 italic">
-                        Switching branches updates the working directory.
+                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary"
+                          title="Open"
+                          onClick={() => handleResumeSession(session)}
+                          disabled={loading || deletingSessionName === session.sessionName}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-amber-500"
+                          title="New Attempt"
+                          onClick={() => handleNewAttemptFromSession(session)}
+                          disabled={loading || deletingSessionName === session.sessionName}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500"
+                          title={deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
+                          onClick={() => handleDeleteSession(session)}
+                          disabled={loading || deletingSessionName === session.sessionName}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Continue Existing Session Card */}
-            {existingSessions.length > 0 && (
-              <div className="card w-full bg-base-200 shadow-xl">
-                <div className="card-body">
-                  <h2 className="card-title flex items-center gap-2">
-                    <Play className="w-6 h-6 text-success" />
-                    Continue Existing Session
-                  </h2>
-                  <div className="flex flex-col gap-2 mt-4 max-h-64 overflow-y-auto">
-                    {existingSessions.map((session) => (
-                      <div key={session.sessionName} className="flex flex-col gap-2 p-3 bg-base-100 rounded-md border border-base-300">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            {session.title && <div className="font-semibold">{session.title}</div>}
-                            <div className="text-xs opacity-60 font-mono">{session.sessionName}</div>
-                            <div className="text-xs opacity-60 mt-1">
-                              Agent: {session.agent}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="btn btn-sm btn-success btn-outline gap-2"
-                              onClick={() => handleResumeSession(session)}
-                              disabled={loading || deletingSessionName === session.sessionName}
-                            >
-                              <ExternalLink className="w-3 h-3" /> Open
-                            </button>
-                            <button
-                              className="btn btn-sm btn-secondary btn-outline gap-2"
-                              onClick={() => handleNewAttemptFromSession(session)}
-                              disabled={loading || deletingSessionName === session.sessionName}
-                              title="Start a new attempt prefilled from this session"
-                            >
-                              <Plus className="w-3 h-3" /> New Attempt
-                            </button>
-                            <button
-                              className="btn btn-sm btn-error btn-outline gap-2"
-                              onClick={() => handleDeleteSession(session)}
-                              disabled={loading || deletingSessionName === session.sessionName}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              {deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+            <div className="flex flex-col lg:col-span-8">
+              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <label className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900" htmlFor="task-description">
+                  <Bot className="h-5 w-5 text-primary" />
+                  Task Description
+                </label>
+
+                <div className="group relative mb-4 flex h-[360px] flex-grow flex-col md:h-[420px]">
+                  <textarea
+                    id="task-description"
+                    className="h-full w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30"
+                    placeholder={`Describe the task for the AI agent...\nExample:\n1. Create a new component for the user profile card.\n2. Ensure it fetches data from the /api/user endpoint.\n3. Add error handling for failed requests.\n\nTip: Type @ to mention files.`}
+                    value={initialMessage}
+                    onChange={handleMessageChange}
+                    onKeyDown={handleKeyDown}
+                    onClick={(event) => {
+                      setCursorPosition(event.currentTarget.selectionStart);
+                      setShowSuggestions(false);
+                    }}
+                    onKeyUp={(event) => setCursorPosition(event.currentTarget.selectionStart)}
+                    disabled={loading}
+                  />
+
+                  {showSuggestions && suggestionList.length > 0 && (
+                    <div className="absolute left-3 right-3 top-[calc(100%-8rem)] z-50 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {suggestionList.map((suggestion, idx) => (
+                        <button
+                          key={suggestion}
+                          className={`w-full truncate border-b border-slate-100 px-3 py-2 text-left text-xs last:border-0 ${
+                            idx === selectedIndex ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            handleSelectSuggestion(suggestion);
+                          }}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
 
-            {/* Start New Session Card */}
-            <div className="card w-full bg-base-200 shadow-xl">
-              <div className="card-body">
-                <h2 className="card-title flex items-center gap-2">
-                  <Bot className="w-6 h-6 text-secondary" />
-                  Start New Session
-                </h2>
-
-                <div className="mt-4 space-y-6">
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm px-2 h-auto min-h-0 normal-case justify-start gap-2"
-                      onClick={() => setShowSessionAdvanced(prev => !prev)}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+                    <h4 className="text-sm font-semibold text-slate-700">Attachments</h4>
+                    <label
+                      htmlFor="new-session-attachments-input"
+                      className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700"
                     >
-                      <ChevronRight className={`w-4 h-4 transition-transform ${showSessionAdvanced ? 'rotate-90' : ''}`} />
-                      {showSessionAdvanced ? 'Hide Session Setup' : collapsedSessionSetupLabel}
-                    </button>
-
-                    {showSessionAdvanced && (
-                      <>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
-                          <input
-                            type="text"
-                            className="input input-bordered w-full font-mono text-sm"
-                            placeholder="npm i"
-                            value={startupScript}
-                            onChange={handleStartupScriptChange}
-                            onBlur={saveStartupScript}
-                            onKeyDown={(e) => {
-                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                                e.preventDefault();
-                                handleStartSession();
-                              }
-                            }}
-                            disabled={loading}
-                          />
-                          <div className="text-xs opacity-50 px-1">
-                            Script to run in the terminal agent iframe upon startup.
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium opacity-70">Dev server script (Optional)</label>
-                          <input
-                            type="text"
-                            className="input input-bordered w-full font-mono text-sm"
-                            placeholder="npm run dev"
-                            value={devServerScript}
-                            onChange={handleDevServerScriptChange}
-                            onBlur={saveDevServerScript}
-                            onKeyDown={(e) => {
-                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                                e.preventDefault();
-                                handleStartSession();
-                              }
-                            }}
-                            disabled={loading}
-                          />
-                          <div className="text-xs opacity-50 px-1">
-                            Script for the Session View Start Dev Server button in the right terminal.
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="divider"></div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium opacity-70">Session Mode</label>
-                    <select
-                      className="select select-bordered w-full focus:outline-none"
-                      value={sessionMode}
-                      onChange={handleSessionModeChange}
-                      disabled={loading}
-                    >
-                      <option value="fast">Fast Mode (default)</option>
-                      <option value="plan">Plan Mode</option>
-                    </select>
-                    <div className="text-xs opacity-50 px-1">
-                      {sessionMode === 'plan'
-                        ? 'Plan mode asks the agent to study the repo, propose a plan, and wait for your approval before implementation.'
-                        : 'Fast mode starts the agent with current behavior.'}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium opacity-70">Title (Optional)</label>
+                      <CloudDownload className="h-4 w-4" />
+                      Select Attachments
+                    </label>
                     <input
-                      type="text"
-                      className="input input-bordered w-full font-mono text-sm"
-                      placeholder="Task Title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                          e.preventDefault();
-                          handleStartSession();
-                        }
-                      }}
-                      disabled={loading}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium opacity-70">Initial Message (Optional)</label>
-                    <div className="relative">
-                      <textarea
-                        className="textarea textarea-bordered w-full h-64 font-mono text-sm leading-tight resize-none"
-                        placeholder="Describe what you want the agent to do... Type @ to mention files."
-                        value={initialMessage}
-                        onChange={handleMessageChange}
-                        onKeyDown={handleKeyDown}
-                        onClick={(e) => {
-                          setCursorPosition(e.currentTarget.selectionStart);
-                          setShowSuggestions(false); // Hide on click? Or re-val?
-                        }}
-                        onKeyUp={(e) => setCursorPosition(e.currentTarget.selectionStart)}
-                        disabled={loading}
-                      ></textarea>
-                      {showSuggestions && suggestionList.length > 0 && (
-                        <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-base-100 border border-base-300 rounded-md shadow-lg">
-                          {suggestionList.map((s, idx) => (
-                            <button
-                              key={s}
-                              className={`w-full text-left px-3 py-2 text-xs border-b border-base-200 last:border-0 truncate ${idx === selectedIndex ? 'bg-primary text-primary-content' : 'hover:bg-primary/10'
-                                }`}
-                              onMouseDown={(e) => {
-                                e.preventDefault(); // Prevent blur
-                                handleSelectSuggestion(s);
-                              }}
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium opacity-70">Attachments (Optional)</label>
-                    <input
+                      id="new-session-attachments-input"
                       type="file"
                       multiple
-                      className="file-input file-input-bordered w-full"
+                      className="hidden"
                       onChange={handleFileSelect}
                       disabled={loading}
                     />
-                    <div className="text-xs opacity-50 px-1">
-                      Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.
-                    </div>
-                    {attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {attachments.map((file, idx) => (
-                          <span key={`upload-${idx}`} className="badge badge-neutral gap-2 p-3">
-                            {file.name}
-                            <button onClick={() => removeAttachment(idx)} className="btn btn-ghost btn-xs btn-circle text-error">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {prefilledAttachmentNames.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {prefilledAttachmentNames.map((name, idx) => (
-                          <span key={`prefill-${name}-${idx}`} className="badge badge-secondary gap-2 p-3">
-                            {name}
-                            <button
-                              onClick={() => removePrefilledAttachment(idx)}
-                              className="btn btn-ghost btn-xs btn-circle text-error"
-                              title="Remove carried attachment"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
-                  <div className="card-actions justify-end mt-4">
-                    <button
-                      className="btn btn-primary btn-wide shadow-lg"
-                      onClick={handleStartSession}
-                      disabled={loading}
-                    >
-                      {loading ? <span className="loading loading-spinner"></span> : "Start Session"}
-                    </button>
+                  <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3">
+                    <div className="flex flex-wrap gap-3">
+                      {attachments.map((file, idx) => (
+                        <div key={`upload-${idx}`} className="group relative w-20">
+                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
+                            <span className="px-2 text-center text-[11px] font-medium text-slate-700">{file.name.split('.').pop()?.toUpperCase() || 'FILE'}</span>
+                            <button
+                              type="button"
+                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                              onClick={() => removeAttachment(idx)}
+                              title="Remove attachment"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600">{file.name}</span>
+                        </div>
+                      ))}
+
+                      {prefilledAttachmentNames.map((name, idx) => (
+                        <div key={`prefill-${name}-${idx}`} className="group relative w-20">
+                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
+                            <span className="px-2 text-center text-[11px] font-medium text-slate-700">
+                              {name.split('.').pop()?.toUpperCase() || 'FILE'}
+                            </span>
+                            <button
+                              type="button"
+                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                              onClick={() => removePrefilledAttachment(idx)}
+                              title="Remove carried attachment"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600">{name}</span>
+                        </div>
+                      ))}
+
+                      <label
+                        htmlFor="new-session-attachments-input"
+                        className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-primary hover:bg-primary/5 hover:text-primary"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span className="text-[9px] font-semibold uppercase">Add File</span>
+                      </label>
+                    </div>
                   </div>
+
+                  <div className="mt-2 text-xs text-slate-500">Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.</div>
+                </div>
+
+                <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+                  <span className="mr-auto hidden text-xs text-slate-400 sm:block">
+                    Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px]">Ctrl + Enter</kbd> to submit
+                  </span>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={handleStartSession}
+                    disabled={loading}
+                  >
+                    {loading ? <span className="loading loading-spinner loading-xs"></span> : 'Create New Task'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1805,17 +1979,12 @@ export default function GitRepoSelector({
         </div>
       )}
 
-      {mode === 'new' && !selectedRepo && (
-        <div className="card w-full max-w-2xl bg-base-200 shadow-xl">
-          <div className="card-body">
-            {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
-            <h2 className="card-title">Select a Repository</h2>
-            <p className="opacity-70 text-sm">Choose a repository first, then start or resume a session.</p>
-            <div className="card-actions justify-end mt-4">
-              <button className="btn btn-primary" onClick={() => router.push('/')}>
-                Go to Home
-              </button>
-            </div>
+      {mode === 'new' && !selectedRepo && !!repoPath && !error && (
+        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <span className="loading loading-spinner loading-lg text-primary"></span>
+            <h2 className="text-lg font-semibold text-slate-900">Loading repository...</h2>
+            <p className="text-sm text-slate-500">Preparing your task workspace.</p>
           </div>
         </div>
       )}

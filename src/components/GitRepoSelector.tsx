@@ -1148,12 +1148,12 @@ export default function GitRepoSelector({
         branchName: currentBranchName,
         message: initialMessage,
         attachmentPaths: [...attachments, ...prefilledAttachmentPaths],
-        agentProvider: selectedAgent,
-        model: selectedModel,
+        agentProvider: 'codex',
+        model: '',
         timestamp: new Date().toISOString(),
         title: messageTitle,
-        startupScript: repoStartupCommand,
-        devServerScript: repoDevServerCommand,
+        startupScript: startupScript,
+        devServerScript: devServerScript,
         sessionMode: sessionMode,
       };
 
@@ -1175,11 +1175,9 @@ export default function GitRepoSelector({
     setInitialMessage(draft.message);
     setAttachments(draft.attachmentPaths);
     setPrefilledAttachmentPaths([]);
-    setSelectedAgent(draft.agentProvider as SupportedAgentCli);
-    setSelectedModel(draft.model);
     setCurrentBranchName(draft.branchName);
-    setRepoStartupCommand(draft.startupScript || DEFAULT_REPO_STARTUP_COMMAND);
-    setRepoDevServerCommand(draft.devServerScript || DEFAULT_REPO_DEV_SERVER_COMMAND);
+    setStartupScript(draft.startupScript || '');
+    setDevServerScript(draft.devServerScript || '');
     setSessionMode(draft.sessionMode || 'fast');
 
     // delete draft after opening

@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/git';
 import { cloneRemoteRepository, resolveRepositoryByName } from '@/app/actions/repository';
 import { createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
+import { deleteDraft, listDrafts, saveDraft, DraftMetadata } from '@/app/actions/draft';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { listAgentApiCredentials, listCredentials } from '@/app/actions/credentials';
 import type { Credential } from '@/lib/credentials';
@@ -117,6 +118,8 @@ export default function GitRepoSelector({
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
   const [existingSessions, setExistingSessions] = useState<SessionMetadata[]>([]);
   const [allSessions, setAllSessions] = useState<SessionMetadata[]>([]);
+  const [existingDrafts, setExistingDrafts] = useState<DraftMetadata[]>([]);
+  const [allDrafts, setAllDrafts] = useState<DraftMetadata[]>([]);
 
   const [startupScript, setStartupScript] = useState<string>('');
   const [devServerScript, setDevServerScript] = useState<string>('');
@@ -147,6 +150,8 @@ export default function GitRepoSelector({
   const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
   const loginTerminalRef = useRef<HTMLIFrameElement>(null);
 
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
   const notifySessionsChanged = useCallback(() => {
@@ -155,16 +160,20 @@ export default function GitRepoSelector({
 
   const refreshSessionData = useCallback(async (repo: string | null = selectedRepo) => {
     try {
-      const [allSess, repoSess] = await Promise.all([
+      const [allSess, repoSess, allD, repoD] = await Promise.all([
         listSessions(),
         repo ? listSessions(repo) : Promise.resolve([] as SessionMetadata[]),
+        listDrafts(),
+        repo ? listDrafts(repo) : Promise.resolve([] as DraftMetadata[]),
       ]);
       setAllSessions(allSess);
+      setAllDrafts(allD);
       if (repo) {
         setExistingSessions(repoSess);
+        setExistingDrafts(repoD);
       }
     } catch (e) {
-      console.error('Failed to refresh sessions', e);
+      console.error('Failed to refresh sessions and drafts', e);
     }
   }, [selectedRepo]);
 
@@ -249,13 +258,15 @@ export default function GitRepoSelector({
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [cfg, sessions, credentialsResult] = await Promise.all([
+        const [cfg, sessions, drafts, credentialsResult] = await Promise.all([
           getConfig(),
           listSessions(),
+          listDrafts(),
           listCredentials(),
         ]);
         setConfig(cfg);
         setAllSessions(sessions);
+        setAllDrafts(drafts);
         if (credentialsResult.success) {
           setCredentialOptions(credentialsResult.credentials);
         }
@@ -1124,6 +1135,64 @@ export default function GitRepoSelector({
     void startSession();
   };
 
+  const handleSaveDraft = async () => {
+    if (!selectedRepo) return;
+    setIsSavingDraft(true);
+    setError(null);
+    try {
+      const draftId = Date.now().toString();
+      const messageTitle = initialMessage.split('\n')[0].trim() || 'Untitled Draft';
+      const draft: DraftMetadata = {
+        id: draftId,
+        repoPath: selectedRepo,
+        branchName: currentBranchName,
+        message: initialMessage,
+        attachmentPaths: [...attachments, ...prefilledAttachmentPaths],
+        agentProvider: 'codex',
+        model: '',
+        timestamp: new Date().toISOString(),
+        title: messageTitle,
+        startupScript: startupScript,
+        devServerScript: devServerScript,
+        sessionMode: sessionMode,
+      };
+
+      const result = await saveDraft(draft);
+      if (result.success) {
+        await refreshSessionData(selectedRepo);
+      } else {
+        setError(result.error || 'Failed to save draft');
+      }
+    } catch (e) {
+      console.error(e);
+      setError('Failed to save draft');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleOpenDraft = async (draft: DraftMetadata) => {
+    setInitialMessage(draft.message);
+    setAttachments(draft.attachmentPaths);
+    setPrefilledAttachmentPaths([]);
+    setCurrentBranchName(draft.branchName);
+    setStartupScript(draft.startupScript || '');
+    setDevServerScript(draft.devServerScript || '');
+    setSessionMode(draft.sessionMode || 'fast');
+
+    // delete draft after opening
+    await handleDeleteDraft(draft.id);
+  };
+
+  const handleDeleteDraft = async (draftId: string) => {
+    try {
+      await deleteDraft(draftId);
+      await refreshSessionData(selectedRepo);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const dismissLoginModal = useCallback(() => {
     setIsLoginModalOpen(false);
     setLoginAgentCli(null);
@@ -1229,6 +1298,14 @@ export default function GitRepoSelector({
     }
     return counts;
   }, [allSessions]);
+
+  const draftCountByRepo = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const draft of allDrafts) {
+      counts.set(draft.repoPath, (counts.get(draft.repoPath) ?? 0) + 1);
+    }
+    return counts;
+  }, [allDrafts]);
 
   const recentRepos = useMemo(() => config?.recentRepos ?? [], [config?.recentRepos]);
   const filteredRecentRepos = useMemo(() => {
@@ -1365,6 +1442,7 @@ export default function GitRepoSelector({
                 {filteredRecentRepos.map((repo) => {
                   const credentialLabel = getRepoCredentialLabel(repo);
                   const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
+                  const draftCount = draftCountByRepo.get(repo) ?? 0;
                   const cardGradient = getStableRepoCardGradient(getBaseName(repo));
 
                   return (
@@ -1390,18 +1468,29 @@ export default function GitRepoSelector({
                         <div className="absolute inset-0 bg-white/38 dark:bg-[#141a25]/58" />
                         <div className="repo-card-tilt-content relative flex h-full flex-col justify-between p-5">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="relative">
+                            <div className="relative flex items-center">
                               <div className="repo-card-tilt-icon flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#1e2532] dark:text-slate-200">
                                 <FolderGit2 className="h-5 w-5" />
                               </div>
-                              {runningSessionCount > 0 && (
-                                <span
-                                  className="absolute -right-2 -top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-white shadow-sm"
-                                  title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
-                                >
-                                  {runningSessionCount}
-                                </span>
-                              )}
+                              <div className="absolute -top-2 -right-4 flex gap-1 z-10">
+                                {draftCount > 0 && (
+                                  <span
+                                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[11px] font-bold text-white shadow-sm border-2 border-white dark:border-[#141a25]"
+                                    title={`${draftCount} draft${draftCount === 1 ? '' : 's'}`}
+                                  >
+                                    {draftCount}
+                                  </span>
+                                )}
+                                {runningSessionCount > 0 && (
+                                  <span
+                                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-white shadow-sm border-2 border-white dark:border-[#141a25]"
+                                    title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
+                                    style={draftCount > 0 ? { marginLeft: "-0.5rem" } : {}}
+                                  >
+                                    {runningSessionCount}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -1848,6 +1937,54 @@ export default function GitRepoSelector({
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+                <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Drafts</h3>
+                <div className="space-y-2">
+                  {existingDrafts.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                      No drafts for this repository.
+                    </div>
+                  )}
+
+                  {existingDrafts.map((draft) => (
+                    <div
+                      key={draft.id}
+                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
+                    >
+                      <div
+                        className={`h-2 w-2 flex-shrink-0 rounded-full bg-blue-500`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{draft.title}</p>
+                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {getBaseName(draft.repoPath)} • {draft.agentProvider}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+                          title="Open Draft"
+                          onClick={() => handleOpenDraft(draft)}
+                          disabled={loading || isSavingDraft}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
+                          title="Delete Draft"
+                          onClick={() => handleDeleteDraft(draft.id)}
+                          disabled={loading || isSavingDraft}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
                 <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Ongoing Tasks</h3>
                 <div className="space-y-2">
                   {existingSessions.length === 0 && (
@@ -2017,9 +2154,17 @@ export default function GitRepoSelector({
                   </span>
                   <button
                     type="button"
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-200 px-5 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={handleSaveDraft}
+                    disabled={loading || isSavingDraft}
+                  >
+                    {isSavingDraft ? <span className="loading loading-spinner loading-xs"></span> : 'Save Draft'}
+                  </button>
+                  <button
+                    type="button"
                     className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
                     onClick={handleStartSession}
-                    disabled={loading}
+                    disabled={loading || isSavingDraft}
                   >
                     {loading ? <span className="loading loading-spinner loading-xs"></span> : 'Create New Task'}
                   </button>

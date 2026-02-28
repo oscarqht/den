@@ -116,3 +116,18 @@ button {
   transform: translateZ(28px);
   box-shadow: 0 15px 35px rgba(15, 23, 42, 0.16);
 }
+
+.agent-activity-panel {
+  container-type: inline-size;
+  container-name: agent-activity-panel;
+}
+
+.agent-activity-action-label {
+  display: none;
+}
+
+@container agent-activity-panel (min-width: 551px) {
+  .agent-activity-action-label {
+    display: inline;
+  }
+}

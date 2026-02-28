@@ -1819,54 +1819,6 @@ export default function GitRepoSelector({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-6 lg:col-span-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
-                <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Drafts</h3>
-                <div className="space-y-2">
-                  {existingDrafts.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
-                      No drafts for this repository.
-                    </div>
-                  )}
-
-                  {existingDrafts.map((draft) => (
-                    <div
-                      key={draft.id}
-                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
-                    >
-                      <div
-                        className={`h-2 w-2 flex-shrink-0 rounded-full bg-blue-500`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{draft.title}</p>
-                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                          {getBaseName(draft.repoPath)} • {draft.agentProvider}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
-                          title="Open Draft"
-                          onClick={() => handleOpenDraft(draft)}
-                          disabled={loading || isSavingDraft}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
-                          title="Delete Draft"
-                          onClick={() => handleDeleteDraft(draft.id)}
-                          disabled={loading || isSavingDraft}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
                 <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                   <FolderGit2 className="h-5 w-5 text-primary" />
                   Context Setup
@@ -1983,6 +1935,54 @@ export default function GitRepoSelector({
 
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+                <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Drafts</h3>
+                <div className="space-y-2">
+                  {existingDrafts.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                      No drafts for this repository.
+                    </div>
+                  )}
+
+                  {existingDrafts.map((draft) => (
+                    <div
+                      key={draft.id}
+                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
+                    >
+                      <div
+                        className={`h-2 w-2 flex-shrink-0 rounded-full bg-blue-500`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{draft.title}</p>
+                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {getBaseName(draft.repoPath)} • {draft.agentProvider}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+                          title="Open Draft"
+                          onClick={() => handleOpenDraft(draft)}
+                          disabled={loading || isSavingDraft}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
+                          title="Delete Draft"
+                          onClick={() => handleDeleteDraft(draft.id)}
+                          disabled={loading || isSavingDraft}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

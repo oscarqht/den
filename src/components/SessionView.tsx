@@ -1638,7 +1638,24 @@ export function SessionView({
                         const existingCustomKeyEventHandler = term.customKeyEventHandler;
                         term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
                             if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
-                                term.paste('\x15');
+                                const coreService = term._core?.coreService;
+                                if (coreService && typeof coreService.triggerDataEvent === 'function') {
+                                    coreService.triggerDataEvent('\x15', true);
+                                } else {
+                                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                                    if (textarea) {
+                                        textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            key: 'u',
+                                            keyCode: 85,
+                                            ctrlKey: true,
+                                            view: win
+                                        }));
+                                    } else {
+                                        term.paste('\x15');
+                                    }
+                                }
                                 return false;
                             }
                             if (typeof existingCustomKeyEventHandler === 'function') {
@@ -1653,7 +1670,24 @@ export function SessionView({
                         const existingCustomKeyEventHandler = term.customKeyEventHandler;
                         term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
                             if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
-                                term.paste('\x15');
+                                const coreService = term._core?.coreService;
+                                if (coreService && typeof coreService.triggerDataEvent === 'function') {
+                                    coreService.triggerDataEvent('\x15', true);
+                                } else {
+                                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                                    if (textarea) {
+                                        textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            key: 'u',
+                                            keyCode: 85,
+                                            ctrlKey: true,
+                                            view: win
+                                        }));
+                                    } else {
+                                        term.paste('\x15');
+                                    }
+                                }
                                 return false;
                             }
                             if (typeof existingCustomKeyEventHandler === 'function') {

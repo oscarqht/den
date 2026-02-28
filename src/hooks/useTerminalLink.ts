@@ -24,6 +24,9 @@ export type TerminalWindow = Window & {
             _linkProviderService?: {
                 linkProviders?: Map<number, TerminalLinkProvider>;
             };
+            coreService?: {
+                triggerDataEvent?: (data: string, wasUserInput?: boolean) => void;
+            };
         };
     };
 };

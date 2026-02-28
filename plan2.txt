@@ -1,0 +1,4 @@
+Wait, the prompt says "clear all user's input". Ctrl+U clears to the beginning of the line, which works. Alternatively, `\x1b[2K\r` (clear line) could be sent, but that just clears the terminal visually, it doesn't clear the readline buffer in the shell running inside the terminal.
+So sending `Ctrl+U` (`\x15`) is the way to clear input in bash/zsh. Or `Ctrl+C` (`\x03`).
+Let's just use `\x15`.
+Cmd+Delete shortcut check: `event.type === 'keydown'` and `event.metaKey` and `event.key === 'Backspace'` (Cmd+Backspace on Mac is labeled Delete on the keycap, so Backspace in KeyboardEvent). Wait, Cmd+Delete on mac is `event.metaKey && event.key === 'Backspace'`. If it's the actual Delete key, `event.key === 'Delete'`. I'll handle both.

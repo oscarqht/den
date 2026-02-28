@@ -6,6 +6,8 @@ export type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
         scrollToBottom?: () => void;
+        attachCustomKeyEventHandler?: (customKeyEventHandler: (event: KeyboardEvent) => boolean) => void;
+        customKeyEventHandler?: (event: KeyboardEvent) => boolean;
         buffer?: {
             active?: {
                 baseY: number;
@@ -21,6 +23,9 @@ export type TerminalWindow = Window & {
         _core?: {
             _linkProviderService?: {
                 linkProviders?: Map<number, TerminalLinkProvider>;
+            };
+            coreService?: {
+                triggerDataEvent?: (data: string, wasUserInput?: boolean) => void;
             };
         };
     };

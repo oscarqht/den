@@ -1,0 +1,16 @@
+Let's see if xterm.js supports `customKeyEventHandler` as a property. Yes, usually it's internal though (`_customKeyEventHandler`).
+If not, we just override it and don't care about `existingCustomKeyEventHandler` because usually we don't have one set by default ttyd.
+Let's create the patch for `src/hooks/useTerminalLink.ts`.
+```typescript
+<<<<<<< SEARCH
+        paste: (text: string) => void;
+        scrollToBottom?: () => void;
+        buffer?: {
+=======
+        paste: (text: string) => void;
+        scrollToBottom?: () => void;
+        attachCustomKeyEventHandler?: (customKeyEventHandler: (event: KeyboardEvent) => boolean) => void;
+        customKeyEventHandler?: (event: KeyboardEvent) => boolean;
+        buffer?: {
+>>>>>>> REPLACE
+```

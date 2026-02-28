@@ -1,0 +1,14 @@
+Let's check `src/hooks/useTerminalLink.ts` to see what types are available.
+```typescript
+        attachCustomKeyEventHandler?: (customKeyEventHandler: (event: KeyboardEvent) => boolean) => void;
+```
+And check if it's already there. Nope.
+I'll add it there.
+And in `src/components/SessionView.tsx`, inside `handleIframeLoad` and `handleTerminalLoad`, I will attach the custom key event handler.
+
+Wait, `term.paste('\x15')` might just literally paste `\x15`. xterm.js usually allows sending data using `term.coreService.triggerDataEvent` or something.
+But actually, the shell interprets `\x15` as `Ctrl+U`. So pasting it to the server will send `\x15` over the network, and the pty will echo the backspaces or clearing escape sequences.
+
+Wait, what if the user hits `Cmd+Backspace` on Mac? The key name is `'Backspace'`.
+If they hit `Cmd+Delete` (forward delete, if they have the key), it's `'Delete'`.
+So checking `e.key === 'Backspace' || e.key === 'Delete'` with `e.metaKey === true` is correct.

@@ -1633,6 +1633,70 @@ export function SessionView({
                         modifierOpenBehavior: 'new_tab',
                     });
 
+                    // Clear user input on Cmd+Delete
+                    if (typeof term.attachCustomKeyEventHandler === 'function') {
+                        const existingCustomKeyEventHandler = term.customKeyEventHandler;
+                        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+                            if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
+                                const coreService = term._core?.coreService;
+                                if (coreService && typeof coreService.triggerDataEvent === 'function') {
+                                    coreService.triggerDataEvent('\x15', true);
+                                } else {
+                                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                                    if (textarea) {
+                                        textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            key: 'u',
+                                            keyCode: 85,
+                                            ctrlKey: true,
+                                            view: win
+                                        }));
+                                    } else {
+                                        term.paste('\x15');
+                                    }
+                                }
+                                return false;
+                            }
+                            if (typeof existingCustomKeyEventHandler === 'function') {
+                                return existingCustomKeyEventHandler(event);
+                            }
+                            return true;
+                        });
+                    }
+
+                    // Clear user input on Cmd+Delete
+                    if (typeof term.attachCustomKeyEventHandler === 'function') {
+                        const existingCustomKeyEventHandler = term.customKeyEventHandler;
+                        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+                            if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
+                                const coreService = term._core?.coreService;
+                                if (coreService && typeof coreService.triggerDataEvent === 'function') {
+                                    coreService.triggerDataEvent('\x15', true);
+                                } else {
+                                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                                    if (textarea) {
+                                        textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            key: 'u',
+                                            keyCode: 85,
+                                            ctrlKey: true,
+                                            view: win
+                                        }));
+                                    } else {
+                                        term.paste('\x15');
+                                    }
+                                }
+                                return false;
+                            }
+                            if (typeof existingCustomKeyEventHandler === 'function') {
+                                return existingCustomKeyEventHandler(event);
+                            }
+                            return true;
+                        });
+                    }
+
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
                         term.options.theme = {

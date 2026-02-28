@@ -1,0 +1,1 @@
+console.log("To clear user's input, we want Cmd+Delete. On Mac, Cmd is Meta. Backspace/Delete is usually key 'Backspace' or 'Delete'. We can use `term.attachCustomKeyEventHandler` if term is xterm.js instance.")

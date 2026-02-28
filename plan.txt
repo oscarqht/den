@@ -1,0 +1,4 @@
+Plan:
+1. In `src/hooks/useTerminalLink.ts`, add `attachCustomKeyEventHandler` to `TerminalWindow['term']` type.
+2. In `src/components/SessionView.tsx`, after `const term = win.term;` in `handleIframeLoad`, attach a custom key event handler for Cmd+Delete (Meta+Backspace).
+3. The custom key event handler will send the Ctrl+U character (`\x15` or `\u0015`) to the terminal to clear the line (this is standard in readline and bash). Wait, Cmd+Delete in mac usually clears to the beginning of the line, which corresponds to `Ctrl+U`. Alternatively it could send `Ctrl+C` but that sends `SIGINT`. `Ctrl+U` (`\x15`) is the safest way to "clear all user's input" on the current line in a terminal.

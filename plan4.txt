@@ -1,0 +1,15 @@
+Wait, the easiest way to send Ctrl+U is `term.paste('\x15')`.
+Let's see if xterm.js supports `attachCustomKeyEventHandler`. Yes, `term.attachCustomKeyEventHandler((e) => { ... })` is the standard API.
+Let's add it to both Agent and Terminal windows.
+```typescript
+                    const term = win.term;
+
+                    term.attachCustomKeyEventHandler?.((e) => {
+                        if (e.type === 'keydown' && e.metaKey && (e.key === 'Backspace' || e.key === 'Delete')) {
+                            // Send Ctrl+U (clear line)
+                            term.paste('\x15');
+                            return false; // prevent default handling
+                        }
+                        return true;
+                    });
+```

@@ -1,0 +1,24 @@
+Let's see the code of SessionView.tsx line 1403 (for agent terminal).
+
+```typescript
+                    const term = win.term;
+                    attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef, {
+                        directOpenBehavior: 'new_tab',
+                        modifierOpenBehavior: 'new_tab',
+                    });
+
+                    // Set Cmd+Delete custom key event handler to clear user's input
+                    if (typeof term.attachCustomKeyEventHandler === 'function') {
+                        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+                            if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
+                                term.paste('\x15');
+                                return false;
+                            }
+                            return true;
+                        });
+                    }
+```
+
+Wait, `term.attachCustomKeyEventHandler` only allows setting one handler. If ttyd or something else sets it, this would overwrite it. Is there a better way? `iframe.contentWindow.addEventListener('keydown', ...)` might work, but xterm stops propagation. So `attachCustomKeyEventHandler` is exactly meant for this. If multiple are needed, people usually wrap the existing one, but `attachCustomKeyEventHandler` isn't a getter. Let's assume we can just overwrite or we don't care because we only need this one.
+Actually, in xterm.js, `attachCustomKeyEventHandler` is literally just an assignment `this.customKeyEventHandler = handler;`.
+Let's just use it.

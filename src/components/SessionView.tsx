@@ -52,6 +52,52 @@ const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
+const TERMINAL_THEME_LIGHT = {
+    background: '#ffffff',
+    foreground: '#0f172a', // slate-900
+    cursor: '#0f172a',
+    selectionBackground: 'rgba(59, 130, 246, 0.4)',
+    black: '#000000',
+    red: '#cd3131',
+    green: '#00BC00',
+    yellow: '#949800',
+    blue: '#0451a5',
+    magenta: '#bc05bc',
+    cyan: '#0598bc',
+    white: '#555555',
+    brightBlack: '#666666',
+    brightRed: '#cd3131',
+    brightGreen: '#14CE14',
+    brightYellow: '#b5ba00',
+    brightBlue: '#0451a5',
+    brightMagenta: '#bc05bc',
+    brightCyan: '#0598bc',
+    brightWhite: '#a5a5a5'
+};
+
+const TERMINAL_THEME_DARK = {
+    background: '#0d1117',
+    foreground: '#e6edf3',
+    cursor: '#e6edf3',
+    selectionBackground: 'rgba(59, 130, 246, 0.4)',
+    black: '#484f58',
+    red: '#ff7b72',
+    green: '#3fb950',
+    yellow: '#d29922',
+    blue: '#58a6ff',
+    magenta: '#bc8cff',
+    cyan: '#39c5cf',
+    white: '#b1bac4',
+    brightBlack: '#6e7681',
+    brightRed: '#ffa198',
+    brightGreen: '#56d364',
+    brightYellow: '#e3b341',
+    brightBlue: '#79c0ff',
+    brightMagenta: '#d2a8ff',
+    brightCyan: '#56d4dd',
+    brightWhite: '#ffffff'
+};
+
 const PLAN_MODE_STARTUP_INSTRUCTION =
     'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
 const AUTO_COMMIT_INSTRUCTION =
@@ -544,6 +590,47 @@ export function SessionView({
     const [collapsedRightPanelWidth, setCollapsedRightPanelWidth] = useState(DEFAULT_COLLAPSED_RIGHT_PANEL_WIDTH);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(false);
+
+    const [isDarkMode, setIsDarkMode] = useState(false);
+
+    useEffect(() => {
+        // Initial check
+        setIsDarkMode(document.documentElement.classList.contains('dark'));
+
+        // Observer for class changes on html element
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.attributeName === 'class') {
+                    setIsDarkMode(document.documentElement.classList.contains('dark'));
+                }
+            });
+        });
+
+        observer.observe(document.documentElement, { attributes: true });
+
+        return () => observer.disconnect();
+    }, []);
+
+    // Apply terminal theme based on dark mode state
+    useEffect(() => {
+        const applyTheme = (iframe: HTMLIFrameElement | null) => {
+            if (!iframe) return;
+            try {
+                const win = iframe.contentWindow as TerminalWindow | null;
+                if (win && win.term) {
+                    win.term.options.theme = {
+                        ...(win.term.options.theme || {}),
+                        ...(isDarkMode ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT)
+                    };
+                }
+            } catch (e) {
+                // Ignore transient iframe access errors
+            }
+        };
+
+        applyTheme(iframeRef.current);
+        applyTheme(terminalRef.current);
+    }, [isDarkMode]);
 
     // Terminal resize state
     const [terminalSize, setTerminalSize] = useState({ width: 460, height: 320 });
@@ -1550,7 +1637,7 @@ export function SessionView({
                     try {
                         term.options.theme = {
                             ...(term.options.theme || {}),
-                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                            ...(isDarkMode ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT)
                         };
                     } catch { /* ignore if API unavailable */ }
 
@@ -1777,7 +1864,7 @@ export function SessionView({
                     try {
                         term.options.theme = {
                             ...(term.options.theme || {}),
-                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                            ...(isDarkMode ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT)
                         };
                     } catch { /* ignore if API unavailable */ }
 
@@ -2123,7 +2210,7 @@ export function SessionView({
                     <iframe
                         ref={iframeRef}
                         src={agentTerminalSrc}
-                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                        className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleIframeLoad}
                     />
@@ -2327,7 +2414,7 @@ export function SessionView({
                                 <iframe
                                     ref={terminalRef}
                                     src={floatingTerminalSrc}
-                                    className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                    className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                                     allow="clipboard-read; clipboard-write"
                                     onLoad={handleTerminalLoad}
                                 />

@@ -2197,7 +2197,7 @@ export function SessionView({
                 className={`relative flex min-h-0 flex-1 overflow-x-hidden bg-[#f6f6f8] p-3 dark:bg-[#0d1117] ${isRightPanelCollapsed ? 'gap-0' : 'gap-3'}`}
             >
                 <div
-                    className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-[width] duration-300 ease-in-out dark:border-[#30363d] dark:bg-[#161b22]"
+                    className="agent-activity-panel flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-[width] duration-300 ease-in-out dark:border-[#30363d] dark:bg-[#161b22]"
                     style={{ width: isRightPanelCollapsed ? '100%' : `${agentPaneRatio * 100}%` }}
                 >
                     <div className="flex h-9 items-center justify-between gap-3 border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
@@ -2221,9 +2221,10 @@ export function SessionView({
                                     className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
                                     onClick={handleOpenIde}
                                     title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
+                                    aria-label="Open in IDE"
                                 >
                                     <ExternalLink className="h-3 w-3" />
-                                    <span className="hidden min-[1700px]:inline">Open in IDE</span>
+                                    <span className="agent-activity-action-label">Open in IDE</span>
                                 </button>
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
@@ -2232,9 +2233,10 @@ export function SessionView({
                                     onClick={handleShowDiffWithTrident}
                                     disabled={!worktree || !branch}
                                     title="Open this worktree and branch in Trident"
+                                    aria-label="Diff"
                                 >
                                     <GitBranch className="h-3 w-3" />
-                                    <span className="hidden min-[1700px]:inline">Diff</span>
+                                    <span className="agent-activity-action-label">Diff</span>
                                 </button>
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
@@ -2243,9 +2245,10 @@ export function SessionView({
                                     onClick={() => setIsFileBrowserOpen(true)}
                                     disabled={isInsertingFilePaths}
                                     title="Browse files and insert absolute paths into the agent input"
+                                    aria-label="Add files"
                                 >
                                     {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="h-3 w-3" />}
-                                    <span className="hidden min-[1700px]:inline">Add Files</span>
+                                    <span className="agent-activity-action-label">Add Files</span>
                                 </button>
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">

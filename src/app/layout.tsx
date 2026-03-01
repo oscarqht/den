@@ -79,6 +79,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { Providers } from './providers';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -87,6 +89,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/iconoir-icons/iconoir@main/css/iconoir.css" />
         <script
           dangerouslySetInnerHTML={{
             __html: themeBootstrapScript,
@@ -96,7 +99,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

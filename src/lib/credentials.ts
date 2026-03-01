@@ -472,3 +472,101 @@ export async function deleteCredential(id: string): Promise<{ success: boolean; 
 
   return { success: true };
 }
+
+export async function updateCredential(id: string, token: string): Promise<{ success: boolean; credential?: Credential; error?: string }> {
+  const trimmedToken = token.trim();
+  if (!trimmedToken) {
+    return { success: false, error: 'Token is required.' };
+  }
+
+  let keytar: KeytarModule;
+  try {
+    keytar = await requireKeytar();
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+
+  const metadata = await readCredentialsMetadata();
+  const index = metadata.findIndex((c) => c.id === id);
+
+  if (index === -1) {
+    return { success: false, error: 'Credential not found' };
+  }
+
+  const existing = metadata[index];
+
+  // Verify the new token
+  let verification;
+  if (existing.type === 'github') {
+    verification = await verifyGitHubToken(trimmedToken);
+  } else {
+    verification = await verifyGitLabToken(existing.serverUrl || 'https://gitlab.com', trimmedToken);
+  }
+
+  if (!verification.valid || !verification.username) {
+    return { success: false, error: verification.error || 'Failed to verify token' };
+  }
+
+  // Update token in keytar
+  await keytar.setPassword(SERVICE_NAME, getKeytarAccountForMetadata(existing), trimmedToken);
+
+  // Update metadata
+  const now = new Date().toISOString();
+  metadata[index] = {
+    ...existing,
+    username: verification.username,
+    updatedAt: now,
+  };
+  await writeCredentialsMetadata(metadata);
+
+  return {
+    success: true,
+    credential: toCredential(metadata[index]),
+  };
+}
+
+export async function findCredentialForRemote(remoteUrl: string): Promise<{ credential: Credential; token: string } | null> {
+  const credentials = await getAllCredentials();
+
+  // Check if it's a GitHub URL
+  if (remoteUrl.includes('github.com')) {
+    const githubCred = credentials.find((c) => c.type === 'github');
+    if (githubCred) {
+      const token = await getCredentialToken(githubCred.id);
+      if (token) {
+        return { credential: githubCred, token };
+      }
+    }
+  }
+
+  // Check GitLab servers
+  for (const cred of credentials) {
+    if (cred.type === 'gitlab') {
+      // Extract host from remote URL
+      let host: string;
+      try {
+        if (remoteUrl.startsWith('git@')) {
+          // SSH URL: git@gitlab.com:user/repo.git
+          host = remoteUrl.split('@')[1].split(':')[0];
+        } else {
+          // HTTP URL
+          host = new URL(remoteUrl).host;
+        }
+      } catch {
+        continue;
+      }
+
+      // Check if the credential's server URL matches
+      const credHost = new URL(cred.serverUrl).host;
+      if (host === credHost) {
+        const token = await getCredentialToken(cred.id);
+        if (token) {
+          return { credential: cred, token };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+

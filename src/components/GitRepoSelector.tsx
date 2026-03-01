@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search, Monitor, Sun, Moon } from 'lucide-react';
+import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search, Monitor, Sun, Moon, GitBranch as GitBranchIcon } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -1370,48 +1370,48 @@ export default function GitRepoSelector({
       {mode === 'home' && (
         <div className="w-full max-w-7xl">
           <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white/82 px-4 py-4 shadow-[0_14px_36px_-24px_rgba(15,23,42,0.4)] backdrop-blur-md transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-slate-700/75 dark:bg-[#131b2b]/72 dark:shadow-[0_18px_44px_-30px_rgba(0,0,0,0.75)]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
-                  <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Viba</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">AI Coding Agent Dashboard</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
+                <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
               </div>
+              <div>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Viba</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">AI Coding Agent Dashboard</p>
+              </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
-                  <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                  <input
-                    type="text"
-                    className="grow text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                    placeholder="Search repositories..."
-                    value={homeSearchQuery}
-                    onChange={(event) => setHomeSearchQuery(event.target.value)}
-                  />
-                </label>
-                <button
-                  className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-                  onClick={() => router.push('/credentials')}
-                  title="Manage GitHub/GitLab credentials"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  Credentials
-                </button>
-                <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
-                  <CloudDownload className="h-4 w-4" />
-                  New Repository
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-slate-700/60 dark:bg-[#1e2532] dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
-                  onClick={handleCycleThemeMode}
-                  title={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
-                  aria-label={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
-                >
-                  <ThemeModeIcon className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
+                <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  className="grow text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                  placeholder="Search repositories..."
+                  value={homeSearchQuery}
+                  onChange={(event) => setHomeSearchQuery(event.target.value)}
+                />
+              </label>
+              <button
+                className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                onClick={() => router.push('/credentials')}
+                title="Manage GitHub/GitLab credentials"
+              >
+                <KeyRound className="h-4 w-4" />
+                Credentials
+              </button>
+              <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
+                <CloudDownload className="h-4 w-4" />
+                New Repository
+              </button>
+              <button
+                className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-slate-700/60 dark:bg-[#1e2532] dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
+                onClick={handleCycleThemeMode}
+                title={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
+                aria-label={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
+              >
+                <ThemeModeIcon className="h-4 w-4" />
+              </button>
+            </div>
           </header>
 
           <div className="relative z-10 px-1 py-5 md:py-7">
@@ -1493,6 +1493,16 @@ export default function GitRepoSelector({
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(`/git?path=${encodeURIComponent(repo)}`);
+                                }}
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
+                                title="Open Git Workspace"
+                              >
+                                <GitBranchIcon className="h-3.5 w-3.5" />
+                              </button>
                               <button
                                 onClick={(event) => {
                                   void handleOpenRepoSettings(event, repo);
@@ -1999,9 +2009,8 @@ export default function GitRepoSelector({
                       className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
                     >
                       <div
-                        className={`h-2 w-2 flex-shrink-0 rounded-full ${
-                          deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'
-                        }`}
+                        className={`h-2 w-2 flex-shrink-0 rounded-full ${deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'
+                          }`}
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{session.title || session.sessionName}</p>
@@ -2072,11 +2081,10 @@ export default function GitRepoSelector({
                       {suggestionList.map((suggestion, idx) => (
                         <button
                           key={suggestion}
-                          className={`w-full truncate border-b border-slate-100 px-3 py-2 text-left text-xs last:border-0 ${
-                            idx === selectedIndex
+                          className={`w-full truncate border-b border-slate-100 px-3 py-2 text-left text-xs last:border-0 ${idx === selectedIndex
                               ? 'bg-primary text-white'
                               : 'text-slate-700 hover:bg-slate-50 dark:border-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-800/60'
-                          }`}
+                            }`}
                           onMouseDown={(event) => {
                             event.preventDefault();
                             handleSelectSuggestion(suggestion);

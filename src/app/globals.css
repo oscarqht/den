@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
+
 @plugin "daisyui" {
   exclude: radialprogress, properties;
 }
@@ -70,12 +71,10 @@ button {
   z-index: 25;
   transition: opacity 0.28s ease;
   mix-blend-mode: soft-light;
-  background: radial-gradient(
-    900px circle at var(--tilt-mouse-x) var(--tilt-mouse-y),
-    rgba(255, 255, 255, 0.68) 0%,
-    rgba(255, 255, 255, 0.22) 25%,
-    transparent 62%
-  );
+  background: radial-gradient(900px circle at var(--tilt-mouse-x) var(--tilt-mouse-y),
+      rgba(255, 255, 255, 0.68) 0%,
+      rgba(255, 255, 255, 0.22) 25%,
+      transparent 62%);
 }
 
 .repo-card-tilt::after {
@@ -91,16 +90,14 @@ button {
   filter: blur(3px);
   background-size: 240% 240%;
   background-position: var(--tilt-bg-pos-x) var(--tilt-bg-pos-y);
-  background-image: linear-gradient(
-    112deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0) 30%,
-    rgba(255, 255, 255, 0.5) 45%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.48) 55%,
-    rgba(255, 255, 255, 0) 70%,
-    transparent 100%
-  );
+  background-image: linear-gradient(112deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0) 30%,
+      rgba(255, 255, 255, 0.5) 45%,
+      rgba(255, 255, 255, 0.9) 50%,
+      rgba(255, 255, 255, 0.48) 55%,
+      rgba(255, 255, 255, 0) 70%,
+      transparent 100%);
 }
 
 .repo-card-tilt-wrapper:hover .repo-card-tilt::before,
@@ -130,4 +127,105 @@ button {
   .agent-activity-action-label {
     display: inline;
   }
+}
+
+/* Custom styles for React Diff Viewer to match original design */
+.diff-viewer-wrapper {
+  width: 100% !important;
+}
+
+/* Force diff-library layout elements to be full width */
+.diff-viewer-wrapper .diff-container,
+.diff-viewer-wrapper .diff-container div,
+.diff-viewer-wrapper .diff-container table,
+.diff-viewer-wrapper .diff-container tbody {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.diff-container {
+  font-size: 11px !important;
+  font-family: monospace !important;
+  width: 100% !important;
+}
+
+.diff-container .line,
+.diff-container .gutter,
+.diff-container pre {
+  line-height: 1.3 !important;
+}
+
+/* Force Equal Split View using Wrapper Class and Nth-Child */
+/* This is necessary because the library's fixed layout algorithm behaves unpredictably with width:auto */
+
+/* 1. Force fixed table layout */
+.diff-viewer-wrapper table.split-view {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+/* 2. Constrain Gutters (Columns 1 & 4) */
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(1),
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(4) {
+  width: 64px !important;
+  min-width: 64px !important;
+  white-space: nowrap !important;
+}
+
+/* 3. Constrain Markers (Columns 2 & 5) */
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(2),
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(5) {
+  width: 20px !important;
+  min-width: 20px !important;
+}
+
+/* 4. Force Content Columns (Columns 3 & 6) to be equal */
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(3),
+.diff-viewer-wrapper table.split-view tbody tr td:nth-child(6) {
+  width: auto !important;
+}
+
+/* 5. Force text wrapping in diff content to prevent overflow */
+.diff-viewer-wrapper td.content pre {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+/* Keep gutter line numbers on a single line (prevents 1694 -> 169 + 4 wrapping) */
+.diff-viewer-wrapper td.gutter pre.line-number {
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  overflow-wrap: normal !important;
+}
+
+/* Unified view: constrain table and allow content to wrap */
+.diff-viewer-wrapper table:not(.split-view) {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+}
+
+/* Unified view: Constrain gutter columns to not expand */
+.diff-viewer-wrapper table:not(.split-view) td.gutter {
+  width: 1% !important;
+  white-space: nowrap !important;
+}
+
+/* Unified view: Constrain marker column */
+.diff-viewer-wrapper table:not(.split-view) td.marker {
+  width: 1% !important;
+  white-space: nowrap !important;
+}
+
+/* Unified view: Content column - force it to constrain and wrap */
+.diff-viewer-wrapper table:not(.split-view) td.content {
+  width: 97% !important;
+  max-width: 0 !important;
+}
+
+.diff-viewer-wrapper table:not(.split-view) td.content pre {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
 }

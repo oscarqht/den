@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, unlink, access, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createGitLogOptions } from './git-log-options';
 
 const execFileAsync = promisify(execFile);
 
@@ -202,22 +203,7 @@ export class GitService {
 
   async getLog(limit: number = 100, options: { includeAll?: boolean } = {}): Promise<GitLog> {
     const { includeAll = true } = options;
-    const logOptions = {
-      // Keep refs stable regardless of user-level git config (e.g. log.decorate=full).
-      decorate: 'short',
-      maxCount: limit,
-      ...(includeAll ? { all: null } : {}),
-      format: {
-        hash: '%h',
-        parents: '%p',
-        date: '%ai',
-        message: '%s',
-        refs: '%d',
-        author_name: '%an',
-        author_email: '%ae',
-        body: '%b'
-      }
-    };
+    const logOptions = createGitLogOptions(limit, includeAll);
 
     // Custom format to ensure we get parents and refs correctly.
     const log = await this.git.log(logOptions);

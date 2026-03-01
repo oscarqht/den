@@ -98,7 +98,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
     >
       <div className="space-y-4 py-4">
         <div className={cn("px-3 py-2", isCollapsed && "px-2")}>
-          <div className={cn("mb-6 flex items-center", isCollapsed ? "flex-col gap-2 px-0" : "justify-between px-4")}>
+          <div className={cn("mb-6 flex items-center", isCollapsed ? "flex-col gap-2 px-0" : "justify-between")}>
             {!isCollapsed && (
               <div className="flex min-w-0 items-center gap-2 text-gray-900 dark:text-gray-100">
                 <Link

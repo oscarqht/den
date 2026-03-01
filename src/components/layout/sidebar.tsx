@@ -100,15 +100,19 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
         <div className={cn("px-3 py-2", isCollapsed && "px-2")}>
           <div className={cn("mb-6 flex items-center", isCollapsed ? "flex-col gap-2 px-0" : "justify-between px-4")}>
             {!isCollapsed && (
-              <Link
-                href="/"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer text-gray-900 dark:text-gray-100 overflow-hidden"
-                title={repoDisplayName ? `${repoDisplayName} - Go to Home` : "Go to Home"}
-              >
-                <h2 className="text-lg font-bold tracking-tight truncate">
+              <div className="flex min-w-0 items-center gap-2 text-gray-900 dark:text-gray-100">
+                <Link
+                  href="/"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
+                  title={repoDisplayName ? `${repoDisplayName} - Go to Home` : "Go to Home"}
+                  aria-label="Go to Home"
+                >
+                  <i className="iconoir-arrow-left text-[16px]" aria-hidden="true" />
+                </Link>
+                <h2 className="text-lg font-bold tracking-tight truncate" title={repoDisplayName || "Trident"}>
                   {repoDisplayName || "Trident"}
                 </h2>
-              </Link>
+              </div>
             )}
             {isCollapsed && (
               <Link

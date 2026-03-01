@@ -81,13 +81,29 @@ function getParentPaths(filePath: string): string[] {
     return parentPaths;
 }
 
+function collectFilePaths(node: StatusFileTreeNode): string[] {
+    const filePaths: string[] = [];
+
+    node.children.forEach((child) => {
+        if (child.filePath) {
+            filePaths.push(child.filePath);
+        }
+
+        if (child.children.size > 0) {
+            filePaths.push(...collectFilePaths(child));
+        }
+    });
+
+    return filePaths;
+}
+
 function StatusFileTreeItem({
     node,
     selectedFile,
     expandedFolders,
     onToggleFolder,
     onSelectFile,
-    onActionFile,
+    onActionPaths,
     actionType,
     actionPending,
     depth = 0,
@@ -97,7 +113,7 @@ function StatusFileTreeItem({
     expandedFolders: Set<string>;
     onToggleFolder: (path: string) => void;
     onSelectFile: (path: string) => void;
-    onActionFile: (path: string) => Promise<void>;
+    onActionPaths: (paths: string[]) => Promise<void>;
     actionType: 'stage' | 'unstage';
     actionPending: boolean;
     depth?: number;
@@ -118,9 +134,10 @@ function StatusFileTreeItem({
 
                 if (isFolder) {
                     const isExpanded = expandedFolders.has(child.path);
+                    const filePaths = collectFilePaths(child);
 
                     return (
-                        <div key={child.path}>
+                        <div key={child.path} className="group">
                             <div
                                 className="flex items-center gap-1 px-2 py-1.5 text-xs rounded cursor-pointer text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors"
                                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
@@ -130,6 +147,28 @@ function StatusFileTreeItem({
                                 <span className="text-[10px] opacity-70">{isExpanded ? '▼' : '▶'}</span>
                                 <i className="iconoir-folder text-[14px] opacity-70" aria-hidden="true" />
                                 <span className="truncate flex-1">{child.name}</span>
+                                <button
+                                    className={cn(
+                                        'btn btn-ghost btn-xs btn-square opacity-0 group-hover:opacity-100 transition-opacity',
+                                        actionType === 'stage'
+                                            ? 'text-success hover:bg-success/10'
+                                            : 'text-error hover:bg-error/10'
+                                    )}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void onActionPaths(filePaths);
+                                    }}
+                                    disabled={actionPending || filePaths.length === 0}
+                                    title={actionType === 'stage' ? `Stage all in ${child.path}` : `Unstage all in ${child.path}`}
+                                >
+                                    <i
+                                        className={cn(
+                                            'text-[14px]',
+                                            actionType === 'stage' ? 'iconoir-plus-circle' : 'iconoir-minus-circle'
+                                        )}
+                                        aria-hidden="true"
+                                    />
+                                </button>
                             </div>
                             {isExpanded && (
                                 <StatusFileTreeItem
@@ -138,7 +177,7 @@ function StatusFileTreeItem({
                                     expandedFolders={expandedFolders}
                                     onToggleFolder={onToggleFolder}
                                     onSelectFile={onSelectFile}
-                                    onActionFile={onActionFile}
+                                    onActionPaths={onActionPaths}
                                     actionType={actionType}
                                     actionPending={actionPending}
                                     depth={depth + 1}
@@ -175,7 +214,7 @@ function StatusFileTreeItem({
                             )}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                void onActionFile(filePath);
+                                void onActionPaths([filePath]);
                             }}
                             disabled={actionPending}
                         >
@@ -334,12 +373,14 @@ export function StatusView({ repoPath }: { repoPath: string }) {
         });
     }, []);
 
-    const handleStage = async (file: string) => {
-        await action.mutateAsync({ repoPath, action: 'stage', data: { files: [file] } });
+    const handleStagePaths = async (paths: string[]) => {
+        if (paths.length === 0) return;
+        await action.mutateAsync({ repoPath, action: 'stage', data: { files: paths } });
     };
 
-    const handleUnstage = async (file: string) => {
-        await action.mutateAsync({ repoPath, action: 'unstage', data: { files: [file] } });
+    const handleUnstagePaths = async (paths: string[]) => {
+        if (paths.length === 0) return;
+        await action.mutateAsync({ repoPath, action: 'unstage', data: { files: paths } });
     };
 
     const handleStageAll = async () => {
@@ -498,7 +539,7 @@ export function StatusView({ repoPath }: { repoPath: string }) {
                                             expandedFolders={expandedChangeFolders}
                                             onToggleFolder={handleToggleChangeFolder}
                                             onSelectFile={setSelectedFile}
-                                            onActionFile={handleStage}
+                                            onActionPaths={handleStagePaths}
                                             actionType="stage"
                                             actionPending={action.isPending}
                                         />
@@ -522,7 +563,7 @@ export function StatusView({ repoPath }: { repoPath: string }) {
                                             expandedFolders={expandedStagedFolders}
                                             onToggleFolder={handleToggleStagedFolder}
                                             onSelectFile={setSelectedFile}
-                                            onActionFile={handleUnstage}
+                                            onActionPaths={handleUnstagePaths}
                                             actionType="unstage"
                                             actionPending={action.isPending}
                                         />

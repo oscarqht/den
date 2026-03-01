@@ -1,5 +1,0 @@
-I notice that memory states `node_modules` is absent from the project root (`/app`), preventing the execution of local binaries (e.g., `tsc`, `eslint`).
-I should just proceed with `pre_commit_instructions` since the changes are small and look solid.
-Wait, `pre_commit_instructions` might require me to run tests, I should check the memory about how to run tests.
-Memory: The `package.json` file includes a `test` script (`node --experimental-strip-types --test src/**/*.test.ts test/**/*.test.mjs`) to execute unit tests.
-I will run unit tests first.

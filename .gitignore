@@ -42,3 +42,5 @@ next-env.d.ts
 
 /verification
 verify_sessions.py
+/.artifacts
+/artifacts

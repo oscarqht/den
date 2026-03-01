@@ -68,11 +68,18 @@ type TerminalWindow = Window & {
   };
 };
 
+type PredefinedPrompt = {
+  id: string;
+  label: string;
+  content: string;
+};
+
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
   repoPath?: string | null;
   fromRepoName?: string | null;
   prefillFromSession?: string | null;
+  predefinedPrompts?: PredefinedPrompt[];
 };
 
 function deriveSessionTitleFromTaskDescription(taskDescription: string): string | undefined {
@@ -90,6 +97,7 @@ export default function GitRepoSelector({
   repoPath = null,
   fromRepoName = null,
   prefillFromSession = null,
+  predefinedPrompts = [],
 }: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
@@ -774,6 +782,13 @@ export default function GitRepoSelector({
     () => prefilledAttachmentPaths.map((attachmentPath) => getBaseName(attachmentPath)),
     [prefilledAttachmentPaths],
   );
+  const hasPredefinedPrompts = mode === 'new' && predefinedPrompts.length > 0;
+
+  const handleApplyPredefinedPrompt = useCallback((promptContent: string) => {
+    setInitialMessage(promptContent);
+    setCursorPosition(promptContent.length);
+    setShowSuggestions(false);
+  }, []);
 
   const updateSuggestions = (query: string, files: string[], currentAttachments: string[], carriedAttachments: string[]) => {
     const lowerQ = query.toLowerCase();
@@ -2063,10 +2078,34 @@ export default function GitRepoSelector({
 
             <div className="flex flex-col lg:col-span-8">
               <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
-                <label className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
-                  <Bot className="h-5 w-5 text-primary" />
-                  Task Description
-                </label>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
+                    <Bot className="h-5 w-5 text-primary" />
+                    Task Description
+                  </label>
+                  {hasPredefinedPrompts && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {predefinedPrompts.map((prompt) => {
+                        const isActivePrompt = initialMessage === prompt.content;
+                        return (
+                          <button
+                            key={prompt.id}
+                            type="button"
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${isActivePrompt
+                                ? 'border-primary bg-primary/10 text-primary dark:border-primary dark:bg-primary/20 dark:text-blue-300'
+                                : 'border-slate-300 bg-white text-slate-700 hover:border-primary hover:text-primary dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-primary dark:hover:text-blue-300'
+                              }`}
+                            onClick={() => handleApplyPredefinedPrompt(prompt.content)}
+                            disabled={loading}
+                            aria-label={`Fill task description with ${prompt.label} prompt`}
+                          >
+                            {prompt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 <div className="group relative mb-4 flex h-[360px] flex-grow flex-col md:h-[420px]">
                   <textarea

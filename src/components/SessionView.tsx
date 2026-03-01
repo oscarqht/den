@@ -50,7 +50,6 @@ const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'viba-right-panel-collapsed';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
-const DEFAULT_COLLAPSED_RIGHT_PANEL_WIDTH = 560;
 const TERMINAL_HEADER_HEIGHT = 36;
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
@@ -272,7 +271,6 @@ export function SessionView({
     const previewIframeRef = useRef<HTMLIFrameElement>(null);
     const previewAddressInputRef = useRef<HTMLInputElement>(null);
     const splitContainerRef = useRef<HTMLDivElement>(null);
-    const rightPanelContainerRef = useRef<HTMLDivElement>(null);
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
@@ -590,8 +588,7 @@ export function SessionView({
     const [isRepoViewActive, setIsRepoViewActive] = useState(false);
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
-    const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
-    const [collapsedRightPanelWidth, setCollapsedRightPanelWidth] = useState(DEFAULT_COLLAPSED_RIGHT_PANEL_WIDTH);
+    const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(true);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(false);
 
@@ -667,7 +664,8 @@ export function SessionView({
             }
         }
 
-        setIsRightPanelCollapsed(localStorage.getItem(RIGHT_PANEL_COLLAPSED_STORAGE_KEY) === '1');
+        // Start with the right panel hidden on each session load.
+        setIsRightPanelCollapsed(true);
         setIsLoaded(true);
     }, []);
 
@@ -730,27 +728,6 @@ export function SessionView({
         setIsSplitResizing(false);
     }, [isRightPanelCollapsed]);
 
-    useEffect(() => {
-        if (isRightPanelCollapsed) return;
-
-        const updateWidth = () => {
-            const nextWidth = rightPanelContainerRef.current?.getBoundingClientRect().width;
-            if (!nextWidth || !Number.isFinite(nextWidth)) return;
-            const normalized = Math.max(360, Math.round(nextWidth));
-            setCollapsedRightPanelWidth((current) => (current === normalized ? current : normalized));
-        };
-
-        updateWidth();
-
-        if (typeof ResizeObserver === 'undefined' || !rightPanelContainerRef.current) {
-            return;
-        }
-
-        const observer = new ResizeObserver(updateWidth);
-        observer.observe(rightPanelContainerRef.current);
-        return () => observer.disconnect();
-    }, [isRightPanelCollapsed]);
-
     const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isRightPanelCollapsed) return;
         e.preventDefault();
@@ -762,14 +739,14 @@ export function SessionView({
     };
 
     const handleToggleRightPanelCollapse = useCallback(() => {
-        if (!isRightPanelCollapsed) {
-            const currentWidth = rightPanelContainerRef.current?.getBoundingClientRect().width;
-            if (currentWidth && Number.isFinite(currentWidth)) {
-                setCollapsedRightPanelWidth(Math.max(360, Math.round(currentWidth)));
-            }
-        }
-
         setIsRightPanelCollapsed((previous) => !previous);
+    }, []);
+
+    const handleRepoButtonClick = useCallback(() => {
+        if (isRightPanelCollapsed) {
+            setIsRightPanelCollapsed(false);
+        }
+        setIsRepoViewActive((previous) => !previous);
     }, [isRightPanelCollapsed]);
 
     useEffect(() => {
@@ -2142,7 +2119,7 @@ export function SessionView({
                         <button
                             type="button"
                             className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 hover:bg-base-content/10 dark:hover:bg-[#30363d]/60 ${isRepoViewActive ? 'bg-slate-100 text-slate-900 dark:bg-[#30363d] dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}
-                            onClick={() => setIsRepoViewActive((previous) => !previous)}
+                            onClick={handleRepoButtonClick}
                             aria-pressed={isRepoViewActive}
                             title={isRepoViewActive ? 'Show preview and terminal panel' : 'Show repository viewer'}
                         >
@@ -2271,7 +2248,6 @@ export function SessionView({
                 </div>
 
                 <div
-                    ref={rightPanelContainerRef}
                     className={`relative h-full transition-[width,min-width,flex-basis] duration-300 ease-in-out ${isRightPanelCollapsed ? 'w-0 min-w-0 flex-none' : 'min-w-[360px] flex-1'}`}
                 >
                     <button
@@ -2285,26 +2261,21 @@ export function SessionView({
                         {isRightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     </button>
 
-                    <div
-                        className={`absolute inset-y-0 right-0 flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-[#30363d] dark:bg-[#161b22] ${isRightPanelCollapsed ? 'pointer-events-none' : ''}`}
-                        style={{
-                            width: isRightPanelCollapsed ? `${collapsedRightPanelWidth}px` : '100%',
-                            transform: isRightPanelCollapsed ? 'translateX(calc(100% + 0.75rem))' : 'translateX(0px)',
-                        }}
-                    >
-                        {isRepoViewActive ? (
-                            <SessionRepoViewer
-                                repoPath={worktree || repo}
-                                branchHint={branch}
-                                baseBranchHint={currentBaseBranch || baseBranch}
-                            />
-                        ) : (
-                            <>
-                                <div className="min-h-0 flex flex-1 flex-col">
-                                    <form
-                                        className="flex h-9 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-[#30363d] dark:bg-[#161b22]"
-                                        onSubmit={handlePreviewSubmit}
-                                    >
+                    {!isRightPanelCollapsed && (
+                        <div className="absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]">
+                            {isRepoViewActive ? (
+                                <SessionRepoViewer
+                                    repoPath={worktree || repo}
+                                    branchHint={branch}
+                                    baseBranchHint={currentBaseBranch || baseBranch}
+                                />
+                            ) : (
+                                <>
+                                    <div className="min-h-0 flex flex-1 flex-col">
+                                        <form
+                                            className="flex h-9 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-[#30363d] dark:bg-[#161b22]"
+                                            onSubmit={handlePreviewSubmit}
+                                        >
                                         <div className="mr-1 flex gap-1.5">
                                             <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
                                             <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
@@ -2409,65 +2380,66 @@ export function SessionView({
                                             </div>
                                         )}
                                     </div>
-                                </div>
 
-                                {!isTerminalMinimized && (
+                                    {!isTerminalMinimized && (
+                                        <div
+                                            className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117]"
+                                            onMouseDown={startResize}
+                                            role="separator"
+                                            aria-orientation="horizontal"
+                                            aria-label="Resize build output panel"
+                                            title="Drag to resize build output panel"
+                                        >
+                                            <Grip className="h-3 w-3 text-slate-400 dark:text-slate-500" />
+                                        </div>
+                                    )}
+
                                     <div
-                                        className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117]"
-                                        onMouseDown={startResize}
-                                        role="separator"
-                                        aria-orientation="horizontal"
-                                        aria-label="Resize build output panel"
-                                        title="Drag to resize build output panel"
+                                        className={`${isTerminalMinimized ? 'h-9' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
+                                        style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
                                     >
-                                        <Grip className="h-3 w-3 text-slate-400 dark:text-slate-500" />
-                                    </div>
-                                )}
-
-                                <div
-                                    className={`${isTerminalMinimized ? 'h-9' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
-                                    style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
-                                >
-                                    <div className="flex h-9 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
-                                        <span className="flex items-center gap-2 uppercase tracking-wide">
-                                            <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                                            Terminal
-                                        </span>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                                onClick={handleStartDevServer}
-                                                disabled={isDevButtonDisabled}
-                                                title={devButtonTitle}
-                                                type="button"
-                                            >
-                                                {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
-                                                <span className="hidden min-[1700px]:inline">Dev</span>
-                                            </button>
-                                            <button
-                                                className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                                onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                                                title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
-                                                aria-label={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
-                                                type="button"
-                                            >
-                                                <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
-                                            </button>
+                                        <div className="flex h-9 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
+                                            <span className="flex items-center gap-2 uppercase tracking-wide">
+                                                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                                                Terminal
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                    onClick={handleStartDevServer}
+                                                    disabled={isDevButtonDisabled}
+                                                    title={devButtonTitle}
+                                                    type="button"
+                                                >
+                                                    {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
+                                                    <span className="hidden min-[1700px]:inline">Dev</span>
+                                                </button>
+                                                <button
+                                                    className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                    onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                                                    title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                                    aria-label={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                                    type="button"
+                                                >
+                                                    <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
+                                            <iframe
+                                                ref={terminalRef}
+                                                src={floatingTerminalSrc}
+                                                className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                                allow="clipboard-read; clipboard-write"
+                                                onLoad={handleTerminalLoad}
+                                            />
                                         </div>
                                     </div>
-                                    <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
-                                        <iframe
-                                            ref={terminalRef}
-                                            src={floatingTerminalSrc}
-                                            className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
-                                            allow="clipboard-read; clipboard-write"
-                                            onLoad={handleTerminalLoad}
-                                        />
-                                    </div>
                                 </div>
-                            </>
-                        )}
-                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

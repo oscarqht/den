@@ -161,4 +161,52 @@ describe('applyThemeToTerminalWindow', () => {
     assert.strictEqual(cleared, 1);
     assert.deepStrictEqual(refreshCalls, [[0, 2]]);
   });
+
+  it('emits focus-gained sequence when focus reporting is enabled', () => {
+    const triggerCalls: Array<[string, boolean | undefined]> = [];
+    const terminalWindow = {
+      term: {
+        options: {
+          theme: {},
+        },
+        _core: {
+          coreService: {
+            decPrivateModes: {
+              sendFocus: true,
+            },
+            triggerDataEvent: (data: string, wasUserInput?: boolean) => {
+              triggerCalls.push([data, wasUserInput]);
+            },
+          },
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_DARK), true);
+    assert.deepStrictEqual(triggerCalls, [['\x1b[I', true]]);
+  });
+
+  it('does not emit focus-gained sequence when focus reporting is disabled', () => {
+    const triggerCalls: Array<[string, boolean | undefined]> = [];
+    const terminalWindow = {
+      term: {
+        options: {
+          theme: {},
+        },
+        _core: {
+          coreService: {
+            decPrivateModes: {
+              sendFocus: false,
+            },
+            triggerDataEvent: (data: string, wasUserInput?: boolean) => {
+              triggerCalls.push([data, wasUserInput]);
+            },
+          },
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
+    assert.deepStrictEqual(triggerCalls, []);
+  });
 });

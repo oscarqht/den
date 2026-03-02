@@ -71,6 +71,14 @@ type TtydWindow = Window & {
       theme?: TerminalTheme;
       [key: string]: unknown;
     };
+    _core?: {
+      coreService?: {
+        decPrivateModes?: {
+          sendFocus?: boolean;
+        };
+        triggerDataEvent?: (data: string, wasUserInput?: boolean) => void;
+      };
+    };
     rows?: number;
     refresh?: (start: number, end: number) => void;
     clearTextureAtlas?: () => void;
@@ -83,6 +91,7 @@ const TERMINAL_BACKGROUND_SELECTORS = [
   '.xterm-viewport',
   '.xterm-rows',
 ];
+const TERMINAL_FOCUS_GAINED_SEQUENCE = '\x1b[I';
 
 function applyElementBackgroundColor(
   element: StyleTarget | null | undefined,
@@ -158,6 +167,20 @@ function scheduleTerminalRefresh(
   });
 }
 
+function notifyFocusReportingTerminalProcess(
+  term: NonNullable<TtydWindow['term']>,
+): void {
+  const coreService = term._core?.coreService;
+  if (!coreService?.decPrivateModes?.sendFocus) return;
+  if (typeof coreService.triggerDataEvent !== 'function') return;
+
+  try {
+    coreService.triggerDataEvent(TERMINAL_FOCUS_GAINED_SEQUENCE, true);
+  } catch {
+    // Ignore xterm internal API differences.
+  }
+}
+
 export function normalizeThemeMode(value: string | null | undefined): ThemeMode {
   if (value === 'light' || value === 'dark' || value === 'auto') {
     return value;
@@ -206,6 +229,7 @@ export function applyThemeToTerminalWindow(
 
   applyThemeToTerminalDocument(ttydWindow.document, theme);
   scheduleTerminalRefresh(term, ttydWindow.requestAnimationFrame?.bind(ttydWindow));
+  notifyFocusReportingTerminalProcess(term);
 
   return true;
 }

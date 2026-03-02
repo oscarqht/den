@@ -26,6 +26,15 @@ import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
+import {
+  applyThemeToTerminalIframe,
+  applyThemeToTerminalWindow,
+  resolveShouldUseDarkTheme,
+  TERMINAL_THEME_DARK,
+  TERMINAL_THEME_LIGHT,
+  THEME_MODE_STORAGE_KEY,
+  THEME_REFRESH_EVENT,
+} from '@/lib/ttyd-theme';
 import Image from 'next/image';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import SessionFileBrowser from './SessionFileBrowser';
@@ -35,7 +44,6 @@ type RepoCredentialSelection = 'auto' | string;
 type ThemeMode = 'auto' | 'light' | 'dark';
 const DEFAULT_REPO_STARTUP_COMMAND = 'npm install';
 const DEFAULT_REPO_DEV_SERVER_COMMAND = 'npm run dev';
-const THEME_MODE_STORAGE_KEY = 'viba:theme-mode';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
 
 function getCredentialOptionLabel(credential: Credential): string {
@@ -308,12 +316,13 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const resolveDarkMode = () => themeMode === 'dark' || (themeMode === 'auto' && mediaQuery.matches);
     const applyThemeMode = () => {
-      const shouldUseDark = resolveDarkMode();
+      const shouldUseDark = resolveShouldUseDarkTheme(themeMode, mediaQuery.matches);
+      const terminalTheme = shouldUseDark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT;
       document.documentElement.classList.toggle('dark', shouldUseDark);
       document.documentElement.dataset.themeMode = themeMode;
       setIsDarkThemeActive(shouldUseDark);
+      applyThemeToTerminalIframe(loginTerminalRef.current, terminalTheme);
     };
 
     applyThemeMode();
@@ -323,6 +332,7 @@ export default function GitRepoSelector({
     } catch {
       // Ignore localStorage errors.
     }
+    window.dispatchEvent(new Event(THEME_REFRESH_EVENT));
 
     if (themeMode !== 'auto') {
       return;
@@ -966,6 +976,14 @@ export default function GitRepoSelector({
       try {
         const win = iframe.contentWindow as TerminalWindow | null;
         if (win?.term) {
+          const shouldUseDark = resolveShouldUseDarkTheme(
+            themeMode,
+            window.matchMedia('(prefers-color-scheme: dark)').matches,
+          );
+          applyThemeToTerminalWindow(
+            win,
+            shouldUseDark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT,
+          );
           win.term.paste(`${loginCommand}\r`);
           setLoginCommandInjected(true);
           setLoginModalError(null);
@@ -981,7 +999,7 @@ export default function GitRepoSelector({
     };
 
     setTimeout(() => checkAndInject(), 500);
-  }, [isLoginModalOpen, loginCommand]);
+  }, [isLoginModalOpen, loginCommand, themeMode]);
 
   const hasConfiguredAgentApiCredential = useCallback(async (agentCli: SupportedAgentCli): Promise<boolean> => {
     try {

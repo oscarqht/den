@@ -23,6 +23,18 @@ function shouldUseSecureCookies(request: Request): boolean {
   return request.url.startsWith('https://') || process.env.NODE_ENV === 'production';
 }
 
+function mapAuth0LoginError(data: { error_description?: string; error?: string }): string {
+  const errorDescription = (data.error_description || '').trim();
+  const errorCode = (data.error || '').trim();
+  const normalized = `${errorCode} ${errorDescription}`.toLowerCase();
+
+  if (normalized.includes('connection is disabled')) {
+    return 'Auth0 Passwordless Email connection is disabled. Enable it in Auth0 Dashboard (Authentication > Passwordless > Email) and allow this application.';
+  }
+
+  return errorDescription || errorCode || 'Failed to request magic link from Auth0.';
+}
+
 export async function POST(request: Request) {
   if (!isAuthEnabled()) {
     return NextResponse.json(
@@ -78,7 +90,7 @@ export async function POST(request: Request) {
 
     try {
       const data = await auth0Response.json() as { error_description?: string; error?: string };
-      details = data.error_description || data.error || details;
+      details = mapAuth0LoginError(data);
     } catch {
       // Keep fallback message.
     }

@@ -4,7 +4,16 @@ import {
   getSessionSecret,
   isAuthEnabled,
 } from '@/lib/auth/config';
+import { isEmailWhitelisted } from '@/lib/auth/email-whitelist';
 import { verifyAuthSessionToken } from '@/lib/auth/session-token';
+
+function createUnauthenticatedResponse(clearCookie: boolean) {
+  const response = NextResponse.json({ enabled: true, authenticated: false, email: null });
+  if (clearCookie) {
+    response.cookies.delete(AUTH_SESSION_COOKIE_NAME);
+  }
+  return response;
+}
 
 export async function GET(request: NextRequest) {
   if (!isAuthEnabled()) {
@@ -19,7 +28,12 @@ export async function GET(request: NextRequest) {
 
   const payload = verifyAuthSessionToken(sessionToken, getSessionSecret());
   if (!payload) {
-    return NextResponse.json({ enabled: true, authenticated: false, email: null });
+    return createUnauthenticatedResponse(true);
+  }
+
+  const isWhitelisted = await isEmailWhitelisted(payload.email);
+  if (!isWhitelisted) {
+    return createUnauthenticatedResponse(true);
   }
 
   return NextResponse.json({ enabled: true, authenticated: true, email: payload.email });

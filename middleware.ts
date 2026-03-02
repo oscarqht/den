@@ -25,6 +25,45 @@ function buildLoginRedirectUrl(request: NextRequest): URL {
   return loginUrl;
 }
 
+function createUnauthenticatedResponse(request: NextRequest, clearCookie: boolean): NextResponse {
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    const response = NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    if (clearCookie) {
+      response.cookies.delete(AUTH_SESSION_COOKIE_NAME);
+    }
+    return response;
+  }
+
+  const response = NextResponse.redirect(buildLoginRedirectUrl(request));
+  if (clearCookie) {
+    response.cookies.delete(AUTH_SESSION_COOKIE_NAME);
+  }
+  return response;
+}
+
+async function isSessionStillAuthorized(request: NextRequest): Promise<boolean> {
+  try {
+    const response = await fetch(new URL('/api/auth/session', request.url), {
+      method: 'GET',
+      headers: {
+        cookie: request.headers.get('cookie') ?? '',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) return false;
+    const data = await response.json() as { enabled?: boolean; authenticated?: boolean };
+
+    if (data.enabled === false) {
+      return true;
+    }
+
+    return Boolean(data.authenticated);
+  } catch {
+    return false;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   if (!isAuthEnabled()) {
     return NextResponse.next();
@@ -37,25 +76,20 @@ export async function middleware(request: NextRequest) {
 
   const token = request.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value;
   if (!token) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
-    }
-
-    return NextResponse.redirect(buildLoginRedirectUrl(request));
+    return createUnauthenticatedResponse(request, false);
   }
 
   const payload = await verifyAuthSessionTokenEdge(token, getSessionSecret());
-  if (payload) {
-    return NextResponse.next();
+  if (!payload) {
+    return createUnauthenticatedResponse(request, true);
   }
 
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+  const stillAuthorized = await isSessionStillAuthorized(request);
+  if (!stillAuthorized) {
+    return createUnauthenticatedResponse(request, true);
   }
 
-  const response = NextResponse.redirect(buildLoginRedirectUrl(request));
-  response.cookies.delete(AUTH_SESSION_COOKIE_NAME);
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

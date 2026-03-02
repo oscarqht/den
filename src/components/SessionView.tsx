@@ -268,6 +268,7 @@ export function SessionView({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const terminalBootstrapRef = useRef<HTMLIFrameElement>(null);
     const previewIframeRef = useRef<HTMLIFrameElement>(null);
     const previewAddressInputRef = useRef<HTMLInputElement>(null);
     const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -542,7 +543,7 @@ export function SessionView({
                 return;
             }
 
-            const iframe = terminalRef.current;
+            const iframe = terminalRef.current || terminalBootstrapRef.current;
             if (!iframe) return;
 
             try {
@@ -1830,9 +1831,9 @@ export function SessionView({
         setTimeout(() => checkAndInject(), 1000);
     };
 
-    const handleTerminalLoad = () => {
-        if (!terminalRef.current) return;
-        const iframe = terminalRef.current;
+    const handleTerminalLoad = (iframeFromEvent?: HTMLIFrameElement | null) => {
+        const iframe = iframeFromEvent || terminalRef.current || terminalBootstrapRef.current;
+        if (!iframe) return;
         stopTerminalProcessMonitor();
         setIsTerminalForegroundProcessRunning(false);
 
@@ -2010,6 +2011,17 @@ export function SessionView({
 
     return (
         <div className={`flex h-screen w-full flex-col overflow-hidden bg-[#f6f6f8] dark:bg-[#0d1117] ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
+            {isRightPanelCollapsed && (
+                <iframe
+                    ref={terminalBootstrapRef}
+                    src={floatingTerminalSrc}
+                    className="pointer-events-none absolute left-0 top-0 h-0 w-0 border-none opacity-0"
+                    allow="clipboard-read; clipboard-write"
+                    onLoad={(event) => handleTerminalLoad(event.currentTarget)}
+                    aria-hidden="true"
+                    tabIndex={-1}
+                />
+            )}
             {(isResizing || isSplitResizing) && (
                 <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
@@ -2431,7 +2443,7 @@ export function SessionView({
                                                 src={floatingTerminalSrc}
                                                 className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                                                 allow="clipboard-read; clipboard-write"
-                                                onLoad={handleTerminalLoad}
+                                                onLoad={(event) => handleTerminalLoad(event.currentTarget)}
                                             />
                                         </div>
                                     </div>

@@ -367,6 +367,13 @@ type TerminalSessionSources = {
   floatingTerminalSrc: string;
 };
 
+const TERMINAL_PLAIN_TEXT_ENVIRONMENTS: TerminalSessionEnvironment[] = [
+  { name: 'NO_COLOR', value: '1' },
+  { name: 'FORCE_COLOR', value: '0' },
+  { name: 'CLICOLOR', value: '0' },
+  { name: 'CLICOLOR_FORCE', value: '0' },
+];
+
 function toTerminalSessionEnvironment(
   credential: Credential,
   token: string,
@@ -505,14 +512,30 @@ async function resolveAgentApiTerminalSessionEnvironments(agentCli: string | und
   return toAgentTerminalSessionEnvironments(normalizedAgentCli, credential.apiKey, credential.apiProxy);
 }
 
+function mergeTerminalSessionEnvironments(
+  ...groups: TerminalSessionEnvironment[][]
+): TerminalSessionEnvironment[] {
+  const environmentByName = new Map<string, string>();
+
+  for (const group of groups) {
+    for (const environment of group) {
+      if (!environment.name || !environment.value) continue;
+      environmentByName.set(environment.name, environment.value);
+    }
+  }
+
+  return Array.from(environmentByName.entries()).map(([name, value]) => ({ name, value }));
+}
+
 export async function getSessionTerminalSources(
   sessionName: string,
   repoPath: string,
   agentCli?: string,
 ): Promise<TerminalSessionSources> {
+  const fallbackEnvironments = [...TERMINAL_PLAIN_TEXT_ENVIRONMENTS];
   const fallback: TerminalSessionSources = {
-    agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent'),
-    floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal'),
+    agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', fallbackEnvironments),
+    floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', fallbackEnvironments),
   };
 
   if (os.platform() === 'win32') {
@@ -524,7 +547,11 @@ export async function getSessionTerminalSources(
       resolveGitTerminalSessionEnvironments(repoPath),
       resolveAgentApiTerminalSessionEnvironments(agentCli),
     ]);
-    const environments = [...gitEnvironments, ...agentEnvironments];
+    const environments = mergeTerminalSessionEnvironments(
+      gitEnvironments,
+      agentEnvironments,
+      TERMINAL_PLAIN_TEXT_ENVIRONMENTS,
+    );
 
     return {
       agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environments),
@@ -576,7 +603,6 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     const ttydArgs = [
       '-p', '7681',
-      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black", "selectionBackground": "rgba(59, 130, 246, 0.4)"}',
       '-t', 'disableResizeOverlay=true',
       '-t', 'fontSize=12',
       '-t', 'fontWeight=300',
@@ -617,7 +643,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       env: {
         ...env,
         TERM: 'xterm-256color',
-        COLORTERM: 'truecolor',
+        COLORTERM: '',
+        NO_COLOR: '1',
+        FORCE_COLOR: '0',
+        CLICOLOR: '0',
+        CLICOLOR_FORCE: '0',
       },
     });
 

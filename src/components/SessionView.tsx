@@ -28,6 +28,7 @@ import {
     applyThemeToTerminalIframe,
     applyThemeToTerminalWindow,
     readThemeModeFromStorage,
+    resolvePlainTerminalThemeFromBrowser,
     THEME_MODE_STORAGE_KEY,
     THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
@@ -598,8 +599,9 @@ export function SessionView({
     }, [focusTerminalInputForSlot]);
 
     const applyThemeToTerminalFrames = useCallback(() => {
-        applyThemeToTerminalIframe(iframeRef.current);
-        applyThemeToTerminalIframe(terminalRef.current);
+        const plainTerminalTheme = resolvePlainTerminalThemeFromBrowser();
+        applyThemeToTerminalIframe(iframeRef.current, plainTerminalTheme);
+        applyThemeToTerminalIframe(terminalRef.current, plainTerminalTheme);
         maybeRestoreRecentTerminalFocusAfterThemeChange();
     }, [maybeRestoreRecentTerminalFocusAfterThemeChange]);
 
@@ -1714,8 +1716,8 @@ export function SessionView({
                         terminalWithShortcutState.__vibaClearLineShortcutInstalled = true;
                     }
 
-                    // Ensure terminal palette stays in sync with app/OS theme.
-                    applyThemeToTerminalWindow(win);
+                    // Keep ttyd output monochrome without custom background or highlight colors.
+                    applyThemeToTerminalWindow(win, resolvePlainTerminalThemeFromBrowser());
 
                     const alreadyBootstrapped = hasTerminalBootstrapped('agent');
                     const shouldSkipResumeInjection = Boolean(isResume) && terminalPersistenceMode === 'tmux';
@@ -1892,8 +1894,7 @@ export function SessionView({
             }
         };
 
-        // Small delay to allow scripts to run
-        setTimeout(() => checkAndInject(), 1000);
+        checkAndInject();
     };
 
     const handleTerminalLoad = (iframeFromEvent?: HTMLIFrameElement | null) => {
@@ -1936,8 +1937,8 @@ export function SessionView({
                         modifierOpenBehavior: 'new_tab',
                     });
 
-                    // Ensure terminal palette stays in sync with app/OS theme.
-                    applyThemeToTerminalWindow(win);
+                    // Keep ttyd output monochrome without custom background or highlight colors.
+                    applyThemeToTerminalWindow(win, resolvePlainTerminalThemeFromBrowser());
 
                     startTerminalProcessMonitor(iframe, term);
 
@@ -2036,7 +2037,7 @@ export function SessionView({
             }
         };
 
-        setTimeout(() => checkAndInject(), 1000);
+        checkAndInject();
     };
 
     if (!repo) return <div className="p-4 text-error dark:bg-[#0d1117] dark:text-red-300">No repository specified</div>;

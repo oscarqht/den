@@ -4,10 +4,13 @@ import {
   applyThemeToTerminalWindow,
   normalizeThemeMode,
   readThemeModeFromStorage,
+  resolvePlainTerminalTheme,
   resolveShouldUseDarkTheme,
   resolveTerminalTheme,
   TERMINAL_THEME_DARK,
   TERMINAL_THEME_LIGHT,
+  TERMINAL_THEME_PLAIN_DARK,
+  TERMINAL_THEME_PLAIN_LIGHT,
 } from './ttyd-theme.ts';
 
 describe('normalizeThemeMode', () => {
@@ -61,6 +64,27 @@ describe('resolveTerminalTheme', () => {
   });
 });
 
+describe('resolvePlainTerminalTheme', () => {
+  it('returns monochrome palette with plain background and transparent selection', () => {
+    const darkTheme = resolvePlainTerminalTheme('auto', true);
+    const lightTheme = resolvePlainTerminalTheme('auto', false);
+
+    assert.strictEqual(darkTheme, TERMINAL_THEME_PLAIN_DARK);
+    assert.strictEqual(lightTheme, TERMINAL_THEME_PLAIN_LIGHT);
+
+    assert.strictEqual(lightTheme.background, '#ffffff');
+    assert.strictEqual(darkTheme.background, '#0d1117');
+    assert.strictEqual(lightTheme.selectionBackground, 'transparent');
+    assert.strictEqual(darkTheme.selectionBackground, 'transparent');
+    assert.strictEqual(lightTheme.selectionInactiveBackground, 'transparent');
+    assert.strictEqual(darkTheme.selectionInactiveBackground, 'transparent');
+    assert.strictEqual(lightTheme.red, lightTheme.foreground);
+    assert.strictEqual(darkTheme.blue, darkTheme.foreground);
+    assert.strictEqual(lightTheme.brightWhite, lightTheme.foreground);
+    assert.strictEqual(darkTheme.brightWhite, darkTheme.foreground);
+  });
+});
+
 describe('applyThemeToTerminalWindow', () => {
   it('returns false when window has no terminal instance', () => {
     assert.strictEqual(applyThemeToTerminalWindow({} as Window, TERMINAL_THEME_DARK), false);
@@ -109,6 +133,65 @@ describe('applyThemeToTerminalWindow', () => {
     assert.strictEqual(xterm.style.backgroundColor, TERMINAL_THEME_DARK.background);
     assert.strictEqual(viewport.style.backgroundColor, TERMINAL_THEME_DARK.background);
     assert.strictEqual(xterm.style.color, TERMINAL_THEME_DARK.foreground);
+  });
+
+  it('supports plain theme to avoid ANSI color styling', () => {
+    const root = { style: {} as Record<string, string> };
+    const body = { style: {} as Record<string, string> };
+    const xterm = { style: {} as Record<string, string> };
+
+    const terminalWindow = {
+      document: {
+        documentElement: root,
+        body,
+        querySelectorAll: (selector: string) => {
+          if (selector === '.xterm') return [xterm];
+          return [];
+        },
+      },
+      term: {
+        options: {
+          theme: {},
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_PLAIN_LIGHT), true);
+    assert.strictEqual(root.style.backgroundColor, TERMINAL_THEME_PLAIN_LIGHT.background);
+    assert.strictEqual(body.style.backgroundColor, TERMINAL_THEME_PLAIN_LIGHT.background);
+    assert.strictEqual(xterm.style.backgroundColor, TERMINAL_THEME_PLAIN_LIGHT.background);
+    assert.strictEqual(xterm.style.color, TERMINAL_THEME_PLAIN_LIGHT.foreground);
+  });
+
+  it('strips ANSI style escape sequences from incoming writes', () => {
+    const writes: Array<string | Uint8Array> = [];
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const term = {
+      options: {
+        theme: {},
+      },
+      write: (value: string | Uint8Array) => {
+        writes.push(value);
+      },
+    };
+
+    const terminalWindow = {
+      term,
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_PLAIN_LIGHT), true);
+    term.write('\u001b[48;5;244mbackground\u001b[0m');
+    term.write('\u001b[31mred\u001b[0m text');
+    term.write(encoder.encode('\u001b[32mgreen\u001b[0m text'));
+    term.write('\u001b[31');
+    term.write('mchunked\u001b[0m');
+
+    assert.strictEqual(writes[0], 'background');
+    assert.strictEqual(writes[1], 'red text');
+    assert.strictEqual(decoder.decode(writes[2] as Uint8Array), 'green text');
+    assert.strictEqual(writes[3], '');
+    assert.strictEqual(writes[4], 'chunked');
   });
 
   it('does not throw if refresh helpers are unavailable', () => {

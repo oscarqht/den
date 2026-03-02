@@ -50,6 +50,47 @@ export const TERMINAL_THEME_DARK: TerminalTheme = {
   brightWhite: '#ffffff',
 };
 
+const ANSI_THEME_COLOR_KEYS = [
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'brightBlack',
+  'brightRed',
+  'brightGreen',
+  'brightYellow',
+  'brightBlue',
+  'brightMagenta',
+  'brightCyan',
+  'brightWhite',
+] as const;
+
+function createPlainTerminalTheme(foreground: string): TerminalTheme {
+  const monochromeTheme: TerminalTheme = {
+    background: '#ffffff',
+    foreground,
+    cursor: foreground,
+    selectionBackground: 'transparent',
+    selectionInactiveBackground: 'transparent',
+  };
+
+  for (const colorKey of ANSI_THEME_COLOR_KEYS) {
+    monochromeTheme[colorKey] = foreground;
+  }
+
+  return monochromeTheme;
+}
+
+export const TERMINAL_THEME_PLAIN_LIGHT: TerminalTheme = createPlainTerminalTheme('#0f172a');
+export const TERMINAL_THEME_PLAIN_DARK: TerminalTheme = {
+  ...createPlainTerminalTheme('#e6edf3'),
+  background: '#0d1117',
+};
+
 type StorageLike = Pick<Storage, 'getItem'>;
 type StyleTarget = {
   style?: {
@@ -100,6 +141,57 @@ type FocusableTerminalElement = {
   blur?: () => void;
   focus?: ((options?: { preventScroll?: boolean }) => void) | (() => void);
 };
+
+type WriteCapableTerminal = NonNullable<TtydWindow['term']> & {
+  write?: (data: string | Uint8Array, callback?: () => void) => void;
+  __vibaAnsiStyleFilterInstalled?: boolean;
+};
+
+const ANSI_STYLE_SEQUENCE_PATTERN = /\x1b\[[0-9:;?]*m/g;
+const ANSI_STYLE_TRAILING_FRAGMENT_PATTERN = /\x1b\[[0-9:;?]*$/;
+
+function stripAnsiStyleSequences(value: string): string {
+  return value.replace(ANSI_STYLE_SEQUENCE_PATTERN, '');
+}
+
+function installAnsiStyleWriteFilter(
+  term: NonNullable<TtydWindow['term']>,
+): void {
+  const writeCapableTerm = term as WriteCapableTerminal;
+  if (writeCapableTerm.__vibaAnsiStyleFilterInstalled) return;
+  if (typeof writeCapableTerm.write !== 'function') return;
+
+  const originalWrite = writeCapableTerm.write;
+  const textDecoder = typeof TextDecoder === 'function' ? new TextDecoder() : null;
+  const textEncoder = typeof TextEncoder === 'function' ? new TextEncoder() : null;
+  let trailingFragment = '';
+
+  const sanitizeChunk = (value: string): string => {
+    const combined = trailingFragment + value;
+    const trailingMatch = combined.match(ANSI_STYLE_TRAILING_FRAGMENT_PATTERN);
+    if (trailingMatch) {
+      trailingFragment = trailingMatch[0];
+    } else {
+      trailingFragment = '';
+    }
+    const sanitizedInput = trailingFragment ? combined.slice(0, -trailingFragment.length) : combined;
+    return stripAnsiStyleSequences(sanitizedInput);
+  };
+
+  writeCapableTerm.write = ((data: string | Uint8Array, callback?: () => void) => {
+    if (typeof data === 'string') {
+      return originalWrite.call(writeCapableTerm, sanitizeChunk(data), callback);
+    }
+    if (!textDecoder || !textEncoder) {
+      return originalWrite.call(writeCapableTerm, data, callback);
+    }
+    const decoded = textDecoder.decode(data);
+    const sanitized = sanitizeChunk(decoded);
+    const encoded = textEncoder.encode(sanitized);
+    return originalWrite.call(writeCapableTerm, encoded, callback);
+  }) as WriteCapableTerminal['write'];
+  writeCapableTerm.__vibaAnsiStyleFilterInstalled = true;
+}
 
 function applyElementBackgroundColor(
   element: StyleTarget | null | undefined,
@@ -247,6 +339,10 @@ export function resolveTerminalTheme(themeMode: ThemeMode, prefersDark: boolean)
   return resolveShouldUseDarkTheme(themeMode, prefersDark) ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT;
 }
 
+export function resolvePlainTerminalTheme(themeMode: ThemeMode, prefersDark: boolean): TerminalTheme {
+  return resolveShouldUseDarkTheme(themeMode, prefersDark) ? TERMINAL_THEME_PLAIN_DARK : TERMINAL_THEME_PLAIN_LIGHT;
+}
+
 export function resolveTerminalThemeFromBrowser(): TerminalTheme {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return TERMINAL_THEME_LIGHT;
@@ -254,6 +350,15 @@ export function resolveTerminalThemeFromBrowser(): TerminalTheme {
   const mode = readThemeModeFromStorage(window.localStorage);
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   return resolveTerminalTheme(mode, prefersDark);
+}
+
+export function resolvePlainTerminalThemeFromBrowser(): TerminalTheme {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return TERMINAL_THEME_PLAIN_LIGHT;
+  }
+  const mode = readThemeModeFromStorage(window.localStorage);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return resolvePlainTerminalTheme(mode, prefersDark);
 }
 
 export function applyThemeToTerminalWindow(
@@ -269,6 +374,7 @@ export function applyThemeToTerminalWindow(
     ...theme,
   };
 
+  installAnsiStyleWriteFilter(term);
   applyThemeToTerminalDocument(ttydWindow.document, theme);
   scheduleTerminalRefresh(term, ttydWindow.requestAnimationFrame?.bind(ttydWindow));
   const nudgedWithRealFocusEvent = nudgeFocusedTerminalInput(ttydWindow.document);

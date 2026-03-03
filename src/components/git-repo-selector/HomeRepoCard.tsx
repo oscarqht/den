@@ -6,6 +6,7 @@ import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 
 export type HomeRepoCardProps = {
   repo: string;
+  repoDisplayName?: string;
   isDarkThemeActive: boolean;
   credentialLabel: string;
   runningSessionCount: number;
@@ -23,6 +24,7 @@ export type HomeRepoCardProps = {
 
 export function HomeRepoCard({
   repo,
+  repoDisplayName,
   isDarkThemeActive,
   credentialLabel,
   runningSessionCount,
@@ -37,7 +39,7 @@ export function HomeRepoCard({
   onMouseMove,
   onMouseLeave,
 }: HomeRepoCardProps) {
-  const repoName = getBaseName(repo);
+  const repoName = repoDisplayName || getBaseName(repo);
   const cardGradient = getStableRepoCardGradient(repoName);
   const repoIconUrl = repoIconPath
     ? `/api/file-thumbnail?path=${encodeURIComponent(repoIconPath)}`

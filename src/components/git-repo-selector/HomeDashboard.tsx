@@ -19,6 +19,7 @@ export type HomeDashboardProps = {
   repoCardIconByRepo: Record<string, string | null>;
   brokenRepoCardIcons: Record<string, boolean>;
   getRepoCredentialLabel: (repo: string) => string;
+  getRepoDisplayName: (repo: string) => string;
   onHomeSearchQueryChange: (value: string) => void;
   onOpenCredentials: () => void;
   onCycleThemeMode: () => void;
@@ -48,6 +49,7 @@ export function HomeDashboard({
   repoCardIconByRepo,
   brokenRepoCardIcons,
   getRepoCredentialLabel,
+  getRepoDisplayName,
   onHomeSearchQueryChange,
   onOpenCredentials,
   onCycleThemeMode,
@@ -154,6 +156,7 @@ export function HomeDashboard({
               <HomeRepoCard
                 key={repo}
                 repo={repo}
+                repoDisplayName={getRepoDisplayName(repo)}
                 isDarkThemeActive={isDarkThemeActive}
                 credentialLabel={getRepoCredentialLabel(repo)}
                 runningSessionCount={runningSessionCountByRepo.get(repo) ?? 0}

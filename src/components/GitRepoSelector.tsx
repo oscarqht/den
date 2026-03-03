@@ -115,6 +115,7 @@ export default function GitRepoSelector({
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
+  const [repoAlias, setRepoAlias] = useState<string>('');
   const [repoCredentialSelection, setRepoCredentialSelection] = useState<RepoCredentialSelection>('auto');
   const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_REPO_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState<string>(DEFAULT_REPO_DEV_SERVER_COMMAND);
@@ -896,6 +897,7 @@ export default function GitRepoSelector({
 
     const settings = config?.repoSettings?.[repo];
     setRepoForSettings(repo);
+    setRepoAlias(settings?.alias?.trim() || '');
     setRepoCredentialSelection(resolveRepoCredentialSelection(repo));
     setRepoStartupCommand(settings?.startupScript?.trim() ? settings.startupScript : DEFAULT_REPO_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript?.trim() ? settings.devServerScript : DEFAULT_REPO_DEV_SERVER_COMMAND);
@@ -935,13 +937,27 @@ export default function GitRepoSelector({
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
     try {
+      const aliasToSave = repoAlias.trim() || null;
       const newConfig = await updateRepoSettings(repoForSettings, {
         credentialId,
         startupScript: startupCommandToSave,
         devServerScript: devServerCommandToSave,
         credentialPreference: undefined,
+        alias: aliasToSave,
       });
       setConfig(newConfig);
+
+      // Sync alias to Repository.displayName so sidebar/command-palette/repo-list pick it up
+      try {
+        await fetch('/api/repos', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: repoForSettings, updates: { displayName: aliasToSave } }),
+        });
+      } catch {
+        // Non-critical: repo may not exist in the repositories table yet
+      }
+
       dismissRepoSettingsDialog();
     } catch (err) {
       console.error(err);
@@ -1339,15 +1355,21 @@ export default function GitRepoSelector({
   }, [allDrafts]);
 
   const recentRepos = useMemo(() => config?.recentRepos ?? [], [config?.recentRepos]);
+
+  const getRepoDisplayName = useCallback((repoPath: string): string => {
+    const alias = config?.repoSettings?.[repoPath]?.alias?.trim();
+    return alias || getBaseName(repoPath);
+  }, [config?.repoSettings]);
+
   const filteredRecentRepos = useMemo(() => {
     const normalizedQuery = homeSearchQuery.trim().toLowerCase();
     if (!normalizedQuery) return recentRepos;
 
     return recentRepos.filter((repo) => {
-      const baseName = getBaseName(repo).toLowerCase();
-      return baseName.includes(normalizedQuery) || repo.toLowerCase().includes(normalizedQuery);
+      const displayName = getRepoDisplayName(repo).toLowerCase();
+      return displayName.includes(normalizedQuery) || repo.toLowerCase().includes(normalizedQuery);
     });
-  }, [homeSearchQuery, recentRepos]);
+  }, [homeSearchQuery, recentRepos, getRepoDisplayName]);
   const selectableRepos = selectedRepo
     ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
     : recentRepos;
@@ -1470,6 +1492,7 @@ export default function GitRepoSelector({
           repoCardIconByRepo={repoCardIconByRepo}
           brokenRepoCardIcons={brokenRepoCardIcons}
           getRepoCredentialLabel={getRepoCredentialLabel}
+          getRepoDisplayName={getRepoDisplayName}
           onHomeSearchQueryChange={setHomeSearchQuery}
           onOpenCredentials={() => router.push('/credentials')}
           onCycleThemeMode={handleCycleThemeMode}
@@ -1490,6 +1513,7 @@ export default function GitRepoSelector({
         <RepoSettingsDialog
           isOpen={isRepoSettingsDialogOpen}
           repoForSettings={repoForSettings}
+          repoAlias={repoAlias}
           repoCredentialSelection={repoCredentialSelection}
           repoStartupCommand={repoStartupCommand}
           repoDevServerCommand={repoDevServerCommand}
@@ -1499,6 +1523,7 @@ export default function GitRepoSelector({
           isSavingRepoSettings={isSavingRepoSettings}
           isLoadingCredentialOptions={isLoadingCredentialOptions}
           repoSettingsError={repoSettingsError}
+          onAliasChange={setRepoAlias}
           onCredentialChange={setRepoCredentialSelection}
           onStartupCommandChange={setRepoStartupCommand}
           onDevServerCommandChange={setRepoDevServerCommand}
@@ -1582,7 +1607,7 @@ export default function GitRepoSelector({
                       >
                         {selectableRepos.map((repo) => (
                           <option key={repo} value={repo}>
-                            {getBaseName(repo)}
+                            {getRepoDisplayName(repo)}
                           </option>
                         ))}
                       </select>
@@ -1702,7 +1727,7 @@ export default function GitRepoSelector({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{draft.title}</p>
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                          {getBaseName(draft.repoPath)} • {draft.agentProvider}
+                          {getRepoDisplayName(draft.repoPath)} • {draft.agentProvider}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
@@ -1751,7 +1776,7 @@ export default function GitRepoSelector({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{session.title || session.sessionName}</p>
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                          {getBaseName(session.repoPath)} • {session.agent}
+                          {getRepoDisplayName(session.repoPath)} • {session.agent}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">

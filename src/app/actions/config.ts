@@ -10,6 +10,7 @@ export interface RepoSettings {
   lastBranch?: string;
   credentialId?: string | null;
   credentialPreference?: 'auto' | 'github' | 'gitlab';
+  alias?: string | null;
 }
 
 export interface Config {
@@ -45,6 +46,7 @@ type RepoSettingsRow = {
   last_branch: string | null;
   credential_id: string | null;
   credential_preference: string | null;
+  alias: string | null;
 };
 
 function normalizeCredentialPreference(
@@ -63,6 +65,7 @@ function toRepoSettings(row: RepoSettingsRow): RepoSettings {
   if (row.credential_id !== null) settings.credentialId = row.credential_id;
   const credentialPreference = normalizeCredentialPreference(row.credential_preference);
   if (credentialPreference) settings.credentialPreference = credentialPreference;
+  if (row.alias !== null) settings.alias = row.alias;
   return settings;
 }
 
@@ -101,10 +104,10 @@ function writeConfig(config: Config): void {
     const insertRepoSettings = db.prepare(`
       INSERT INTO app_config_repo_settings (
         repo_path, agent_provider, agent_model, startup_script, dev_server_script,
-        last_branch, credential_id, credential_preference
+        last_branch, credential_id, credential_preference, alias
       ) VALUES (
         @repoPath, @agentProvider, @agentModel, @startupScript, @devServerScript,
-        @lastBranch, @credentialId, @credentialPreference
+        @lastBranch, @credentialId, @credentialPreference, @alias
       )
     `);
     for (const [repoPath, repoSettings] of Object.entries(nextConfig.repoSettings)) {
@@ -117,6 +120,7 @@ function writeConfig(config: Config): void {
         lastBranch: repoSettings.lastBranch ?? null,
         credentialId: repoSettings.credentialId ?? null,
         credentialPreference: repoSettings.credentialPreference ?? null,
+        alias: repoSettings.alias ?? null,
       });
     }
   });
@@ -147,7 +151,7 @@ export async function getConfig(): Promise<Config> {
   const repoSettingsRows = db.prepare(`
     SELECT
       repo_path, agent_provider, agent_model, startup_script, dev_server_script,
-      last_branch, credential_id, credential_preference
+      last_branch, credential_id, credential_preference, alias
     FROM app_config_repo_settings
   `).all() as RepoSettingsRow[];
 
@@ -180,6 +184,12 @@ export async function updateConfig(updates: Partial<Config>): Promise<Config> {
   const newConfig = { ...currentConfig, ...updates };
   await saveConfig(newConfig);
   return newConfig;
+}
+
+export async function getRepoAlias(repoPath: string): Promise<string | null> {
+  const config = await getConfig();
+  const alias = config.repoSettings[repoPath]?.alias?.trim();
+  return alias || null;
 }
 
 export async function updateRepoSettings(repoPath: string, updates: Partial<RepoSettings>): Promise<Config> {

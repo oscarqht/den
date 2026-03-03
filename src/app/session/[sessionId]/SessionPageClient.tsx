@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { getSessionTerminalSources, startTtydProcess } from '@/app/actions/git';
+import { getRepoAlias } from '@/app/actions/config';
 import { clearPendingSessionNavigation } from '@/lib/session-navigation';
 
 type SessionNotificationPayload = {
@@ -40,6 +41,7 @@ export default function SessionPage() {
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
     const [terminalPersistenceMode, setTerminalPersistenceMode] = useState<'tmux' | 'shell'>('shell');
+    const [repoDisplayName, setRepoDisplayName] = useState<string | undefined>(undefined);
 
     const handleOpenSessionNotification = useCallback(() => {
         if (!sessionId) return;
@@ -204,6 +206,8 @@ export default function SessionPage() {
                 }
 
                 setMetadata(data);
+                const alias = await getRepoAlias(data.repoPath);
+                if (alias) setRepoDisplayName(alias);
                 const resolvedTerminalSources = await getSessionTerminalSources(
                     data.sessionName,
                     data.repoPath,
@@ -316,6 +320,7 @@ export default function SessionPage() {
     return (
         <SessionView
             repo={metadata.repoPath}
+            repoDisplayName={repoDisplayName}
             worktree={metadata.worktreePath}
             branch={metadata.branchName}
             baseBranch={metadata.baseBranch}

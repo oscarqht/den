@@ -79,7 +79,8 @@ function createSchema(db: Database.Database): void {
       dev_server_script TEXT,
       last_branch TEXT,
       credential_id TEXT,
-      credential_preference TEXT
+      credential_preference TEXT,
+      alias TEXT
     );
 
     CREATE TABLE IF NOT EXISTS credentials_metadata (
@@ -618,6 +619,14 @@ function migrateLegacyData(db: Database.Database): void {
   migration();
 }
 
+function runSchemaMigrations(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(app_config_repo_settings)`).all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((c) => c.name));
+  if (!columnNames.has('alias')) {
+    db.exec(`ALTER TABLE app_config_repo_settings ADD COLUMN alias TEXT`);
+  }
+}
+
 function initializeDb(): Database.Database {
   ensureVibaDir();
   const db = new Database(DB_PATH);
@@ -629,6 +638,7 @@ function initializeDb(): Database.Database {
   db.pragma('synchronous = NORMAL');
 
   createSchema(db);
+  runSchemaMigrations(db);
   migrateLegacyData(db);
   return db;
 }

@@ -191,6 +191,7 @@ const normalizeComponentLookupName = (value: string): string => {
 
 export interface SessionViewProps {
     repo: string;
+    repoDisplayName?: string;
     worktree: string;
     branch: string;
     baseBranch?: string;
@@ -213,6 +214,7 @@ export interface SessionViewProps {
 
 export function SessionView({
     repo,
+    repoDisplayName,
     worktree,
     branch,
     baseBranch,
@@ -2170,7 +2172,7 @@ export function SessionView({
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="opacity-50">Repo:</span>
-                            <span className="font-bold">{getBaseName(repo)}</span>
+                            <span className="font-bold">{repoDisplayName || getBaseName(repo)}</span>
                         </div>
                         {sessionName && (
                             <div className="hidden min-[1200px]:flex min-w-0 items-center gap-2 text-[10px] opacity-70">

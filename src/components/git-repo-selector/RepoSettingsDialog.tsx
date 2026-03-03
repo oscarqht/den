@@ -5,6 +5,7 @@ import { getCredentialOptionLabel, type RepoCredentialSelection } from './types'
 export type RepoSettingsDialogProps = {
   isOpen: boolean;
   repoForSettings: string | null;
+  repoAlias: string;
   repoCredentialSelection: RepoCredentialSelection;
   repoStartupCommand: string;
   repoDevServerCommand: string;
@@ -14,6 +15,7 @@ export type RepoSettingsDialogProps = {
   isSavingRepoSettings: boolean;
   isLoadingCredentialOptions: boolean;
   repoSettingsError: string | null;
+  onAliasChange: (value: string) => void;
   onCredentialChange: (value: RepoCredentialSelection) => void;
   onStartupCommandChange: (value: string) => void;
   onDevServerCommandChange: (value: string) => void;
@@ -24,6 +26,7 @@ export type RepoSettingsDialogProps = {
 export function RepoSettingsDialog({
   isOpen,
   repoForSettings,
+  repoAlias,
   repoCredentialSelection,
   repoStartupCommand,
   repoDevServerCommand,
@@ -33,6 +36,7 @@ export function RepoSettingsDialog({
   isSavingRepoSettings,
   isLoadingCredentialOptions,
   repoSettingsError,
+  onAliasChange,
   onCredentialChange,
   onStartupCommandChange,
   onDevServerCommandChange,
@@ -65,6 +69,17 @@ export function RepoSettingsDialog({
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200">
               {repoForSettings}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Alias</label>
+            <input
+              className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+              value={repoAlias}
+              onChange={(event) => onAliasChange(event.target.value)}
+              placeholder="Optional display name for this repository"
+              disabled={isSavingRepoSettings}
+            />
           </div>
 
           <div className="space-y-2">

@@ -12,6 +12,12 @@ export function getRepoFolderName(repoPath: string): string {
   return segments[segments.length - 1] || repoPath;
 }
 
+export async function getRepoDisplayNameFromConfig(repoPath: string): Promise<string> {
+  const { getRepoAlias } = await import('@/app/actions/config');
+  const alias = await getRepoAlias(repoPath);
+  return alias || getRepoFolderName(repoPath);
+}
+
 export function getRepositoryDisplayName(repo: Pick<Repository, 'path' | 'name' | 'displayName'>): string {
   const customName = repo.displayName?.trim();
   if (customName) {

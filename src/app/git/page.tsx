@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getRepoFolderName } from '@/lib/utils';
+import { getRepoDisplayNameFromConfig } from '@/lib/utils';
 import HistoryContentWrapper from './history-content';
 
 type PageProps = {
@@ -8,7 +8,7 @@ type PageProps = {
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
     const { path: repoPath } = await searchParams;
-    const repoName = repoPath ? getRepoFolderName(repoPath) : 'Workspace';
+    const repoName = repoPath ? await getRepoDisplayNameFromConfig(repoPath) : 'Workspace';
     return { title: { absolute: `${repoName} | History` } };
 }
 

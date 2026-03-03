@@ -4,7 +4,7 @@
 
 User-facing behavior:
 - Provides `vibe-pal` CLI to run Palx in dev or production mode.
-- Auto-detects/installs runtime dependencies (`ttyd`, and `tmux` on non-Windows).
+- Auto-detects/installs runtime dependencies (`ttyd` and `tmux`).
 - Auto-opens browser in production mode unless disabled (`BROWSER=none|false|0`).
 - Ensures Codex skills are installed globally when missing.
 
@@ -48,11 +48,8 @@ Core files: [bin/viba.mjs](../../../bin/viba.mjs), [src/lib/cli-args.mjs](../../
 flowchart TD
   A[Run vibe-pal] --> B[parse args]
   B --> C[ensure ttyd installed]
-  C --> D{platform != win32?}
-  D -->|yes| E[ensure tmux installed]
-  D -->|no| F[skip tmux]
+  C --> E[ensure tmux installed]
   E --> G[ensure Codex skills]
-  F --> G
   G --> H[choose port]
   H --> I{mode}
   I -->|dev| J[next dev --webpack -p port]

@@ -589,14 +589,9 @@ export async function checkAgentCliInstalled(
   try {
     const { spawn } = await import('child_process');
     const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
-    const isWindows = os.platform() === 'win32';
-    const shell = isWindows ? 'powershell' : 'bash';
-    const shellArgs = isWindows
-      ? ['-Command', `Get-Command ${cliConfig.executable} -ErrorAction SilentlyContinue`]
-      : ['-lc', `command -v ${cliConfig.executable}`];
 
     const exitCode = await new Promise<number>((resolve) => {
-      const child = spawn(shell, shellArgs, { stdio: 'ignore' });
+      const child = spawn('bash', ['-lc', `command -v ${cliConfig.executable}`], { stdio: 'ignore' });
       child.on('close', (code) => resolve(code ?? 1));
       child.on('error', () => resolve(1));
     });
@@ -617,15 +612,10 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
   try {
     const { spawn } = await import('child_process');
     const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
-    const isWindows = os.platform() === 'win32';
-    const shell = isWindows ? 'powershell' : 'bash';
-    const shellArgs = isWindows
-      ? ['-Command', cliConfig.installCommand]
-      : ['-lc', cliConfig.installCommand];
 
     const outputChunks: string[] = [];
     const exitCode = await new Promise<number>((resolve) => {
-      const child = spawn(shell, shellArgs, {
+      const child = spawn('bash', ['-lc', cliConfig.installCommand], {
         cwd: os.homedir(),
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -820,10 +810,6 @@ export async function getSessionTerminalSources(
     floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal'),
   };
 
-  if (os.platform() === 'win32') {
-    return fallback;
-  }
-
   try {
     const [gitEnvironments, agentEnvironments] = await Promise.all([
       resolveGitTerminalSessionEnvironments(repoPath),
@@ -843,10 +829,9 @@ export async function getSessionTerminalSources(
 
 export async function startTtydProcess(): Promise<{ success: boolean; persistenceMode?: 'tmux' | 'shell'; error?: string }> {
   if (global.ttydProcess) {
-    if (global.ttydPersistenceMode === 'tmux' && os.platform() !== 'win32') {
+    if (global.ttydPersistenceMode === 'tmux') {
       try {
         const { spawnSync } = await import('child_process');
-        // Re-apply tmux defaults for already-running instances so wheel scrollback stays available.
         spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
           stdio: 'ignore',
           env: process.env,
@@ -874,11 +859,8 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
     } = process.env;
 
     const workingDir = os.homedir();
-    const isWindows = os.platform() === 'win32';
-    const commandProbe = isWindows ? 'where' : 'which';
     const hasTmux =
-      !isWindows &&
-      spawnSync(commandProbe, ['tmux'], {
+      spawnSync('which', ['tmux'], {
         stdio: 'ignore',
         env: process.env,
       }).status === 0;
@@ -914,9 +896,8 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       ttydArgs.push('-a', 'tmux');
       persistenceMode = 'tmux';
     } else {
-      const shell = isWindows ? 'powershell' : 'bash';
       console.warn('tmux is unavailable; falling back to non-persistent ttyd shell mode.');
-      ttydArgs.push(shell);
+      ttydArgs.push('bash');
     }
 
     const child = spawn('ttyd', ttydArgs, {
@@ -962,10 +943,6 @@ export async function setTmuxSessionMouseMode(
   role: TerminalSessionRole,
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  if (os.platform() === 'win32') {
-    return { success: true };
-  }
-
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
@@ -1001,10 +978,6 @@ export async function setTmuxSessionStatusVisibility(
   role: TerminalSessionRole,
   visible: boolean
 ): Promise<{ success: boolean; applied: boolean; error?: string }> {
-  if (os.platform() === 'win32') {
-    return { success: true, applied: false };
-  }
-
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
@@ -1036,8 +1009,6 @@ export async function setTmuxSessionStatusVisibility(
 }
 
 export async function terminateSessionTerminalSessions(sessionName: string): Promise<void> {
-  if (os.platform() === 'win32') return;
-
   try {
     const { spawnSync } = await import('child_process');
     const tmuxExists =

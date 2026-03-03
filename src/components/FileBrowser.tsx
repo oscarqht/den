@@ -138,7 +138,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
 
   const handleGoUp = () => {
     // Navigate up one directory
-    // Use the cross-platform getDirName utility to handle Windows and POSIX paths.
+    // Use getDirName to extract the parent directory from the current path.
     const parent = getDirName(currentPath);
     if (parent && parent !== currentPath) {
       setCurrentPath(parent);

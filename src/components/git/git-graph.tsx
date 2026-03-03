@@ -121,7 +121,7 @@ export const GitGraph = forwardRef<GitGraphHandle, {
     // Handle Cmd+F to open search
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Cmd+F (Mac) or Ctrl+F (Windows/Linux)
+            // Cmd+F (Mac) or Ctrl+F (Linux)
             if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
                 e.preventDefault();
                 setIsSearchOpen(true);

@@ -35,7 +35,7 @@ function normalizeFolderName(rawFolderName: string): string {
   if (trimmed === '.' || trimmed === '..') {
     throw new Error('Invalid destination folder name');
   }
-  if (trimmed.includes('/') || trimmed.includes('\\')) {
+  if (trimmed.includes('/')) {
     throw new Error('Destination folder name cannot include path separators');
   }
   if (path.basename(trimmed) !== trimmed) {

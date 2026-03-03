@@ -17,7 +17,7 @@ import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, ChevronRight, Grip, ChevronDown, Plus, MousePointer2, ArrowLeft, ArrowRight, RotateCw, ScrollText, TextCursorInput, X } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { SessionRepoViewer } from './SessionRepoViewer';
-import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
+import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
 import { buildTtydTerminalSrc } from '@/lib/terminal-session';
 import { normalizePreviewUrl } from '@/lib/url';
@@ -64,8 +64,8 @@ const TERMINAL_HEADER_HEIGHT = 36;
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
-const CODEX_PLAIN_THEME_FLAG = '-c tui.theme="ansi"';
-const CODEX_MONOCHROME_ENV_PREFIX = 'NO_COLOR=1 CLICOLOR=0 CLICOLOR_FORCE=0 FORCE_COLOR=0 COLORTERM= TERM=xterm';
+const CODEX_ENV_PREFIX = 'NO_COLOR=1 FORCE_COLOR=0 TERM=xterm';
+const CODEX_COMMON_FLAGS = '-c tui.theme="ansi" --sandbox danger-full-access --ask-for-approval on-request --search';
 const TERMINAL_LOADING_OVERLAY_CLASS = 'pointer-events-none absolute inset-0 z-10 flex items-center justify-center';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
@@ -117,26 +117,25 @@ const normalizePickerSourceFileName = (value: string): string => {
         .replace(/^rsc:\/\//, '')
         .replace(/^\(.*?\)\//, '')
         .replace(/^\/\.\//, '/')
-        .replace(/^\.\//, '')
-        .replace(/\\/g, '/');
+        .replace(/^\.\//, '');
 
     return normalized.trim();
 };
 
 const joinPath = (base: string, relative: string): string => {
-    const normalizedBase = base.replace(/\\/g, '/').replace(/\/+$/, '');
-    const normalizedRelative = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalizedBase = base.replace(/\/+$/, '');
+    const normalizedRelative = relative.replace(/^\/+/, '');
     return `${normalizedBase}/${normalizedRelative}`;
 };
 
 const resolveComponentSourcePath = (rawSourceFileName: string, workspaceRoot: string): string | null => {
-    const normalizedWorkspaceRoot = workspaceRoot.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedWorkspaceRoot = workspaceRoot.trim().replace(/\/+$/, '');
     if (!normalizedWorkspaceRoot) return null;
 
     const normalizedSource = normalizePickerSourceFileName(rawSourceFileName);
     if (!normalizedSource) return null;
 
-    if (normalizedSource.startsWith('/') || isWindowsAbsolutePath(normalizedSource)) {
+    if (normalizedSource.startsWith('/')) {
         return normalizedSource;
     }
 
@@ -1822,16 +1821,11 @@ export function SessionView({
                     if (agent) {
                         const startAgentProcess = async () => {
                             let agentCmd = '';
-                            const withCodexMonochromeEnv = (command: string): string => {
-                                return `${CODEX_MONOCHROME_ENV_PREFIX} ${command}`;
-                            };
-                            const withCodexApiKeyLogin = (command: string): string => {
-                                return `if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi; ${command}`;
-                            };
+                            const withCodexLogin = (cmd: string): string =>
+                                `[ -n "$OPENAI_API_KEY" ] && { printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; }; ${cmd}`;
 
                             if (isResume) {
-                                const resumeCmd = withCodexMonochromeEnv(`codex resume --last ${CODEX_PLAIN_THEME_FLAG} --sandbox danger-full-access --ask-for-approval on-request --search`);
-                                agentCmd = withCodexApiKeyLogin(resumeCmd);
+                                agentCmd = withCodexLogin(`${CODEX_ENV_PREFIX} codex resume --last ${CODEX_COMMON_FLAGS}`);
                             } else {
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
                                 const taskContent = trimmedInitialMessage;
@@ -1898,8 +1892,7 @@ export function SessionView({
                                     }
                                 }
 
-                                const startCmd = withCodexMonochromeEnv(`codex ${CODEX_PLAIN_THEME_FLAG} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`);
-                                agentCmd = withCodexApiKeyLogin(startCmd);
+                                agentCmd = withCodexLogin(`${CODEX_ENV_PREFIX} codex ${CODEX_COMMON_FLAGS}${safeMessage}`);
                             }
 
                             if (agentCmd) {

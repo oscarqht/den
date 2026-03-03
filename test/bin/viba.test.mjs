@@ -57,24 +57,6 @@ describe('getInstallStrategies', () => {
     assert.ok(labels.includes('sudo zypper'));
   });
 
-  it('returns Windows strategies on Win32', () => {
-    Object.defineProperty(process, 'platform', {
-      value: 'win32'
-    });
-
-    const strategies = getInstallStrategies('ttyd');
-    assert.strictEqual(strategies.length, 2);
-    assert.strictEqual(strategies[0].label, 'winget');
-    assert.deepStrictEqual(strategies[0].requiredCommands, ['winget']);
-    assert.strictEqual(strategies[0].command, 'winget');
-    assert.deepStrictEqual(strategies[0].args, ['install', 'tsl0922.ttyd']);
-
-    assert.strictEqual(strategies[1].label, 'scoop');
-    assert.deepStrictEqual(strategies[1].requiredCommands, ['scoop']);
-    assert.strictEqual(strategies[1].command, 'scoop');
-    assert.deepStrictEqual(strategies[1].args, ['install', 'ttyd']);
-  });
-
   it('returns empty array on unknown platform', () => {
     Object.defineProperty(process, 'platform', {
       value: 'aix' // AIX is a valid platform string but not handled
@@ -117,13 +99,6 @@ describe('getBrowserOpenCommand', () => {
     assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'linux'), {
       command: 'xdg-open',
       args: ['http://localhost:3200'],
-    });
-  });
-
-  it('returns Windows start command via cmd', () => {
-    assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'win32'), {
-      command: 'cmd',
-      args: ['/c', 'start', '', 'http://localhost:3200'],
     });
   });
 

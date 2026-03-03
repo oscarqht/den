@@ -5,7 +5,7 @@
 Prerequisites (from README and launcher logic):
 - Node.js + npm ([README.md](../../README.md), [package.json](../../package.json)).
 - `ttyd` installed and available in `PATH`.
-- `tmux` on non-Windows for persistent terminal mode.
+- `tmux` for persistent terminal mode.
 - Optional Auth0 app credentials for protected mode.
 
 Install and run:
@@ -115,7 +115,7 @@ Legacy note:
 
 ### Terminal not loading
 - Check `ttyd` availability and process startup errors from `startTtydProcess` ([src/app/actions/git.ts](../../src/app/actions/git.ts)).
-- On non-Windows, missing `tmux` degrades to shell mode; persistence features differ.
+- Missing `tmux` degrades to shell mode; persistence features differ.
 - Verify Next rewrite for `/terminal` is active ([next.config.mjs](../../next.config.mjs)).
 
 ### Git operations failing with lock file

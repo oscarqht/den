@@ -33,8 +33,7 @@ function getNextBin() {
 }
 
 function isCommandAvailable(command) {
-  const probe = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(probe, [command], {
+  const result = spawnSync("which", [command], {
     stdio: "ignore",
     env: process.env,
   });
@@ -55,13 +54,6 @@ export function getBrowserOpenCommand(url, platform = process.platform) {
     return {
       command: "open",
       args: [url],
-    };
-  }
-
-  if (platform === "win32") {
-    return {
-      command: "cmd",
-      args: ["/c", "start", "", url],
     };
   }
 
@@ -166,27 +158,6 @@ export function getInstallStrategies(packageName) {
         requiredCommands: ["sudo", "zypper"],
         command: "sudo",
         args: ["zypper", "--non-interactive", "install", packageName],
-      },
-    ];
-  }
-
-  if (process.platform === "win32") {
-    if (packageName !== "ttyd") {
-      return [];
-    }
-
-    return [
-      {
-        label: "winget",
-        requiredCommands: ["winget"],
-        command: "winget",
-        args: ["install", "tsl0922.ttyd"],
-      },
-      {
-        label: "scoop",
-        requiredCommands: ["scoop"],
-        command: "scoop",
-        args: ["install", "ttyd"],
       },
     ];
   }
@@ -391,7 +362,6 @@ function openInDefaultBrowser(url) {
       env: process.env,
       stdio: "ignore",
       detached: true,
-      windowsHide: true,
     });
     child.once("error", (error) => {
       const detail = error instanceof Error ? error.message : String(error);
@@ -431,9 +401,7 @@ async function main() {
     }
 
     ensureCommandInstalled("ttyd");
-    if (process.platform !== "win32") {
-      ensureCommandInstalled("tmux");
-    }
+    ensureCommandInstalled("tmux");
     ensureCodexSkillsInstalled();
 
     const envPort = Number.parseInt(process.env.PORT || "", 10);

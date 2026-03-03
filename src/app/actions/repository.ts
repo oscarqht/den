@@ -86,7 +86,7 @@ function getRepoNameFromRemoteUrl(remoteUrl: string): string | null {
     }
   }
 
-  const normalized = rawPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalized = rawPath.replace(/\/+$/, '');
   if (!normalized) return null;
 
   let baseName = path.posix.basename(normalized);

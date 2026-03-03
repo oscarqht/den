@@ -7,8 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getRepoFolderName(repoPath: string): string {
-  const normalizedPath = repoPath.replace(/[\\/]+$/, '');
-  const segments = normalizedPath.split(/[/\\]/).filter(Boolean);
+  const normalizedPath = repoPath.replace(/\/+$/, '');
+  const segments = normalizedPath.split('/').filter(Boolean);
   return segments[segments.length - 1] || repoPath;
 }
 

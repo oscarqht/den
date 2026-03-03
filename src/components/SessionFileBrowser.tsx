@@ -390,7 +390,7 @@ export default function SessionFileBrowser({
             <div className="flex items-center gap-2 overflow-x-auto">
               {pinnedFolderShortcuts.map((folderPath) => {
                 const isCurrent = folderPath === currentPath;
-                const label = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+                const label = folderPath.split('/').filter(Boolean).pop() || folderPath;
                 return (
                   <div key={folderPath} className="join shrink-0">
                     <button

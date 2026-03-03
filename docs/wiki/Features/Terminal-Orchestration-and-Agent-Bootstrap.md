@@ -74,8 +74,7 @@ sequenceDiagram
 ## Error Handling and Edge Cases
 
 - If ttyd is already running, action returns success and re-applies tmux defaults when needed ([src/app/actions/git.ts](../../../src/app/actions/git.ts)).
-- On systems without tmux, falls back to non-persistent shell mode (`ttyd ... bash/powershell`) ([src/app/actions/git.ts](../../../src/app/actions/git.ts)).
-- Windows path receives fallback terminal source without env injection for tmux args ([src/app/actions/git.ts](../../../src/app/actions/git.ts)).
+- On systems without tmux, falls back to non-persistent shell mode (`ttyd ... bash`) ([src/app/actions/git.ts](../../../src/app/actions/git.ts)).
 - Terminal bootstrap uses state guards to avoid duplicate command injection when iframe reloads ([src/components/SessionView.tsx](../../../src/components/SessionView.tsx)).
 - Theme application is defensive against iframe/document access failures and missing xterm internals ([src/lib/ttyd-theme.ts](../../../src/lib/ttyd-theme.ts)).
 

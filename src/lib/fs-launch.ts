@@ -28,7 +28,6 @@ async function runCommand(attempt: CommandAttempt): Promise<void> {
     const child = spawn(attempt.command, attempt.args, {
       cwd: attempt.cwd,
       stdio: ['ignore', 'ignore', 'pipe'],
-      windowsHide: true,
     });
 
     let stderr = '';
@@ -88,10 +87,6 @@ export async function openDirectoryInFileManager(directoryPath: string): Promise
       return [{ command: 'open', args: [directoryPath] }];
     }
 
-    if (process.platform === 'win32') {
-      return [{ command: 'explorer.exe', args: [directoryPath] }];
-    }
-
     return [{ command: 'xdg-open', args: [directoryPath] }];
   })();
 
@@ -106,14 +101,6 @@ export async function openDirectoryInTerminal(directoryPath: string): Promise<vo
   const attempts: CommandAttempt[] = (() => {
     if (process.platform === 'darwin') {
       return [{ command: 'open', args: ['-a', 'Terminal', directoryPath] }];
-    }
-
-    if (process.platform === 'win32') {
-      return [{
-        command: 'cmd.exe',
-        args: ['/c', 'start', '""', 'cmd.exe'],
-        cwd: directoryPath,
-      }];
     }
 
     return [

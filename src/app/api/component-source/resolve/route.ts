@@ -268,7 +268,7 @@ const searchByScanningFilesForNames = async (workspaceRoot: string, componentNam
 };
 
 const scoreCandidate = (candidatePath: string, componentName: string): number => {
-  const normalized = candidatePath.replace(/\\/g, '/').toLowerCase();
+  const normalized = candidatePath.toLowerCase();
   const kebabName = toKebabCase(componentName);
   const fileName = path.basename(normalized);
 

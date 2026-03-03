@@ -100,14 +100,12 @@ References:
 
 ### Local state locations
 
-- `~/.viba/config.json`
-- `~/.viba/sessions/*`
-- `~/.viba/session-contexts/*`
+- `~/.viba/palx.db` (SQLite metadata/config database)
 - `~/.viba/session-prompts/*`
-- `~/.viba/drafts/*`
-- `~/.viba/credentials.json`
-- `~/.viba/agent-api-configs.json`
-- app-data `repos.json` and `settings.json` from `getAppDataDir()`
+- `~/.viba/repos/*` (default clone destination for remote repository onboarding)
+
+Legacy note:
+- old JSON metadata files (for example `config.json`, `sessions/*`, `drafts/*`, credential metadata JSON) are migration inputs only; runtime source of truth is `palx.db` once migration has run.
 
 ## Troubleshooting Guide
 
@@ -127,6 +125,10 @@ References:
 - Ensure keytar is available; metadata without keychain secret behaves like missing token.
 - Re-save credential from credentials page to verify token with provider API.
 - Check repository-level `credentialId` selection in config/repo settings.
+
+### Local metadata DB issues
+- Verify `~/.viba/palx.db` exists and is writable by the current user.
+- If migration was interrupted, restart Palx to re-run DB initialization/migration logic in [src/lib/local-db.ts](../../src/lib/local-db.ts).
 
 ### Preview not loading
 - Preview URL must normalize to `http/https`; invalid schemes are rejected.

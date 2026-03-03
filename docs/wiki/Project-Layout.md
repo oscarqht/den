@@ -85,4 +85,4 @@ Primary references:
 ## Notable Layout Observations
 
 - `src/components/repo-list.tsx` appears unused by current route tree and references `/api/fs` browsing APIs that are not present in this branch; active repository onboarding uses `GitRepoSelector` + server actions instead.
-- `src/lib/store.ts` persists settings/repositories under platform app-data (`trident` path), while newer app config/session systems use `~/.viba` JSON files.
+- `src/lib/local-db.ts` is the centralized local metadata/config persistence layer (`~/.viba/palx.db`), while `src/app/actions/session.ts` still writes prompt text files under `~/.viba/session-prompts`.

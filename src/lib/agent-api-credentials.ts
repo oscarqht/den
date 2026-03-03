@@ -1,10 +1,7 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import { createKeytarLoader, type KeytarModule } from './keytar-loader';
+import { getLocalDb } from './local-db';
 
 const SERVICE_NAME = 'viba-agent-api-credentials';
-const CONFIGS_FILE_NAME = 'agent-api-configs.json';
 const SUPPORTED_AGENT_APIS = ['codex'] as const;
 
 export type AgentApiCredentialAgent = typeof SUPPORTED_AGENT_APIS[number];
@@ -67,73 +64,55 @@ function toAgentApiCredential(metadata: AgentApiCredentialMetadata): AgentApiCre
   };
 }
 
-function isAgentApiCredentialMetadata(value: unknown): value is AgentApiCredentialMetadata {
-  if (!value || typeof value !== 'object') return false;
-
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.agent !== 'string' || !isSupportedAgentApi(candidate.agent)) return false;
-  if (typeof candidate.createdAt !== 'string') return false;
-  if (typeof candidate.updatedAt !== 'string') return false;
-  if (candidate.apiProxy !== undefined && typeof candidate.apiProxy !== 'string') return false;
-  if (candidate.keytarAccount !== undefined && typeof candidate.keytarAccount !== 'string') return false;
-
-  return true;
-}
-
-async function getConfigsFilePath(): Promise<string> {
-  const vibaDir = path.join(os.homedir(), '.viba');
-  await fs.mkdir(vibaDir, { recursive: true });
-  return path.join(vibaDir, CONFIGS_FILE_NAME);
-}
-
 async function writeAgentApiCredentialMetadata(metadata: AgentApiCredentialMetadata[]): Promise<void> {
-  const configsFilePath = await getConfigsFilePath();
-  await fs.writeFile(configsFilePath, JSON.stringify(metadata, null, 2), 'utf-8');
+  const db = getLocalDb();
+  const tx = db.transaction((rows: AgentApiCredentialMetadata[]) => {
+    db.prepare('DELETE FROM agent_api_credentials_metadata').run();
+    const insert = db.prepare(`
+      INSERT INTO agent_api_credentials_metadata (
+        agent, api_proxy, created_at, updated_at, keytar_account
+      ) VALUES (
+        @agent, @apiProxy, @createdAt, @updatedAt, @keytarAccount
+      )
+    `);
+    for (const row of rows) {
+      insert.run({
+        agent: row.agent,
+        apiProxy: row.apiProxy ?? null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        keytarAccount: row.keytarAccount ?? null,
+      });
+    }
+  });
+  tx(metadata);
 }
 
 async function readAgentApiCredentialMetadata(): Promise<AgentApiCredentialMetadata[]> {
-  const configsFilePath = await getConfigsFilePath();
-
   try {
-    const content = await fs.readFile(configsFilePath, 'utf-8');
-    const parsed = JSON.parse(content) as unknown;
+    const db = getLocalDb();
+    const rows = db.prepare(`
+      SELECT agent, api_proxy, created_at, updated_at, keytar_account
+      FROM agent_api_credentials_metadata
+    `).all() as Array<{
+      agent: string;
+      api_proxy: string | null;
+      created_at: string;
+      updated_at: string;
+      keytar_account: string | null;
+    }>;
 
-    if (Array.isArray(parsed)) {
-      return parsed.filter(isAgentApiCredentialMetadata);
-    }
-
-    if (!parsed || typeof parsed !== 'object') {
-      return [];
-    }
-
-    // Legacy map shape: { codex: { ... }, ... }
-    const entries = Object.entries(parsed as Record<string, unknown>);
-    const migrated = entries
-      .filter(([agent]) => isSupportedAgentApi(agent))
-      .map(([agent, value]) => {
-        if (!value || typeof value !== 'object') return null;
-        const candidate = value as Record<string, unknown>;
-        if (candidate.agent === undefined) {
-          return {
-            ...candidate,
-            agent,
-          } as unknown;
-        }
-        return candidate;
-      })
-      .filter(isAgentApiCredentialMetadata);
-
-    if (migrated.length > 0) {
-      await writeAgentApiCredentialMetadata(migrated);
-    }
-
-    return migrated;
+    return rows
+      .filter((row): row is typeof row & { agent: AgentApiCredentialAgent } => isSupportedAgentApi(row.agent))
+      .map((row) => ({
+        agent: row.agent,
+        apiProxy: row.api_proxy ?? undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        keytarAccount: row.keytar_account ?? undefined,
+      }));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      return [];
-    }
-
-    console.error('Failed to parse agent API credential metadata:', error);
+    console.error('Failed to read agent API credential metadata:', error);
     return [];
   }
 }

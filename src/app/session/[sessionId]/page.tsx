@@ -1,24 +1,21 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import type { Metadata } from 'next';
 import SessionPageClient from './SessionPageClient';
+import { getLocalDb } from '@/lib/local-db';
 
 type SessionRouteProps = {
   params: Promise<{ sessionId: string }>;
 };
 
-type SessionFileData = {
-  title?: string;
-};
-
 async function readSessionTitle(sessionId: string): Promise<string | undefined> {
   try {
-    const sessionFilePath = path.join(os.homedir(), '.viba', 'sessions', `${sessionId}.json`);
-    const rawContent = await fs.readFile(sessionFilePath, 'utf-8');
-    const data = JSON.parse(rawContent) as SessionFileData;
+    const db = getLocalDb();
+    const row = db.prepare(`
+      SELECT title
+      FROM sessions
+      WHERE session_name = ?
+    `).get(sessionId) as { title: string | null } | undefined;
 
-    const trimmedTitle = data.title?.trim();
+    const trimmedTitle = row?.title?.trim();
     return trimmedTitle || undefined;
   } catch {
     return undefined;

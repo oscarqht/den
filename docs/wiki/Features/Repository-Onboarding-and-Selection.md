@@ -43,10 +43,12 @@ Primary implementation: [src/components/GitRepoSelector.tsx](../../../src/compon
 
 ## Data Model and Storage Touches
 
-- `~/.viba/config.json` (`recentRepos`, `repoSettings`, pinned shortcuts): [src/app/actions/config.ts](../../../src/app/actions/config.ts).
-- `~/.viba/drafts/*.json` draft session payloads: [src/app/actions/draft.ts](../../../src/app/actions/draft.ts).
-- `~/.viba/sessions/*.json` and `~/.viba/session-contexts/*.json`: session creation artifacts: [src/app/actions/session.ts](../../../src/app/actions/session.ts).
-- `repos.json` in app-data dir for `/api/repos`: [src/lib/store.ts](../../../src/lib/store.ts).
+- `~/.viba/palx.db` stores:
+  - app config (`recentRepos`, `repoSettings`, pinned shortcuts) via [src/app/actions/config.ts](../../../src/app/actions/config.ts)
+  - draft payload metadata via [src/app/actions/draft.ts](../../../src/app/actions/draft.ts)
+  - session metadata + launch context via [src/app/actions/session.ts](../../../src/app/actions/session.ts)
+  - repository records for `/api/repos` via [src/lib/store.ts](../../../src/lib/store.ts)
+- `~/.viba/session-prompts/*.txt` stores session prompt text artifacts via [src/app/actions/session.ts](../../../src/app/actions/session.ts).
 
 ## Main Control Flow
 

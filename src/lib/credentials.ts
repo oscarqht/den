@@ -1,10 +1,7 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import { createKeytarLoader, type KeytarModule } from './keytar-loader';
+import { getLocalDb } from './local-db';
 
 const SERVICE_NAME = 'viba-git-credentials';
-const CREDENTIALS_FILE_NAME = 'credentials.json';
 
 export type CredentialType = 'github' | 'gitlab';
 
@@ -37,14 +34,6 @@ type CredentialMetadata = {
   keytarAccount?: string;
 };
 
-type LegacyCredentialMetadata = {
-  type: CredentialType;
-  username: string;
-  serverUrl?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 const { loadKeytar, requireKeytar } = createKeytarLoader({ logLabel: 'credentials' });
 
 function generateId(): string {
@@ -57,10 +46,6 @@ function normalizeGitLabServerUrl(serverUrl: string): string {
 
 function getDefaultKeytarAccount(id: string): string {
   return `credential-${id}`;
-}
-
-function getLegacyKeytarAccount(type: CredentialType): string {
-  return `credential-${type}`;
 }
 
 function getKeytarAccountForMetadata(metadata: CredentialMetadata): string {
@@ -88,105 +73,61 @@ function toCredential(metadata: CredentialMetadata): Credential {
   };
 }
 
-async function getCredentialsFilePath(): Promise<string> {
-  const vibaDir = path.join(os.homedir(), '.viba');
-  await fs.mkdir(vibaDir, { recursive: true });
-  return path.join(vibaDir, CREDENTIALS_FILE_NAME);
-}
-
-function isLegacyCredentialMetadata(value: unknown, expectedType: CredentialType): value is LegacyCredentialMetadata {
-  if (!value || typeof value !== 'object') return false;
-
-  const candidate = value as Record<string, unknown>;
-  if (candidate.type !== expectedType) return false;
-  if (typeof candidate.username !== 'string') return false;
-  if (typeof candidate.createdAt !== 'string') return false;
-  if (typeof candidate.updatedAt !== 'string') return false;
-
-  if (expectedType === 'gitlab') {
-    return typeof candidate.serverUrl === 'string';
-  }
-
-  return true;
-}
-
-function isCredentialMetadata(value: unknown): value is CredentialMetadata {
-  if (!value || typeof value !== 'object') return false;
-
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.id !== 'string' || !candidate.id.trim()) return false;
-  if (candidate.type !== 'github' && candidate.type !== 'gitlab') return false;
-  if (typeof candidate.username !== 'string') return false;
-  if (typeof candidate.createdAt !== 'string') return false;
-  if (typeof candidate.updatedAt !== 'string') return false;
-  if (candidate.keytarAccount !== undefined && typeof candidate.keytarAccount !== 'string') return false;
-
-  if (candidate.type === 'gitlab') {
-    return typeof candidate.serverUrl === 'string';
-  }
-
-  return true;
-}
-
 async function writeCredentialsMetadata(metadata: CredentialMetadata[]): Promise<void> {
-  const credentialsFilePath = await getCredentialsFilePath();
-  await fs.writeFile(credentialsFilePath, JSON.stringify(metadata, null, 2), 'utf-8');
+  const db = getLocalDb();
+  const writeTx = db.transaction((rows: CredentialMetadata[]) => {
+    db.prepare('DELETE FROM credentials_metadata').run();
+    const insert = db.prepare(`
+      INSERT INTO credentials_metadata (
+        id, type, username, server_url, created_at, updated_at, keytar_account
+      ) VALUES (
+        @id, @type, @username, @serverUrl, @createdAt, @updatedAt, @keytarAccount
+      )
+    `);
+    for (const row of rows) {
+      insert.run({
+        id: row.id,
+        type: row.type,
+        username: row.username,
+        serverUrl: row.serverUrl ?? null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        keytarAccount: row.keytarAccount ?? null,
+      });
+    }
+  });
+  writeTx(metadata);
 }
 
 async function readCredentialsMetadata(): Promise<CredentialMetadata[]> {
-  const credentialsFilePath = await getCredentialsFilePath();
-
   try {
-    const content = await fs.readFile(credentialsFilePath, 'utf-8');
-    const parsed = JSON.parse(content) as unknown;
+    const db = getLocalDb();
+    const rows = db.prepare(`
+      SELECT id, type, username, server_url, created_at, updated_at, keytar_account
+      FROM credentials_metadata
+    `).all() as Array<{
+      id: string;
+      type: CredentialType;
+      username: string;
+      server_url: string | null;
+      created_at: string;
+      updated_at: string;
+      keytar_account: string | null;
+    }>;
 
-    if (Array.isArray(parsed)) {
-      return parsed.filter(isCredentialMetadata);
-    }
-
-    if (!parsed || typeof parsed !== 'object') {
-      return [];
-    }
-
-    const legacyMapped = parsed as Record<string, unknown>;
-    const migrated: CredentialMetadata[] = [];
-
-    if (isLegacyCredentialMetadata(legacyMapped.github, 'github')) {
-      const metadata = legacyMapped.github;
-      migrated.push({
-        id: generateId(),
-        type: 'github',
-        username: metadata.username,
-        createdAt: metadata.createdAt,
-        updatedAt: metadata.updatedAt,
-        keytarAccount: getLegacyKeytarAccount('github'),
-      });
-    }
-
-    if (isLegacyCredentialMetadata(legacyMapped.gitlab, 'gitlab')) {
-      const metadata = legacyMapped.gitlab;
-      migrated.push({
-        id: generateId(),
-        type: 'gitlab',
-        username: metadata.username,
-        serverUrl: metadata.serverUrl,
-        createdAt: metadata.createdAt,
-        updatedAt: metadata.updatedAt,
-        keytarAccount: getLegacyKeytarAccount('gitlab'),
-      });
-    }
-
-    if (migrated.length > 0) {
-      await writeCredentialsMetadata(migrated);
-    }
-
-    return migrated;
+    return rows
+      .filter((row) => row.type === 'github' || row.type === 'gitlab')
+      .map((row) => ({
+        id: row.id,
+        type: row.type,
+        username: row.username,
+        serverUrl: row.server_url ?? undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        keytarAccount: row.keytar_account ?? undefined,
+      }));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      return [];
-    }
-
-    console.error('Failed to parse credentials metadata:', error);
+    console.error('Failed to read credentials metadata:', error);
     return [];
   }
 }

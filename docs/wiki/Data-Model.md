@@ -2,27 +2,53 @@
 
 ## Persistence Overview
 
-This project has no relational/NoSQL database and no migrations framework.
-Persistence is file-based plus OS keychain secrets.
+Palx now uses a local SQLite database for metadata/config persistence.
 
-Storage locations used by current code:
-- `~/.viba/*` JSON/text files for session/config/draft/credential metadata:
-- [src/app/actions/config.ts](../../src/app/actions/config.ts)
-- [src/app/actions/session.ts](../../src/app/actions/session.ts)
-- [src/app/actions/draft.ts](../../src/app/actions/draft.ts)
-- [src/lib/credentials.ts](../../src/lib/credentials.ts)
-- [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)
-- Platform app-data directory for repository and settings store (`repos.json`, `settings.json`):
-- [src/lib/store.ts](../../src/lib/store.ts)
-- [src/lib/platform-utils.ts](../../src/lib/platform-utils.ts)
-- OS keychain via `keytar` for credential secret material:
-- [src/lib/credentials.ts](../../src/lib/credentials.ts)
-- [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)
+Primary storage location:
+- `~/.viba/palx.db` (single-file SQLite database), initialized by [src/lib/local-db.ts](../../src/lib/local-db.ts).
+
+What is persisted in SQLite:
+- repository records and UI repository state.
+- app settings and app config.
+- per-repo settings.
+- session metadata and launch context.
+- draft metadata.
+- git credential metadata.
+- agent API credential metadata.
+
+What remains file-based:
+- session prompt text files at `~/.viba/session-prompts/*.txt` ([src/app/actions/session.ts](../../src/app/actions/session.ts)).
+- repository clones and worktree directories on disk ([src/app/actions/repository.ts](../../src/app/actions/repository.ts), [src/app/actions/git.ts](../../src/app/actions/git.ts)).
+
+Secret material:
+- secrets are still stored in OS keychain via `keytar` (tokens/API keys), not in SQLite ([src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
+
+## SQLite Schema Groups
+
+Defined in [src/lib/local-db.ts](../../src/lib/local-db.ts).
+
+- Repository/settings tables:
+  - `repositories`
+  - `app_settings`
+- App config tables:
+  - `app_config`
+  - `app_config_recent_repos`
+  - `app_config_pinned_folder_shortcuts`
+  - `app_config_repo_settings`
+- Credential metadata tables:
+  - `credentials_metadata`
+  - `agent_api_credentials_metadata`
+- Session/draft tables:
+  - `sessions`
+  - `session_launch_contexts`
+  - `drafts`
+- Migration/versioning table:
+  - `schema_meta`
 
 ## Entities and Schemas
 
 ### Repository record
-Defined in [src/lib/types.ts](../../src/lib/types.ts) and persisted by [src/lib/store.ts](../../src/lib/store.ts).
+Defined in [src/lib/types.ts](../../src/lib/types.ts), persisted by [src/lib/store.ts](../../src/lib/store.ts) into `repositories`.
 
 Key fields:
 - `path`, `name`, optional `displayName`
@@ -32,15 +58,19 @@ Key fields:
 - tree visibility/expansion fields (`visibilityMap`, `expandedFolders`, etc.)
 
 ### App settings (store)
-Defined in [src/lib/types.ts](../../src/lib/types.ts), persisted by [src/lib/store.ts](../../src/lib/store.ts).
+Defined in [src/lib/types.ts](../../src/lib/types.ts), persisted by [src/lib/store.ts](../../src/lib/store.ts) into `app_settings`.
 
 Key fields:
 - `defaultRootFolder`
 - `sidebarCollapsed`
 - `historyPanelHeight`
 
-### App config (newer config path)
-Defined in [src/app/actions/config.ts](../../src/app/actions/config.ts), persisted to `~/.viba/config.json`.
+### App config
+Defined in [src/app/actions/config.ts](../../src/app/actions/config.ts), persisted into:
+- `app_config`
+- `app_config_recent_repos`
+- `app_config_pinned_folder_shortcuts`
+- `app_config_repo_settings`
 
 Key fields:
 - `recentRepos[]`
@@ -54,7 +84,7 @@ Key fields:
 - `agentProvider`, `agentModel`, `startupScript`, `devServerScript`, `lastBranch`, `credentialId`, `credentialPreference`.
 
 ### Session metadata
-Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted as `~/.viba/sessions/<session>.json`.
+Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted in `sessions`.
 
 Key fields:
 - `sessionName`
@@ -64,7 +94,7 @@ Key fields:
 - `timestamp`
 
 ### Session launch context
-Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted as `~/.viba/session-contexts/<session>.json`.
+Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted in `session_launch_contexts`.
 
 Key fields:
 - `initialMessage`, `rawInitialMessage`
@@ -73,10 +103,10 @@ Key fields:
 - `agentProvider`, `model`, `sessionMode`, `isResume`
 
 ### Draft metadata
-Defined in [src/app/actions/draft.ts](../../src/app/actions/draft.ts), persisted as `~/.viba/drafts/<id>.json`.
+Defined in [src/app/actions/draft.ts](../../src/app/actions/draft.ts), persisted in `drafts`.
 
 ### Git credential metadata
-Defined in [src/lib/credentials.ts](../../src/lib/credentials.ts), persisted to `~/.viba/credentials.json`.
+Defined in [src/lib/credentials.ts](../../src/lib/credentials.ts), persisted in `credentials_metadata`.
 
 Key fields:
 - `id`, `type`, `username`, optional `serverUrl`
@@ -86,7 +116,7 @@ Key fields:
 Secret value (token) is stored in keychain service `viba-git-credentials`.
 
 ### Agent API credential metadata
-Defined in [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts), persisted to `~/.viba/agent-api-configs.json`.
+Defined in [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts), persisted in `agent_api_credentials_metadata`.
 
 Secret value (api key) is stored in keychain service `viba-agent-api-credentials`.
 
@@ -149,21 +179,20 @@ erDiagram
 
 ## Concurrency and Consistency Notes
 
-- Most persistence writes are single-file overwrite operations without explicit locking.
-- In-memory global maps are used for long-lived processes:
-- preview proxy instances (`__vibaPreviewProxyStates`)
-- notification socket state (`__vibaSessionNotificationServerState`)
-- git client instance cache (`gitInstances` in [src/lib/git.ts](../../src/lib/git.ts)).
+- SQLite writes are transactional and centralized through the local DB layer.
+- DB is initialized with pragmas for local robustness/performance: WAL mode, foreign keys enabled, busy timeout, and `synchronous=NORMAL` ([src/lib/local-db.ts](../../src/lib/local-db.ts)).
+- In-memory global maps are still used for long-lived process state:
+  - preview proxy instances (`__vibaPreviewProxyStates`)
+  - notification socket state (`__vibaSessionNotificationServerState`)
+  - git client instance cache (`gitInstances` in [src/lib/git.ts](../../src/lib/git.ts))
 
 ## Indexes and Migrations
 
-- No database indexes exist.
-- No migration framework exists.
-- Some file formats include legacy-shape migration logic at read time:
-- credentials legacy object -> array migration in [src/lib/credentials.ts](../../src/lib/credentials.ts)
-- agent-api legacy map -> array migration in [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)
+- Indexes exist for key query paths (for example `sessions_repo_path_idx`, `sessions_timestamp_idx`, `drafts_repo_path_idx`, `drafts_timestamp_idx`) in [src/lib/local-db.ts](../../src/lib/local-db.ts).
+- A one-time legacy migration imports prior JSON-backed metadata into SQLite on first DB initialization (`schema_meta` key `legacy_migration_v1`).
+- Legacy JSON files are migration sources only and are no longer the source of truth after migration.
 
 ## Gotchas
 
-- Configuration is split across two roots (`getAppDataDir()` vs `~/.viba`).
-- Credential metadata may exist without keychain secret if keytar becomes unavailable or secrets were removed; callers handle this by treating token as missing.
+- Session prompts intentionally remain text files (`~/.viba/session-prompts`), so session persistence is split between SQLite metadata and prompt files.
+- Credential metadata may exist without keychain secret if keytar is unavailable or secrets were removed; callers treat missing token as unauthenticated.

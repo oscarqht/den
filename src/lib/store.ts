@@ -1,30 +1,35 @@
-
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Repository, AppSettings } from './types';
-import { getAppDataDir } from './platform-utils';
+import { getLocalDb } from './local-db';
 
-// Store the list of known repositories in a shared app data directory.
-// This allows all instances of the app to share the same repository list.
-const DATA_DIR = getAppDataDir();
-const DATA_FILE = path.join(DATA_DIR, 'repos.json');
+type RepositoryRow = {
+  path: string;
+  name: string;
+  display_name: string | null;
+  last_opened_at: string | null;
+  credential_id: string | null;
+  custom_scripts_json: string | null;
+  expanded_folders_json: string | null;
+  visibility_map_json: string | null;
+  local_group_expanded: number | null;
+  remotes_group_expanded: number | null;
+  worktrees_group_expanded: number | null;
+};
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+type AppSettingsRow = {
+  default_root_folder: string | null;
+  sidebar_collapsed: number | null;
+  history_panel_height: number | null;
+};
 
-export function getRepositories(): Repository[] {
-  if (!fs.existsSync(DATA_FILE)) {
-    return [];
-  }
+function parseJsonValue<T>(value: string | null): T | undefined {
+  if (!value) return undefined;
   try {
-    const data = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Failed to parse repos.json', error);
-    return [];
+    return JSON.parse(value) as T;
+  } catch {
+    return undefined;
   }
 }
 
@@ -35,10 +40,77 @@ function normalizeDisplayName(displayName?: string | null): string | null | unde
   return normalized.length > 0 ? normalized : null;
 }
 
+function rowToRepository(row: RepositoryRow): Repository {
+  const repo: Repository = {
+    path: row.path,
+    name: row.name,
+  };
+
+  if (row.display_name !== null) repo.displayName = row.display_name;
+  if (row.last_opened_at !== null) repo.lastOpenedAt = row.last_opened_at;
+  if (row.credential_id !== null) repo.credentialId = row.credential_id;
+
+  const customScripts = parseJsonValue<Repository['customScripts']>(row.custom_scripts_json);
+  if (customScripts) repo.customScripts = customScripts;
+  const expandedFolders = parseJsonValue<Repository['expandedFolders']>(row.expanded_folders_json);
+  if (expandedFolders) repo.expandedFolders = expandedFolders;
+  const visibilityMap = parseJsonValue<Repository['visibilityMap']>(row.visibility_map_json);
+  if (visibilityMap) repo.visibilityMap = visibilityMap;
+
+  if (row.local_group_expanded !== null) repo.localGroupExpanded = Boolean(row.local_group_expanded);
+  if (row.remotes_group_expanded !== null) repo.remotesGroupExpanded = Boolean(row.remotes_group_expanded);
+  if (row.worktrees_group_expanded !== null) repo.worktreesGroupExpanded = Boolean(row.worktrees_group_expanded);
+  return repo;
+}
+
+function writeRepository(repo: Repository): void {
+  const db = getLocalDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO repositories (
+      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      expanded_folders_json, visibility_map_json, local_group_expanded,
+      remotes_group_expanded, worktrees_group_expanded
+    ) VALUES (
+      @path, @name, @displayName, @lastOpenedAt, @credentialId, @customScriptsJson,
+      @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
+      @remotesGroupExpanded, @worktreesGroupExpanded
+    )
+  `).run({
+    path: repo.path,
+    name: repo.name,
+    displayName: repo.displayName ?? null,
+    lastOpenedAt: repo.lastOpenedAt ?? null,
+    credentialId: repo.credentialId ?? null,
+    customScriptsJson: repo.customScripts ? JSON.stringify(repo.customScripts) : null,
+    expandedFoldersJson: repo.expandedFolders ? JSON.stringify(repo.expandedFolders) : null,
+    visibilityMapJson: repo.visibilityMap ? JSON.stringify(repo.visibilityMap) : null,
+    localGroupExpanded: repo.localGroupExpanded === undefined ? null : Number(repo.localGroupExpanded),
+    remotesGroupExpanded: repo.remotesGroupExpanded === undefined ? null : Number(repo.remotesGroupExpanded),
+    worktreesGroupExpanded: repo.worktreesGroupExpanded === undefined ? null : Number(repo.worktreesGroupExpanded),
+  });
+}
+
+export function getRepositories(): Repository[] {
+  const db = getLocalDb();
+  const rows = db.prepare(`
+    SELECT
+      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      expanded_folders_json, visibility_map_json, local_group_expanded,
+      remotes_group_expanded, worktrees_group_expanded
+    FROM repositories
+    ORDER BY rowid ASC
+  `).all() as RepositoryRow[];
+
+  return rows.map(rowToRepository);
+}
+
 export function addRepository(repoPath: string, name?: string, displayName?: string | null): Repository {
-  const repos = getRepositories();
-  // Check if exists
-  if (repos.find(r => r.path === repoPath)) {
+  const db = getLocalDb();
+  const existing = db.prepare(`
+    SELECT path FROM repositories WHERE path = ?
+  `).get(repoPath) as { path: string } | undefined;
+
+  if (existing) {
     throw new Error('Repository already exists');
   }
 
@@ -49,28 +121,33 @@ export function addRepository(repoPath: string, name?: string, displayName?: str
     ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
   };
 
-  repos.push(newRepo);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(repos, null, 2));
+  writeRepository(newRepo);
   return newRepo;
 }
 
 export function updateRepository(repoPath: string, updates: Partial<Repository>): Repository {
-  const repos = getRepositories();
-  const repoIndex = repos.findIndex(r => r.path === repoPath);
-  
-  if (repoIndex === -1) {
+  const db = getLocalDb();
+  const row = db.prepare(`
+    SELECT
+      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      expanded_folders_json, visibility_map_json, local_group_expanded,
+      remotes_group_expanded, worktrees_group_expanded
+    FROM repositories
+    WHERE path = ?
+  `).get(repoPath) as RepositoryRow | undefined;
+
+  if (!row) {
     throw new Error('Repository not found');
   }
 
+  const current = rowToRepository(row);
   const normalizedUpdates: Partial<Repository> = { ...updates };
   if ('displayName' in normalizedUpdates) {
     normalizedUpdates.displayName = normalizeDisplayName(normalizedUpdates.displayName);
   }
 
-  const updatedRepo = { ...repos[repoIndex], ...normalizedUpdates };
-  repos[repoIndex] = updatedRepo;
-  
-  fs.writeFileSync(DATA_FILE, JSON.stringify(repos, null, 2));
+  const updatedRepo = { ...current, ...normalizedUpdates };
+  writeRepository(updatedRepo);
   return updatedRepo;
 }
 
@@ -86,55 +163,67 @@ export function removeRepository(repoPath: string, options?: { deleteLocalFolder
     fs.rmSync(resolvedRepoPath, { recursive: true, force: true });
   }
 
-  let repos = getRepositories();
-  repos = repos.filter(r => r.path !== repoPath);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(repos, null, 2));
+  const db = getLocalDb();
+  db.prepare(`
+    DELETE FROM repositories WHERE path = ?
+  `).run(repoPath);
 }
-
-// Settings management
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 export function getSettings(): AppSettings {
   const defaults: AppSettings = {
-    defaultRootFolder: null, // null means use user's home directory
+    defaultRootFolder: null,
     sidebarCollapsed: false,
   };
 
-  if (!fs.existsSync(SETTINGS_FILE)) {
+  const db = getLocalDb();
+  const row = db.prepare(`
+    SELECT default_root_folder, sidebar_collapsed, history_panel_height
+    FROM app_settings
+    WHERE singleton_id = 1
+  `).get() as AppSettingsRow | undefined;
+
+  if (!row) {
     return defaults;
   }
 
-  try {
-    const data = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-    const saved = JSON.parse(data);
-    return { ...defaults, ...saved };
-  } catch (error) {
-    console.error('Failed to parse settings.json', error);
-    return defaults;
-  }
+  return {
+    ...defaults,
+    defaultRootFolder: row.default_root_folder,
+    sidebarCollapsed: row.sidebar_collapsed === null ? defaults.sidebarCollapsed : Boolean(row.sidebar_collapsed),
+    historyPanelHeight: row.history_panel_height ?? undefined,
+  };
 }
 
 export function updateSettings(updates: Partial<AppSettings>): AppSettings {
   const current = getSettings();
   const updated = { ...current, ...updates };
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2));
+  const db = getLocalDb();
+
+  db.prepare(`
+    INSERT OR REPLACE INTO app_settings (
+      singleton_id, default_root_folder, sidebar_collapsed, history_panel_height
+    ) VALUES (1, @defaultRootFolder, @sidebarCollapsed, @historyPanelHeight)
+  `).run({
+    defaultRootFolder: updated.defaultRootFolder,
+    sidebarCollapsed: updated.sidebarCollapsed === undefined ? null : Number(updated.sidebarCollapsed),
+    historyPanelHeight: updated.historyPanelHeight ?? null,
+  });
+
   return updated;
 }
 
 export function getDefaultRootFolder(): string {
   const settings = getSettings();
-  
-  // If a default folder is set, check if it still exists
+
   if (settings.defaultRootFolder) {
     try {
       if (fs.existsSync(settings.defaultRootFolder) && fs.statSync(settings.defaultRootFolder).isDirectory()) {
         return settings.defaultRootFolder;
       }
     } catch {
-      // Folder doesn't exist or can't be accessed, fall back to home
+      // Fall back to home directory if path is inaccessible.
     }
   }
-  
-  // Fall back to user's home directory
+
   return os.homedir();
 }

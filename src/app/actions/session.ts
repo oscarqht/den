@@ -6,6 +6,7 @@ import os from 'os';
 import simpleGit from 'simple-git';
 import { getErrorMessage } from '../../lib/error-utils';
 import { prepareSessionWorktree, removeWorktree, terminateSessionTerminalSessions } from './git';
+import { getLocalDb } from '@/lib/local-db';
 
 export type SessionMetadata = {
   sessionName: string;
@@ -46,31 +47,77 @@ export type SessionPrefillContext = {
   model: string;
 };
 
-async function getSessionsDir(): Promise<string> {
-  const homedir = os.homedir();
-  const sessionsDir = path.join(homedir, '.viba', 'sessions');
+type SessionRow = {
+  session_name: string;
+  repo_path: string;
+  worktree_path: string;
+  branch_name: string;
+  base_branch: string | null;
+  agent: string;
+  model: string;
+  title: string | null;
+  dev_server_script: string | null;
+  initialized: number | null;
+  timestamp: string;
+};
+
+type SessionLaunchContextRow = {
+  session_name: string;
+  title: string | null;
+  initial_message: string | null;
+  raw_initial_message: string | null;
+  startup_script: string | null;
+  attachment_paths_json: string | null;
+  attachment_names_json: string | null;
+  agent_provider: string | null;
+  model: string | null;
+  session_mode: string | null;
+  is_resume: number | null;
+  timestamp: string;
+};
+
+function parseStringArray(value: string | null): string[] | undefined {
+  if (!value) return undefined;
   try {
-    await fs.mkdir(sessionsDir, { recursive: true });
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
   } catch {
-    // Ignore if exists
+    return undefined;
   }
-  return sessionsDir;
 }
 
-async function getSessionContextsDir(): Promise<string> {
-  const homedir = os.homedir();
-  const contextsDir = path.join(homedir, '.viba', 'session-contexts');
-  try {
-    await fs.mkdir(contextsDir, { recursive: true });
-  } catch {
-    // Ignore if exists
-  }
-  return contextsDir;
+function rowToSessionMetadata(row: SessionRow): SessionMetadata {
+  return {
+    sessionName: row.session_name,
+    repoPath: row.repo_path,
+    worktreePath: row.worktree_path,
+    branchName: row.branch_name,
+    baseBranch: row.base_branch ?? undefined,
+    agent: row.agent,
+    model: row.model,
+    title: row.title ?? undefined,
+    devServerScript: row.dev_server_script ?? undefined,
+    initialized: row.initialized === null ? undefined : Boolean(row.initialized),
+    timestamp: row.timestamp,
+  };
 }
 
-async function getSessionContextFilePath(sessionName: string): Promise<string> {
-  const contextsDir = await getSessionContextsDir();
-  return path.join(contextsDir, `${sessionName}.json`);
+function rowToSessionLaunchContext(row: SessionLaunchContextRow): SessionLaunchContext {
+  return {
+    sessionName: row.session_name,
+    title: row.title ?? undefined,
+    initialMessage: row.initial_message ?? undefined,
+    rawInitialMessage: row.raw_initial_message ?? undefined,
+    startupScript: row.startup_script ?? undefined,
+    attachmentPaths: parseStringArray(row.attachment_paths_json),
+    attachmentNames: parseStringArray(row.attachment_names_json),
+    agentProvider: row.agent_provider ?? undefined,
+    model: row.model ?? undefined,
+    sessionMode: row.session_mode === 'plan' ? 'plan' : (row.session_mode === 'fast' ? 'fast' : undefined),
+    isResume: row.is_resume === null ? undefined : Boolean(row.is_resume),
+    timestamp: row.timestamp,
+  };
 }
 
 async function getSessionPromptsDir(): Promise<string> {
@@ -85,9 +132,28 @@ async function getSessionPromptsDir(): Promise<string> {
 }
 
 export async function saveSessionMetadata(metadata: SessionMetadata): Promise<void> {
-  const sessionsDir = await getSessionsDir();
-  const filePath = path.join(sessionsDir, `${metadata.sessionName}.json`);
-  await fs.writeFile(filePath, JSON.stringify(metadata, null, 2), 'utf-8');
+  const db = getLocalDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO sessions (
+      session_name, repo_path, worktree_path, branch_name, base_branch, agent, model,
+      title, dev_server_script, initialized, timestamp
+    ) VALUES (
+      @sessionName, @repoPath, @worktreePath, @branchName, @baseBranch, @agent, @model,
+      @title, @devServerScript, @initialized, @timestamp
+    )
+  `).run({
+    sessionName: metadata.sessionName,
+    repoPath: metadata.repoPath,
+    worktreePath: metadata.worktreePath,
+    branchName: metadata.branchName,
+    baseBranch: metadata.baseBranch ?? null,
+    agent: metadata.agent,
+    model: metadata.model,
+    title: metadata.title ?? null,
+    devServerScript: metadata.devServerScript ?? null,
+    initialized: metadata.initialized === undefined ? null : Number(metadata.initialized),
+    timestamp: metadata.timestamp,
+  });
 }
 
 export async function writeSessionPromptFile(
@@ -110,13 +176,36 @@ export async function saveSessionLaunchContext(
   context: Omit<SessionLaunchContext, 'sessionName' | 'timestamp'>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const filePath = await getSessionContextFilePath(sessionName);
     const contextData: SessionLaunchContext = {
       sessionName,
       ...context,
       timestamp: new Date().toISOString(),
     };
-    await fs.writeFile(filePath, JSON.stringify(contextData, null, 2), 'utf-8');
+    const db = getLocalDb();
+    db.prepare(`
+      INSERT OR REPLACE INTO session_launch_contexts (
+        session_name, title, initial_message, raw_initial_message, startup_script,
+        attachment_paths_json, attachment_names_json, agent_provider, model,
+        session_mode, is_resume, timestamp
+      ) VALUES (
+        @sessionName, @title, @initialMessage, @rawInitialMessage, @startupScript,
+        @attachmentPathsJson, @attachmentNamesJson, @agentProvider, @model,
+        @sessionMode, @isResume, @timestamp
+      )
+    `).run({
+      sessionName: contextData.sessionName,
+      title: contextData.title ?? null,
+      initialMessage: contextData.initialMessage ?? null,
+      rawInitialMessage: contextData.rawInitialMessage ?? null,
+      startupScript: contextData.startupScript ?? null,
+      attachmentPathsJson: contextData.attachmentPaths ? JSON.stringify(contextData.attachmentPaths) : null,
+      attachmentNamesJson: contextData.attachmentNames ? JSON.stringify(contextData.attachmentNames) : null,
+      agentProvider: contextData.agentProvider ?? null,
+      model: contextData.model ?? null,
+      sessionMode: contextData.sessionMode ?? null,
+      isResume: contextData.isResume === undefined ? null : Number(contextData.isResume),
+      timestamp: contextData.timestamp,
+    });
     return { success: true };
   } catch (e: unknown) {
     console.error('Failed to save session launch context:', e);
@@ -128,18 +217,18 @@ export async function consumeSessionLaunchContext(
   sessionName: string
 ): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
   try {
-    const filePath = await getSessionContextFilePath(sessionName);
-    const content = await fs.readFile(filePath, 'utf-8');
-    const context = JSON.parse(content) as SessionLaunchContext;
+    const db = getLocalDb();
+    const row = db.prepare(`
+      SELECT
+        session_name, title, initial_message, raw_initial_message, startup_script,
+        attachment_paths_json, attachment_names_json, agent_provider, model,
+        session_mode, is_resume, timestamp
+      FROM session_launch_contexts
+      WHERE session_name = ?
+    `).get(sessionName) as SessionLaunchContextRow | undefined;
+    const context = row ? rowToSessionLaunchContext(row) : undefined;
     return { success: true, context };
   } catch (e: unknown) {
-    const errorCode =
-      typeof e === 'object' && e !== null && 'code' in e
-        ? (e as { code?: string }).code
-        : undefined;
-    if (errorCode === 'ENOENT') {
-      return { success: true };
-    }
     console.error('Failed to consume session launch context:', e);
     return { success: false, error: getErrorMessage(e) };
   }
@@ -149,18 +238,18 @@ async function getSessionLaunchContext(
   sessionName: string
 ): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
   try {
-    const filePath = await getSessionContextFilePath(sessionName);
-    const content = await fs.readFile(filePath, 'utf-8');
-    const context = JSON.parse(content) as SessionLaunchContext;
+    const db = getLocalDb();
+    const row = db.prepare(`
+      SELECT
+        session_name, title, initial_message, raw_initial_message, startup_script,
+        attachment_paths_json, attachment_names_json, agent_provider, model,
+        session_mode, is_resume, timestamp
+      FROM session_launch_contexts
+      WHERE session_name = ?
+    `).get(sessionName) as SessionLaunchContextRow | undefined;
+    const context = row ? rowToSessionLaunchContext(row) : undefined;
     return { success: true, context };
   } catch (e: unknown) {
-    const errorCode =
-      typeof e === 'object' && e !== null && 'code' in e
-        ? (e as { code?: string }).code
-        : undefined;
-    if (errorCode === 'ENOENT') {
-      return { success: true };
-    }
     console.error('Failed to read session launch context:', e);
     return { success: false, error: getErrorMessage(e) };
   }
@@ -271,10 +360,15 @@ export async function copySessionAttachments(
 
 export async function getSessionMetadata(sessionName: string): Promise<SessionMetadata | null> {
   try {
-    const sessionsDir = await getSessionsDir();
-    const filePath = path.join(sessionsDir, `${sessionName}.json`);
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content) as SessionMetadata;
+    const db = getLocalDb();
+    const row = db.prepare(`
+      SELECT
+        session_name, repo_path, worktree_path, branch_name, base_branch, agent, model,
+        title, dev_server_script, initialized, timestamp
+      FROM sessions
+      WHERE session_name = ?
+    `).get(sessionName) as SessionRow | undefined;
+    return row ? rowToSessionMetadata(row) : null;
   } catch {
     return null;
   }
@@ -282,31 +376,28 @@ export async function getSessionMetadata(sessionName: string): Promise<SessionMe
 
 export async function listSessions(repoPath?: string): Promise<SessionMetadata[]> {
   try {
-    const sessionsDir = await getSessionsDir();
-    const entries = await fs.readdir(sessionsDir);
+    const db = getLocalDb();
+    const query = repoPath
+      ? `
+        SELECT
+          session_name, repo_path, worktree_path, branch_name, base_branch, agent, model,
+          title, dev_server_script, initialized, timestamp
+        FROM sessions
+        WHERE repo_path = ?
+        ORDER BY timestamp DESC
+      `
+      : `
+        SELECT
+          session_name, repo_path, worktree_path, branch_name, base_branch, agent, model,
+          title, dev_server_script, initialized, timestamp
+        FROM sessions
+        ORDER BY timestamp DESC
+      `;
+    const rows = repoPath
+      ? (db.prepare(query).all(repoPath) as SessionRow[])
+      : (db.prepare(query).all() as SessionRow[]);
 
-    const sessionPromises = entries
-      .filter((entry) => entry.endsWith('.json'))
-      .map(async (entry) => {
-        try {
-          const filePath = path.join(sessionsDir, entry);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const data = JSON.parse(content) as SessionMetadata;
-          return data;
-        } catch (e) {
-          console.error(`Failed to parse session file ${entry}:`, e);
-          return null;
-        }
-      });
-
-    const sessions = (await Promise.all(sessionPromises)).filter((s): s is SessionMetadata => {
-      if (!s) return false;
-      if (repoPath && s.repoPath !== repoPath) return false;
-      return true;
-    });
-
-    // Sort by timestamp desc
-    return sessions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return rows.map(rowToSessionMetadata);
   } catch (error) {
     console.error('Failed to list sessions:', error);
     return [];
@@ -373,12 +464,14 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
       return result;
     }
 
-    // 2. Delete metadata file
-    const sessionsDir = await getSessionsDir();
-    const filePath = path.join(sessionsDir, `${sessionName}.json`);
-    await fs.rm(filePath, { force: true });
-    const contextFilePath = await getSessionContextFilePath(sessionName);
-    await fs.rm(contextFilePath, { force: true });
+    // 2. Delete persisted metadata/context
+    const db = getLocalDb();
+    db.prepare(`
+      DELETE FROM sessions WHERE session_name = ?
+    `).run(sessionName);
+    db.prepare(`
+      DELETE FROM session_launch_contexts WHERE session_name = ?
+    `).run(sessionName);
 
     // 3. Delete prompt file
     const promptsDir = await getSessionPromptsDir();

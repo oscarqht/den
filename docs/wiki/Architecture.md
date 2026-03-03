@@ -9,8 +9,8 @@ Core runtime pieces:
 - Session/worktree lifecycle: server actions around git worktrees and metadata ([src/app/actions/session.ts](../../src/app/actions/session.ts), [src/app/actions/git.ts](../../src/app/actions/git.ts)).
 - Git operations service: centralized `GitService` wrapper over `simple-git` ([src/lib/git.ts](../../src/lib/git.ts)).
 - Terminal backend: `ttyd` (+ `tmux` when available) launched by app actions and proxied by Next rewrite `/terminal/*` -> `127.0.0.1:7681` ([src/app/actions/git.ts](../../src/app/actions/git.ts), [next.config.mjs](../../next.config.mjs)).
-- Local persistence: JSON files under `~/.viba` and app-data settings/repo store via `getAppDataDir()` ([src/app/actions/*.ts](../../src/app/actions), [src/lib/store.ts](../../src/lib/store.ts), [src/lib/platform-utils.ts](../../src/lib/platform-utils.ts)).
-- Credentials: metadata in files + secrets in OS keychain via `keytar` ([src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
+- Local persistence: SQLite database at `~/.viba/palx.db` via [src/lib/local-db.ts](../../src/lib/local-db.ts), with prompt text files in `~/.viba/session-prompts`.
+- Credentials: metadata in SQLite + secrets in OS keychain via `keytar` ([src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
 - Preview tooling and notifications: local proxy and WebSocket side servers ([src/lib/previewProxyServer.ts](../../src/lib/previewProxyServer.ts), [src/lib/sessionNotificationServer.ts](../../src/lib/sessionNotificationServer.ts)).
 
 ## High-Level Architecture
@@ -28,8 +28,9 @@ flowchart LR
   TTYD --> TMUX[tmux sessions\nagent + terminal]
   NextUI -->|iframe /terminal| TTYD
 
-  SA --> VibaFS[(~/.viba/* JSON files)]
-  API --> Store[(App data repos/settings\nvia src/lib/store.ts)]
+  SA --> MetaDB[(~/.viba/palx.db\nSQLite metadata/config)]
+  API --> MetaDB
+  SA --> PromptFS[(~/.viba/session-prompts/*.txt)]
 
   SA --> Keytar[(OS keychain\nkeytar)]
   API --> Keytar
@@ -59,9 +60,10 @@ flowchart LR
 - Session notification WebSocket fanout: [src/lib/sessionNotificationServer.ts](../../src/lib/sessionNotificationServer.ts).
 
 ### Persistence + credentials layer
-- Repository/settings store (`repos.json`, `settings.json`) in platform app-data path: [src/lib/store.ts](../../src/lib/store.ts).
-- App config (`~/.viba/config.json`) and per-repo settings: [src/app/actions/config.ts](../../src/app/actions/config.ts).
-- Session metadata/context/prompts/drafts in `~/.viba`: [src/app/actions/session.ts](../../src/app/actions/session.ts), [src/app/actions/draft.ts](../../src/app/actions/draft.ts).
+- Local metadata/config DB (`~/.viba/palx.db`) with schema + migration logic: [src/lib/local-db.ts](../../src/lib/local-db.ts).
+- Repository/settings store backed by SQLite tables: [src/lib/store.ts](../../src/lib/store.ts).
+- App config + per-repo settings backed by SQLite tables: [src/app/actions/config.ts](../../src/app/actions/config.ts).
+- Session metadata/context and drafts backed by SQLite, with prompt files kept in `~/.viba/session-prompts`: [src/app/actions/session.ts](../../src/app/actions/session.ts), [src/app/actions/draft.ts](../../src/app/actions/draft.ts).
 - Git and agent API credentials with keytar-backed secrets: [src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts).
 
 ### Security/auth boundary
@@ -75,8 +77,8 @@ flowchart TD
   A[Create session in GitRepoSelector] --> B[startTtydProcess]
   A --> C[createSession]
   C --> D[prepareSessionWorktree\ncreate worktree + palx branch]
-  C --> E[saveSessionMetadata ~/.viba/sessions]
-  A --> F[saveSessionLaunchContext ~/.viba/session-contexts]
+  C --> E[saveSessionMetadata to SQLite]
+  A --> F[saveSessionLaunchContext to SQLite]
   A --> G["/session/:id"]
 
   G --> H[SessionPageClient load]
@@ -108,8 +110,5 @@ flowchart TD
 
 - Session naming and branch naming format are coupled (`sessionName` timestamp UUID fragment, branch `palx/<sessionName>`) ([src/app/actions/git.ts](../../src/app/actions/git.ts)).
 - Git commands are configured non-interactive (`GIT_TERMINAL_PROMPT=0`, batch-mode SSH), so credential misconfiguration fails fast instead of hanging ([src/lib/git.ts](../../src/lib/git.ts)).
-- Two configuration stores exist:
-- `src/lib/store.ts` uses platform app-data dir (currently `trident` namespace from [src/lib/platform-utils.ts](../../src/lib/platform-utils.ts)).
-- `src/app/actions/config.ts` uses `~/.viba/config.json`.
-- This split is intentional in current code but important during troubleshooting/migrations.
+- Metadata/config persistence is centralized in SQLite (`~/.viba/palx.db`); session prompts are intentionally separate text files in `~/.viba/session-prompts`.
 - SessionView injects operational instructions into Codex command startup for every new run (plan-mode gating, auto-commit/push/PR, skills, notification API payload) ([src/components/SessionView.tsx](../../src/components/SessionView.tsx)).

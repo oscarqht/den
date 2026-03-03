@@ -24,7 +24,7 @@ Palx is a local session manager for AI coding agents. It lets you pick a Git rep
 - **Robust Session Resume**: Resume any session with full context, preserving original startup flags and model overrides.
 - **Async Operations**: Performance-optimized background tasks like session purging to keep the UI responsive.
 - **Multi-Agent Support**: Out-of-the-box support for Codex, Gemini, and Cursor Agent, with a customizable provider/model selector.
-- **Persistent Metadata**: All session data and configurations are stored locally under `~/.viba`.
+- **Persistent Metadata**: Local metadata/config is stored in SQLite at `~/.viba/palx.db` (single-file, portable). Session prompt text files remain under `~/.viba/session-prompts`.
 
 ## Tech Stack
 

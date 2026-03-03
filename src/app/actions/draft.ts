@@ -1,8 +1,7 @@
 'use server';
 
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
+import path from 'node:path';
+import { getLocalDb } from '@/lib/local-db';
 
 export type DraftMetadata = {
   id: string;
@@ -19,23 +18,74 @@ export type DraftMetadata = {
   sessionMode: 'fast' | 'plan';
 };
 
-async function getDraftsDir(): Promise<string> {
-  const homedir = os.homedir();
-  const draftsDir = path.join(homedir, '.viba', 'drafts');
+type DraftRow = {
+  id: string;
+  repo_path: string;
+  branch_name: string;
+  message: string;
+  attachment_paths_json: string;
+  agent_provider: string;
+  model: string;
+  timestamp: string;
+  title: string;
+  startup_script: string;
+  dev_server_script: string;
+  session_mode: string;
+};
+
+function parseAttachmentPaths(value: string): string[] {
   try {
-    await fs.mkdir(draftsDir, { recursive: true });
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
   } catch {
-    // Ignore if exists
+    return [];
   }
-  return draftsDir;
+}
+
+function rowToDraft(row: DraftRow): DraftMetadata {
+  return {
+    id: row.id,
+    repoPath: row.repo_path,
+    branchName: row.branch_name,
+    message: row.message,
+    attachmentPaths: parseAttachmentPaths(row.attachment_paths_json),
+    agentProvider: row.agent_provider,
+    model: row.model,
+    timestamp: row.timestamp,
+    title: row.title,
+    startupScript: row.startup_script,
+    devServerScript: row.dev_server_script,
+    sessionMode: row.session_mode === 'plan' ? 'plan' : 'fast',
+  };
 }
 
 export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolean; error?: string }> {
   try {
-    const draftsDir = await getDraftsDir();
+    const db = getLocalDb();
     const safeId = path.basename(draft.id);
-    const filePath = path.join(draftsDir, `${safeId}.json`);
-    await fs.writeFile(filePath, JSON.stringify(draft, null, 2), 'utf-8');
+    db.prepare(`
+      INSERT OR REPLACE INTO drafts (
+        id, repo_path, branch_name, message, attachment_paths_json, agent_provider,
+        model, timestamp, title, startup_script, dev_server_script, session_mode
+      ) VALUES (
+        @id, @repoPath, @branchName, @message, @attachmentPathsJson, @agentProvider,
+        @model, @timestamp, @title, @startupScript, @devServerScript, @sessionMode
+      )
+    `).run({
+      id: safeId,
+      repoPath: draft.repoPath,
+      branchName: draft.branchName,
+      message: draft.message,
+      attachmentPathsJson: JSON.stringify(draft.attachmentPaths),
+      agentProvider: draft.agentProvider,
+      model: draft.model,
+      timestamp: draft.timestamp,
+      title: draft.title,
+      startupScript: draft.startupScript,
+      devServerScript: draft.devServerScript,
+      sessionMode: draft.sessionMode,
+    });
     return { success: true };
   } catch (e) {
     console.error('Failed to save draft:', e);
@@ -45,33 +95,30 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
 
 export async function listDrafts(repoPath?: string): Promise<DraftMetadata[]> {
   try {
-    const draftsDir = await getDraftsDir();
-    const entries = await fs.readdir(draftsDir);
+    const db = getLocalDb();
+    const query = repoPath
+      ? `
+        SELECT
+          id, repo_path, branch_name, message, attachment_paths_json, agent_provider,
+          model, timestamp, title, startup_script, dev_server_script, session_mode
+        FROM drafts
+        WHERE repo_path = ?
+        ORDER BY timestamp DESC
+      `
+      : `
+        SELECT
+          id, repo_path, branch_name, message, attachment_paths_json, agent_provider,
+          model, timestamp, title, startup_script, dev_server_script, session_mode
+        FROM drafts
+        ORDER BY timestamp DESC
+      `;
 
-    const draftPromises = entries
-      .filter((entry) => entry.endsWith('.json'))
-      .map(async (entry) => {
-        try {
-          const filePath = path.join(draftsDir, entry);
-          const content = await fs.readFile(filePath, 'utf-8');
-          return JSON.parse(content) as DraftMetadata;
-        } catch (e) {
-          console.error(`Failed to parse draft file ${entry}:`, e);
-          return null;
-        }
-      });
+    const rows = repoPath
+      ? (db.prepare(query).all(repoPath) as DraftRow[])
+      : (db.prepare(query).all() as DraftRow[]);
 
-    const drafts = (await Promise.all(draftPromises)).filter((d): d is DraftMetadata => d !== null);
-
-    if (repoPath) {
-      return drafts.filter((d) => d.repoPath === repoPath).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    }
-
-    return drafts.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  } catch (e: any) {
-    if (e.code === 'ENOENT') {
-      return [];
-    }
+    return rows.map(rowToDraft);
+  } catch (e) {
     console.error('Failed to list drafts:', e);
     return [];
   }
@@ -79,10 +126,11 @@ export async function listDrafts(repoPath?: string): Promise<DraftMetadata[]> {
 
 export async function deleteDraft(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const draftsDir = await getDraftsDir();
+    const db = getLocalDb();
     const safeId = path.basename(id);
-    const filePath = path.join(draftsDir, `${safeId}.json`);
-    await fs.rm(filePath, { force: true });
+    db.prepare(`
+      DELETE FROM drafts WHERE id = ?
+    `).run(safeId);
     return { success: true };
   } catch (e) {
     console.error('Failed to delete draft:', e);

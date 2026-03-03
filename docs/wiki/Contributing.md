@@ -68,5 +68,5 @@ npm run pack:preview
 
 ## Known Architectural Debt
 
-- Dual config stores (`src/lib/store.ts` app-data path vs `~/.viba/config.json` actions config) should be considered when changing settings behavior.
+- Metadata storage migration compatibility logic exists in [src/lib/local-db.ts](../../src/lib/local-db.ts); when changing persistence schemas, keep legacy-import behavior and idempotency in mind.
 - Some components appear legacy/unwired (`src/components/repo-list.tsx`) and may not reflect active route behavior.

@@ -77,7 +77,7 @@ const AGENT_BROWSER_SKILL_INSTRUCTION =
 const SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION =
     'For bugfix/debugging tasks, use the `systematic-debugging` skill (https://github.com/obra/superpowers).';
 const VISUAL_EVIDENCE_INSTRUCTION =
-    'When working on a visual-related feature or bugfix in a web project, after coding is complete, use `agent-browser` or equivalent Chrome MCP tooling to load the relevant page, take screenshot(s), and include them as evidence in the pull/merge request.';
+    'When working on a visual-related feature or bugfix in a web project, after coding is complete, use `agent-browser` or equivalent Chrome MCP tooling to load the relevant page and capture screenshot(s). Do not commit evidence files to the repository; upload them as pull/merge request or comment attachments via GitHub/GitLab APIs.';
 const NOTIFICATION_INSTRUCTION =
     'When your task is completed or you need user attention (for plan approval, permissions, or blockers), send a notification to the matching Palx session.';
 

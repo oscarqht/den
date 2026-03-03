@@ -9,18 +9,43 @@ type PredefinedPrompt = {
 };
 
 const PREDEFINED_PROMPT_CONFIG = [
-  { id: 'design', label: 'Design', fileName: 'design.md' },
-  { id: 'performance', label: 'Performance', fileName: 'performance.md' },
+  {
+    id: 'code-wiki',
+    label: 'Code Wiki',
+    fileName: 'code-wiki.md',
+  },
+  {
+    id: 'split component',
+    label: 'Split Component',
+    fileName: 'split-component.md',
+  },
+  {
+    id: 'dedup',
+    label: 'Dedup',
+    fileName: 'dedup.md',
+  },
+  {
+    id: 'design',
+    label: 'Design',
+    fileName: 'design.md',
+  },
+  {
+    id: 'performance',
+    label: 'Performance',
+    fileName: 'performance.md',
+  },
   { id: 'security', label: 'Security', fileName: 'security.md' },
 ] as const;
 
 async function loadJulesPredefinedPrompts(): Promise<PredefinedPrompt[]> {
-  const promptDirectory = path.join(process.cwd(), 'docs/prompts/jules');
+  const promptDirectory = path.join(process.cwd(), 'src/prompts');
 
   const prompts = await Promise.all(
     PREDEFINED_PROMPT_CONFIG.map(async ({ id, label, fileName }) => {
       try {
-        const content = (await readFile(path.join(promptDirectory, fileName), 'utf8')).trim();
+        const content = (
+          await readFile(path.join(promptDirectory, fileName), 'utf8')
+        ).trim();
         if (!content) return null;
         return { id, label, content };
       } catch (error) {
@@ -48,7 +73,9 @@ type NewSessionPageProps = {
   }>;
 };
 
-export default async function NewSessionPage({ searchParams }: NewSessionPageProps) {
+export default async function NewSessionPage({
+  searchParams,
+}: NewSessionPageProps) {
   const params = await searchParams;
   const predefinedPrompts = await loadJulesPredefinedPrompts();
   const repoParam = params.repo;
@@ -56,7 +83,9 @@ export default async function NewSessionPage({ searchParams }: NewSessionPagePro
   const prefillParam = params.prefillFromSession;
   const repoPathFromParam = Array.isArray(repoParam) ? repoParam[0] : repoParam;
   const fromName = Array.isArray(fromParam) ? fromParam[0] : fromParam;
-  const prefillFromSession = Array.isArray(prefillParam) ? prefillParam[0] : prefillParam;
+  const prefillFromSession = Array.isArray(prefillParam)
+    ? prefillParam[0]
+    : prefillParam;
   const repoPath = repoPathFromParam;
 
   return (

@@ -16,7 +16,7 @@ System-facing behavior:
 
 - Auth0 config and middleware gate:
 - [src/lib/auth0.ts](../../../src/lib/auth0.ts)
-- [src/middleware.ts](../../../src/middleware.ts)
+- [src/proxy.ts](../../../src/proxy.ts)
 - Credential persistence and host matching:
 - [src/lib/credentials.ts](../../../src/lib/credentials.ts)
 - Agent API credential persistence:
@@ -31,7 +31,7 @@ System-facing behavior:
 ## Public Interfaces
 
 ### Auth interfaces
-- Auth routes are handled by `@auth0/nextjs-auth0` middleware integration when required env vars are present ([src/lib/auth0.ts](../../../src/lib/auth0.ts), [src/middleware.ts](../../../src/middleware.ts)).
+- Auth routes are handled by `@auth0/nextjs-auth0` middleware integration when required env vars are present ([src/lib/auth0.ts](../../../src/lib/auth0.ts), [src/proxy.ts](../../../src/proxy.ts)).
 - For unauthenticated API access, middleware returns `401` JSON except allowed notification ingress `POST /api/notifications`.
 
 ### Credential APIs

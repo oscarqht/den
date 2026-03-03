@@ -67,7 +67,7 @@ sequenceDiagram
 - `POST /api/notifications` returns `400` for missing fields, `500` for publish failures ([src/app/api/notifications/route.ts](../../../src/app/api/notifications/route.ts)).
 - Socket route returns `400` when `sessionId` is missing ([src/app/api/notifications/socket/route.ts](../../../src/app/api/notifications/socket/route.ts)).
 - Session client uses reconnect with exponential backoff when socket initialization or connection fails ([src/app/session/[sessionId]/SessionPageClient.tsx](../../../src/app/session/%5BsessionId%5D/SessionPageClient.tsx)).
-- Middleware intentionally allows unauthenticated `POST /api/notifications` for local tool-to-app signaling ([src/middleware.ts](../../../src/middleware.ts)).
+- Middleware intentionally allows unauthenticated `POST /api/notifications` for local tool-to-app signaling ([src/proxy.ts](../../../src/proxy.ts)).
 
 ## Observability
 

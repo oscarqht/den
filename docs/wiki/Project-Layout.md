@@ -62,7 +62,7 @@ Primary references:
 
 ### Web app runtime
 - Next app starts through standard Next commands in [package.json](../../package.json).
-- Root middleware and providers are loaded from [src/middleware.ts](../../src/middleware.ts) and [src/app/providers.tsx](../../src/app/providers.tsx).
+- Root middleware and providers are loaded from [src/proxy.ts](../../src/proxy.ts) and [src/app/providers.tsx](../../src/app/providers.tsx).
 
 ### CLI runtime
 - Executable `vibe-pal` points to [bin/viba.mjs](../../bin/viba.mjs) via `bin` field in [package.json](../../package.json).

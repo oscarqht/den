@@ -7,7 +7,7 @@ function buildReturnTo(request: NextRequest): string {
   return `${pathname}${search}`;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   if (!isAuth0Configured || !auth0) {
     return NextResponse.next();
   }

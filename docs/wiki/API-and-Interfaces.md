@@ -91,7 +91,7 @@ Implementation:
 ## Authn/Authz Model
 
 - Auth0 is optional; enabled only when required env vars are set (`AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`) in [src/lib/auth0.ts](../../src/lib/auth0.ts).
-- Middleware enforces session checks on app routes and APIs when configured: [src/middleware.ts](../../src/middleware.ts).
+- Middleware enforces session checks on app routes and APIs when configured: [src/proxy.ts](../../src/proxy.ts).
 - Exception: `POST /api/notifications` is left accessible to local non-browser agent processes even under Auth0 mode.
 
 ## Validation, Error Shapes, and Status Codes

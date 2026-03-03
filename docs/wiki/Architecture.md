@@ -67,8 +67,8 @@ flowchart LR
 - Git and agent API credentials with keytar-backed secrets: [src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts).
 
 ### Security/auth boundary
-- Optional Auth0 gate for pages and most APIs via middleware: [src/middleware.ts](../../src/middleware.ts), [src/lib/auth0.ts](../../src/lib/auth0.ts).
-- Explicit exception: unauthenticated local notification ingress (`POST /api/notifications`) to allow local agent process posting ([src/middleware.ts](../../src/middleware.ts)).
+- Optional Auth0 gate for pages and most APIs via middleware: [src/proxy.ts](../../src/proxy.ts), [src/lib/auth0.ts](../../src/lib/auth0.ts).
+- Explicit exception: unauthenticated local notification ingress (`POST /api/notifications`) to allow local agent process posting ([src/proxy.ts](../../src/proxy.ts)).
 
 ## Main Data Flows
 

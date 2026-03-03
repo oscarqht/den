@@ -111,7 +111,7 @@ Legacy note:
 
 ### App inaccessible / unauthorized
 - If Auth0 vars are incomplete, app runs unprotected and shows warning banner on home page ([src/app/page.tsx](../../src/app/page.tsx)).
-- If Auth0 is configured and API calls return `401`, verify session and callback/logout URLs; middleware protects most routes ([src/middleware.ts](../../src/middleware.ts)).
+- If Auth0 is configured and API calls return `401`, verify session and callback/logout URLs; middleware protects most routes ([src/proxy.ts](../../src/proxy.ts)).
 
 ### Terminal not loading
 - Check `ttyd` availability and process startup errors from `startTtydProcess` ([src/app/actions/git.ts](../../src/app/actions/git.ts)).

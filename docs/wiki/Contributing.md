@@ -64,7 +64,7 @@ npm run pack:preview
 - Session bootstrap command injection and instruction composition in [src/components/SessionView.tsx](../../src/components/SessionView.tsx).
 - Git mutation dispatcher in [src/app/api/git/action/route.ts](../../src/app/api/git/action/route.ts).
 - Credential persistence and keytar integration in [src/lib/credentials.ts](../../src/lib/credentials.ts) and [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts).
-- Middleware auth exemptions in [src/middleware.ts](../../src/middleware.ts).
+- Middleware auth exemptions in [src/proxy.ts](../../src/proxy.ts).
 
 ## Known Architectural Debt
 

@@ -74,7 +74,7 @@ export function HomeDashboard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
+          <label className="input input-sm flex w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
             <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"

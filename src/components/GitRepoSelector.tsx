@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search, Monitor, Sun, Moon, GitBranch as GitBranchIcon } from 'lucide-react';
+import { FolderGit2, Plus, X, ChevronRight, ChevronDown, FolderCog, Bot, Trash2, KeyRound, Settings, ExternalLink, CloudDownload, Search, Monitor, Sun, Moon, LogOut, GitBranch as GitBranchIcon } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -89,6 +89,8 @@ type GitRepoSelectorProps = {
   fromRepoName?: string | null;
   prefillFromSession?: string | null;
   predefinedPrompts?: PredefinedPrompt[];
+  showLogout?: boolean;
+  logoutEnabled?: boolean;
 };
 
 function deriveSessionTitleFromTaskDescription(taskDescription: string): string | undefined {
@@ -107,6 +109,8 @@ export default function GitRepoSelector({
   fromRepoName = null,
   prefillFromSession = null,
   predefinedPrompts = [],
+  showLogout = false,
+  logoutEnabled = true,
 }: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
@@ -1493,10 +1497,28 @@ export default function GitRepoSelector({
                 <KeyRound className="h-4 w-4" />
                 Credentials
               </button>
-              <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
-                <CloudDownload className="h-4 w-4" />
-                New Repository
-              </button>
+              {showLogout && (
+                logoutEnabled ? (
+                  <a
+                    href="/auth/logout"
+                    className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                    title="Log out"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm gap-2 text-slate-500 dark:text-slate-400"
+                    title="Logout is unavailable because Auth0 is not configured"
+                    disabled
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                )
+              )}
               <button
                 className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-slate-700/60 dark:bg-[#1e2532] dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
                 onClick={handleCycleThemeMode}

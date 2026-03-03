@@ -9,10 +9,10 @@ Palx is a local session manager for AI coding agents. It lets you pick a Git rep
 - **Isolated Sessions**: Uses `git worktree` to create clean, isolated environments for every task, with automatic per-session branch naming (`palx/<session>`).
 - **New Attempt Flow**: Start new sessions pre-filled with context (title, model, prompt, attachments) from any previous session to iterate quickly.
 - **Enhanced File Browser**:
-    - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
-    - **Pinned Shortcuts**: Pin frequently used directories for quick navigation across session restarts.
-    - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
-    - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
+  - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
+  - **Pinned Shortcuts**: Pin frequently used directories for quick navigation across session restarts.
+  - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
+  - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
 - **Dual Terminal Workspace**:
   - Left terminal for agent execution.
   - Right terminal for startup/dev scripts.
@@ -46,6 +46,26 @@ Install dependencies and start development:
 npm install
 npm run dev
 ```
+
+### Auth0 Authentication
+
+Palx now requires login before accessing the app.
+
+Add these variables to your `.env`:
+
+```bash
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_CLIENT_ID=your_client_id
+AUTH0_CLIENT_SECRET=your_client_secret
+AUTH0_SECRET=<openssl rand -hex 32>
+APP_BASE_URL=http://localhost:3200
+```
+
+- Generate `AUTH0_SECRET` with: `openssl rand -hex 32`
+- In Auth0 Application settings, add:
+  - Allowed Callback URLs: `http://localhost:3200/auth/callback`
+  - Allowed Logout URLs: `http://localhost:3200/auth/logout`
+- If any required Auth0 variable is missing, Palx runs in unprotected mode and shows a warning banner on the home page.
 
 The app picks an available port starting at `3200` in development.
 Development mode does not auto-open a browser tab; open the printed local URL manually.

@@ -9,7 +9,7 @@ User-facing behavior:
 
 System-facing behavior:
 - Validates tokens against provider APIs before persistence.
-- Stores credential metadata in local JSON and secrets in OS keychain via `keytar`.
+- Stores credential metadata in local SQLite and secrets in OS keychain via `keytar`.
 - Injects credential environment variables into ttyd terminal sessions.
 
 ## Key Modules and Responsibilities
@@ -49,8 +49,8 @@ All in [src/app/actions/credentials.ts](../../../src/app/actions/credentials.ts)
 
 ## Data Model and Storage Touches
 
-- Git credentials metadata: `~/.viba/credentials.json`.
-- Agent API metadata: `~/.viba/agent-api-configs.json`.
+- Git credentials metadata: SQLite table `credentials_metadata` in `~/.viba/palx.db`.
+- Agent API metadata: SQLite table `agent_api_credentials_metadata` in `~/.viba/palx.db`.
 - Secrets: OS keychain using services:
 - `viba-git-credentials`
 - `viba-agent-api-credentials`
@@ -74,7 +74,7 @@ sequenceDiagram
   Cred->>Provider: verify token and read username
   Provider-->>Cred: valid/invalid
   Cred->>Keytar: setPassword(service, account, token)
-  Cred->>Cred: write metadata JSON
+  Cred->>Cred: persist metadata in SQLite
   Cred-->>API: credential metadata
   API-->>UI: success/error
 ```

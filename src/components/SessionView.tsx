@@ -2141,9 +2141,15 @@ export function SessionView({
         : `relative h-full transition-[width,min-width,flex-basis] duration-300 ease-in-out ${isRightPanelCollapsed
             ? 'w-0 min-w-0 flex-none'
             : 'min-w-[360px] flex-1'}`;
+    const sessionHeaderClass = isMobileViewport
+        ? 'z-20 flex items-center justify-between bg-white px-4 py-2 text-xs font-mono dark:bg-[#161b22] dark:text-slate-300'
+        : 'z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 text-xs font-mono shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-300';
     const agentPanelClass = isMobileViewport
         ? 'agent-activity-panel flex h-full min-w-0 flex-col overflow-hidden bg-white transition-[width] duration-300 ease-in-out dark:bg-[#161b22]'
         : 'agent-activity-panel flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-[width] duration-300 ease-in-out dark:border-[#30363d] dark:bg-[#161b22]';
+    const agentToolbarClass = isMobileViewport
+        ? 'flex h-9 items-center justify-between gap-3 px-3 text-[11px] font-semibold text-slate-600 dark:bg-[#161b22] dark:text-slate-400'
+        : 'flex h-9 items-center justify-between gap-3 border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400';
     const rightPanelShellClass = isMobileRightPanelOverlay
         ? 'absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden bg-white dark:bg-[#161b22]'
         : 'absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]';
@@ -2164,7 +2170,7 @@ export function SessionView({
             {(isResizing || isSplitResizing) && (
                 <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
-            <div className="z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 text-xs font-mono shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-300">
+            <div className={sessionHeaderClass}>
                 <div className="flex items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 text-slate-600 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
@@ -2383,7 +2389,7 @@ export function SessionView({
                     className={agentPanelClass}
                     style={{ width: isRightPanelCollapsed || isMobileRightPanelOverlay ? '100%' : `${agentPaneRatio * 100}%` }}
                 >
-                    <div className="flex h-9 items-center justify-between gap-3 border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
+                    <div className={agentToolbarClass}>
                         <span className="flex shrink-0 items-center gap-2 uppercase tracking-wide">
                             <span className="h-2 w-2 rounded-full bg-blue-500"></span>
                             Agent Activity

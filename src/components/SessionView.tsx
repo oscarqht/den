@@ -59,6 +59,7 @@ const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'viba-right-panel-collapsed';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
+const MOBILE_VIEWPORT_QUERY = '(max-width: 767px)';
 const TERMINAL_HEADER_HEIGHT = 36;
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
@@ -563,6 +564,7 @@ export function SessionView({
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
     const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(true);
+    const [isMobileViewport, setIsMobileViewport] = useState(false);
     const [isAgentTerminalThemeReady, setIsAgentTerminalThemeReady] = useState(false);
     const [isFloatingTerminalThemeReady, setIsFloatingTerminalThemeReady] = useState(false);
 
@@ -757,8 +759,36 @@ export function SessionView({
         setIsSplitResizing(false);
     }, [isRightPanelCollapsed]);
 
+    useEffect(() => {
+        const mediaQuery = window.matchMedia(MOBILE_VIEWPORT_QUERY);
+        const applyViewportMode = () => {
+            setIsMobileViewport(mediaQuery.matches);
+        };
+
+        applyViewportMode();
+
+        if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', applyViewportMode);
+        } else {
+            mediaQuery.addListener(applyViewportMode);
+        }
+
+        return () => {
+            if (typeof mediaQuery.removeEventListener === 'function') {
+                mediaQuery.removeEventListener('change', applyViewportMode);
+            } else {
+                mediaQuery.removeListener(applyViewportMode);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isMobileViewport) return;
+        setIsSplitResizing(false);
+    }, [isMobileViewport]);
+
     const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (isRightPanelCollapsed) return;
+        if (isRightPanelCollapsed || isMobileViewport) return;
         e.preventDefault();
         setIsSplitResizing(true);
         splitResizeRef.current = {
@@ -2100,6 +2130,16 @@ export function SessionView({
         : isTerminalForegroundProcessRunning
             ? 'A process is already running in the terminal'
             : 'Run dev server script in terminal';
+    const isMobileRightPanelOverlay = isMobileViewport;
+    const showDesktopSplitHandle = !isRightPanelCollapsed && !isMobileRightPanelOverlay;
+    const showInlineRightPanelToggle = !isMobileRightPanelOverlay || !isRightPanelCollapsed;
+    const rightPanelWrapperClass = isMobileRightPanelOverlay
+        ? `absolute inset-0 z-30 h-full transition-[opacity,transform] duration-300 ease-in-out ${isRightPanelCollapsed
+            ? 'pointer-events-none translate-x-2 opacity-0'
+            : 'pointer-events-auto translate-x-0 opacity-100'}`
+        : `relative h-full transition-[width,min-width,flex-basis] duration-300 ease-in-out ${isRightPanelCollapsed
+            ? 'w-0 min-w-0 flex-none'
+            : 'min-w-[360px] flex-1'}`;
 
     return (
         <div className={`flex h-screen w-full flex-col overflow-hidden bg-[#f6f6f8] dark:bg-[#0d1117] ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
@@ -2330,11 +2370,11 @@ export function SessionView({
 
             <div
                 ref={splitContainerRef}
-                className={`relative flex min-h-0 flex-1 overflow-x-hidden bg-[#f6f6f8] p-3 dark:bg-[#0d1117] ${isRightPanelCollapsed ? 'gap-0' : 'gap-3'}`}
+                className={`relative flex min-h-0 flex-1 overflow-x-hidden bg-[#f6f6f8] p-3 dark:bg-[#0d1117] ${isRightPanelCollapsed || isMobileRightPanelOverlay ? 'gap-0' : 'gap-3'}`}
             >
                 <div
                     className="agent-activity-panel flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-[width] duration-300 ease-in-out dark:border-[#30363d] dark:bg-[#161b22]"
-                    style={{ width: isRightPanelCollapsed ? '100%' : `${agentPaneRatio * 100}%` }}
+                    style={{ width: isRightPanelCollapsed || isMobileRightPanelOverlay ? '100%' : `${agentPaneRatio * 100}%` }}
                 >
                     <div className="flex h-9 items-center justify-between gap-3 border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
                         <span className="flex shrink-0 items-center gap-2 uppercase tracking-wide">
@@ -2421,35 +2461,50 @@ export function SessionView({
                 </div>
 
                 <div
-                    className={`relative h-full shrink-0 rounded transition-all duration-300 ease-in-out ${isRightPanelCollapsed
-                        ? 'w-0 cursor-default opacity-0 pointer-events-none'
-                        : 'w-2 cursor-col-resize bg-slate-200 opacity-100 hover:bg-primary/40 dark:bg-[#30363d] dark:hover:bg-primary/60'
+                    className={`relative h-full shrink-0 rounded transition-all duration-300 ease-in-out ${showDesktopSplitHandle
+                        ? 'w-2 cursor-col-resize bg-slate-200 opacity-100 hover:bg-primary/40 dark:bg-[#30363d] dark:hover:bg-primary/60'
+                        : 'w-0 cursor-default opacity-0 pointer-events-none'
                         }`}
                     onMouseDown={startSplitResize}
-                    role={isRightPanelCollapsed ? undefined : 'separator'}
-                    aria-orientation={isRightPanelCollapsed ? undefined : 'vertical'}
-                    aria-label={isRightPanelCollapsed ? undefined : 'Resize preview panel'}
-                    aria-hidden={isRightPanelCollapsed}
-                    title={isRightPanelCollapsed ? undefined : 'Drag to resize preview panel'}
+                    role={showDesktopSplitHandle ? 'separator' : undefined}
+                    aria-orientation={showDesktopSplitHandle ? 'vertical' : undefined}
+                    aria-label={showDesktopSplitHandle ? 'Resize preview panel' : undefined}
+                    aria-hidden={!showDesktopSplitHandle}
+                    title={showDesktopSplitHandle ? 'Drag to resize preview panel' : undefined}
                 >
-                    {!isRightPanelCollapsed && (
+                    {showDesktopSplitHandle && (
                         <div className="absolute left-1/2 top-1/2 h-12 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-400 dark:bg-slate-500" />
                     )}
                 </div>
 
-                <div
-                    className={`relative h-full transition-[width,min-width,flex-basis] duration-300 ease-in-out ${isRightPanelCollapsed ? 'w-0 min-w-0 flex-none' : 'min-w-[360px] flex-1'}`}
-                >
+                {isMobileRightPanelOverlay && isRightPanelCollapsed && (
                     <button
-                        className="btn btn-ghost btn-xs absolute left-0 top-3 z-20 h-7 w-7 min-h-7 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 p-0 text-slate-600 shadow-sm hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#161b22]/95 dark:text-slate-300 dark:hover:bg-[#30363d]/80"
+                        className="btn btn-ghost btn-xs absolute right-3 top-1/2 z-20 h-7 w-7 min-h-7 -translate-y-1/2 rounded-full border border-slate-200 bg-white/95 p-0 text-slate-600 shadow-sm hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#161b22]/95 dark:text-slate-300 dark:hover:bg-[#30363d]/80"
                         onClick={handleToggleRightPanelCollapse}
                         type="button"
-                        title={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-                        aria-label={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-                        aria-pressed={isRightPanelCollapsed}
+                        title="Expand right panel"
+                        aria-label="Expand right panel"
+                        aria-pressed={false}
                     >
-                        {isRightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <ChevronLeft className="h-4 w-4" />
                     </button>
+                )}
+
+                <div
+                    className={rightPanelWrapperClass}
+                >
+                    {showInlineRightPanelToggle && (
+                        <button
+                            className={`btn btn-ghost btn-xs absolute top-3 z-20 h-7 w-7 min-h-7 rounded-full border border-slate-200 bg-white/95 p-0 text-slate-600 shadow-sm hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#161b22]/95 dark:text-slate-300 dark:hover:bg-[#30363d]/80 ${isMobileRightPanelOverlay ? 'left-3' : 'left-0 -translate-x-1/2'}`}
+                            onClick={handleToggleRightPanelCollapse}
+                            type="button"
+                            title={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+                            aria-label={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+                            aria-pressed={isRightPanelCollapsed}
+                        >
+                            {isRightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                    )}
 
                     {!isRightPanelCollapsed && (
                         <div className="absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]">

@@ -16,6 +16,26 @@ function commitLabel(commit: Commit): string {
   return `${commit.hash} ${commit.message}`.trim();
 }
 
+function isSameCommitHash(left: string, right: string): boolean {
+  const normalizedLeft = left.trim();
+  const normalizedRight = right.trim();
+  if (!normalizedLeft || !normalizedRight) return false;
+  return normalizedLeft.startsWith(normalizedRight) || normalizedRight.startsWith(normalizedLeft);
+}
+
+function parseBranchHintList(value: string | undefined): string[] {
+  if (!value) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 type SessionRepoViewerProps = {
   repoPath: string;
   branchHint?: string;
@@ -43,14 +63,28 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
   const currentBranchRef = branchData?.current?.trim() || branchHint?.trim() || null;
   const baseBranchRef = baseBranchHint?.trim() || null;
   const { data: mergeBaseHash } = useGitMergeBase(repoPath, baseBranchRef, currentBranchRef);
+  const baseBranchTags = useMemo(() => {
+    const hintedBranches = parseBranchHintList(baseBranchHint);
+    if (!mergeBaseHash) return hintedBranches;
+
+    const localBranches = branchData?.branches ?? [];
+    const localBranchCommits = branchData?.branchCommits ?? {};
+    const normalizedCurrentBranch = currentBranchRef?.trim() || '';
+    const branchNamesAtMergeBase = localBranches.filter((branchName) => {
+      if (normalizedCurrentBranch && branchName === normalizedCurrentBranch) return false;
+      const branchHeadHash = localBranchCommits[branchName];
+      if (!branchHeadHash) return false;
+      return isSameCommitHash(branchHeadHash, mergeBaseHash);
+    });
+
+    return Array.from(new Set([...hintedBranches, ...branchNamesAtMergeBase])).sort((a, b) => a.localeCompare(b));
+  }, [baseBranchHint, branchData?.branchCommits, branchData?.branches, currentBranchRef, mergeBaseHash]);
   const commits = useMemo(() => {
     if (!mergeBaseHash) return allCommits;
     const normalizedMergeBase = mergeBaseHash.trim();
     if (!normalizedMergeBase) return allCommits;
 
-    const branchPointIndex = allCommits.findIndex((commit) =>
-      normalizedMergeBase.startsWith(commit.hash) || commit.hash.startsWith(normalizedMergeBase)
-    );
+    const branchPointIndex = allCommits.findIndex((commit) => isSameCommitHash(normalizedMergeBase, commit.hash));
     if (branchPointIndex < 0) return allCommits;
     return allCommits.slice(0, branchPointIndex + 1);
   }, [allCommits, mergeBaseHash]);
@@ -124,8 +158,10 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
             </div>
           ) : (
             <div className="divide-y divide-slate-200 dark:divide-[#30363d]">
-              {commits.map((commit) => {
+              {commits.map((commit, index) => {
                 const isSelected = selectedCommitHash === commit.hash;
+                const isOldestCommit = index === commits.length - 1;
+                const shouldShowBaseBranchTags = isOldestCommit && !!mergeBaseHash && isSameCommitHash(commit.hash, mergeBaseHash) && baseBranchTags.length > 0;
                 return (
                   <button
                     key={commit.hash}
@@ -144,6 +180,19 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
                     <div className="mt-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">
                       {commit.message || '(no subject)'}
                     </div>
+                    {shouldShowBaseBranchTags && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {baseBranchTags.map((branchName) => (
+                          <span
+                            key={branchName}
+                            className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+                            title={`Base branch: ${branchName}`}
+                          >
+                            {branchName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                       {commit.author_name}
                     </div>

@@ -4,6 +4,7 @@ import { BranchTreeNode, VisibilityMap, getEffectiveVisibility, collectAllBranch
 import { BranchOperation, BranchMenuOptions } from './branch-context-menu';
 import { BranchTrackingInfo } from '@/lib/types';
 import { VisibilityToggle } from './visibility-toggle';
+import { SessionAssociationDot } from './session-association-dot';
 
 export type BranchRowSelectModifiers = { isMultiSelect: boolean; isRangeSelect: boolean };
 
@@ -35,6 +36,7 @@ export function BranchTreeItem({
   groupPath,
   isRemote = false,
   trackingInfo,
+  isBranchSessionAssociated,
 }: {
   node: BranchTreeNode;
   currentBranch?: string;
@@ -62,6 +64,7 @@ export function BranchTreeItem({
   groupPath?: string;
   isRemote?: boolean;
   trackingInfo?: Record<string, BranchTrackingInfo>;
+  isBranchSessionAssociated?: (branchRef: string) => boolean;
 }) {
   const children = Array.from(node.children.values());
   const sortedChildren = children.sort((a, b) => {
@@ -162,6 +165,7 @@ export function BranchTreeItem({
                   groupPath={groupPath}
                   isRemote={isRemote}
                   trackingInfo={trackingInfo}
+                  isBranchSessionAssociated={isBranchSessionAssociated}
                 />
               )}
             </div>
@@ -171,6 +175,7 @@ export function BranchTreeItem({
         // Render leaf (actual branch)
         const branchTracking = !isRemote && child.fullPath ? trackingInfo?.[child.fullPath] : undefined;
         const hasDivergence = branchTracking && (branchTracking.ahead > 0 || branchTracking.behind > 0);
+        const hasAssociatedSession = !isRemote && !!child.fullPath && !!isBranchSessionAssociated?.(child.fullPath);
 
         const menuItems = getBranchContextMenuItems({
           branchRef: child.fullPath!,
@@ -187,6 +192,7 @@ export function BranchTreeItem({
               <div
                 className={cn(
                   "group flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors select-none",
+                  "relative",
                   !isSelected && "hover:bg-base-200",
                   isSelected && "bg-primary/10 hover:bg-primary/20",
                   isCurrent && "bg-base-200 font-medium text-primary"
@@ -194,6 +200,7 @@ export function BranchTreeItem({
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
                 onContextMenu={() => onBranchContextMenu?.(child.fullPath!)}
               >
+                {hasAssociatedSession && <SessionAssociationDot className="top-1 right-1" />}
                 <div 
                   className="flex items-center gap-2 flex-1 min-w-0" 
                   onClick={(e) => onBranchClick?.(child.fullPath!, { isMultiSelect: e.metaKey || e.ctrlKey, isRangeSelect: e.shiftKey })}

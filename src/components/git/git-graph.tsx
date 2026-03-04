@@ -6,6 +6,7 @@ import { generateGraphData } from '@/lib/graph-utils';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem } from '@/components/context-menu';
 import { getBranchTagColors } from '@/lib/branch-colors';
+import { SessionAssociationDot } from './session-association-dot';
 
 
 const ROW_HEIGHT = 24; // Compact rows like Fork
@@ -76,7 +77,8 @@ export const GitGraph = forwardRef<GitGraphHandle, {
     hiddenBranches?: Set<string>,
     localBranches?: string[],
     trackingInfo?: Record<string, BranchTrackingInfo>,
-    getBranchTagContextMenuItems?: (displayRef: string) => ContextMenuItem[] | null
+    getBranchTagContextMenuItems?: (displayRef: string) => ContextMenuItem[] | null,
+    isBranchSessionAssociated?: (displayRef: string) => boolean
 }>(function GitGraph({
     commits,
     onSelectCommit,
@@ -94,7 +96,8 @@ export const GitGraph = forwardRef<GitGraphHandle, {
     hiddenBranches,
     localBranches = [],
     trackingInfo,
-    getBranchTagContextMenuItems
+    getBranchTagContextMenuItems,
+    isBranchSessionAssociated
 }, ref) {
     const normalizeDecoratedRef = useCallback((ref: string) => {
         if (ref.startsWith('refs/heads/')) return ref.slice('refs/heads/'.length);
@@ -429,20 +432,24 @@ export const GitGraph = forwardRef<GitGraphHandle, {
                                                 const tagColors = isGitTag
                                                     ? { textColor: '#374151', backgroundColor: '#e5e7eb' }
                                                     : getBranchTagColors(tag.primaryRef);
+                                                const hasAssociatedSession = !isGitTag && !!isBranchSessionAssociated?.(tag.primaryRef);
 
                                                 const tagElement = (
-                                                    <span
-                                                        className={cn(
-                                                            "text-[10px] px-1.5 rounded-full whitespace-nowrap shrink-0",
-                                                            isCurrent && "font-bold"
-                                                        )}
-                                                        style={{
-                                                            color: tagColors.textColor,
-                                                            backgroundColor: tagColors.backgroundColor
-                                                        }}
-                                                        title={tag.displayName}
-                                                    >
-                                                        <HighlightedText text={tag.displayName} searchQuery={searchQuery} />
+                                                    <span className="relative inline-flex shrink-0">
+                                                        <span
+                                                            className={cn(
+                                                                "text-[10px] px-1.5 rounded-full whitespace-nowrap shrink-0",
+                                                                isCurrent && "font-bold"
+                                                            )}
+                                                            style={{
+                                                                color: tagColors.textColor,
+                                                                backgroundColor: tagColors.backgroundColor
+                                                            }}
+                                                            title={tag.displayName}
+                                                        >
+                                                            <HighlightedText text={tag.displayName} searchQuery={searchQuery} />
+                                                        </span>
+                                                        {hasAssociatedSession && <SessionAssociationDot className="-top-1 -right-1" />}
                                                     </span>
                                                 );
 

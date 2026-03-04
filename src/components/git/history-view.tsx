@@ -1011,6 +1011,9 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     }
     return map;
   }, [sessionsForRepo]);
+  const isBranchSessionAssociated = useCallback((branchRef: string): boolean => {
+    return sessionByBranchName.has(branchRef);
+  }, [sessionByBranchName]);
 
   const repository = useRepository(repoPath);
   const updateRepository = useUpdateRepository();
@@ -3343,6 +3346,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                   depth={1}
                   groupPath="__local__"
                   trackingInfo={branchData?.trackingInfo}
+                  isBranchSessionAssociated={isBranchSessionAssociated}
                 />
               )}
             </>
@@ -3443,6 +3447,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                       groupPath={remoteGroupPath}
                       isRemote={true}
                       trackingInfo={branchData?.trackingInfo}
+                      isBranchSessionAssociated={isBranchSessionAssociated}
                     />
                   )}
                 </div>
@@ -4857,6 +4862,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               currentBranch={branchData?.current}
               hiddenBranches={hiddenBranches}
               getBranchTagContextMenuItems={getBranchTagContextMenuItems}
+              isBranchSessionAssociated={isBranchSessionAssociated}
             />
           )}
         </div>

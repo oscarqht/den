@@ -3550,10 +3550,10 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   if (!log) return <div className="flex items-center justify-center p-8 h-full opacity-70">No history data available</div>;
 
   const headerActionButtonClass =
-    "flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 max-[1199px]:w-8 max-[1199px]:justify-center max-[1199px]:px-0 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
+    "flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 max-[1199px]:w-8 max-[1199px]:justify-center max-[1199px]:px-0 dark:border-slate-700 dark:bg-[#22272e] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
   const headerActionLabelClass = "max-[1199px]:hidden";
   const branchSelectButtonClass =
-    "flex h-8 max-w-[24rem] items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-mono font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
+    "flex h-8 max-w-[24rem] items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-mono font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#22272e] dark:text-slate-200 dark:hover:bg-slate-800";
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -4729,7 +4729,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
       {/* Main Content */}
       <div className="flex-1 flex min-w-0 flex-col gap-2 overflow-hidden">
-        <div className="flex min-h-[57px] shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex min-h-[57px] shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-[#22272e]">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <h1 className="font-bold text-lg text-slate-900 dark:text-slate-100">History</h1>
             <div className="relative" ref={branchPopoverRef}>
@@ -4832,7 +4832,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
           </div>
         </div>
 
-        <div className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e]">
           {/* Show loading spinner while branches are loading if visibility filters are set */}
           {hasVisibilityFilters && isBranchesLoading ? (
             <div className="flex items-center justify-center h-full">
@@ -4869,7 +4869,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
         {selectedHash && (
           <div
-            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e]"
             style={{ height: panelHeight }}
           >
             {/* Resize handle */}
@@ -4884,7 +4884,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
             </div>
 
             {/* Header with commit info */}
-            <div className="flex flex-row items-center py-2 px-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 shrink-0 justify-between gap-4">
+            <div className="flex flex-row items-center py-2 px-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#22272e] shrink-0 justify-between gap-4">
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 {isCommitRangeSelection && selectedCommitRange ? (
                   <>
@@ -4920,8 +4920,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
             </div>
 
             {isCommitRangeSelection && selectedCommitRange ? (
-              <div className="flex-1 overflow-hidden min-h-0 flex flex-col bg-white dark:bg-slate-900">
-                <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 shrink-0">
+              <div className="flex-1 overflow-hidden min-h-0 flex flex-col bg-white dark:bg-[#22272e]">
+                <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#22272e] shrink-0">
                   Changes
                 </div>
                 <div className="flex-1 min-h-0">
@@ -4936,12 +4936,12 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               /* Combined commit message and changes content */
               <div
                 ref={commitDetailsContentRef}
-                className="flex-1 overflow-hidden bg-white dark:bg-slate-900 grid"
+                className="flex-1 overflow-hidden bg-white dark:bg-[#22272e] grid"
                 style={{
                   gridTemplateRows: `${commitDetailsMessageRatio}fr 6px ${1 - commitDetailsMessageRatio}fr`,
                 }}
               >
-                <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 min-h-0 flex flex-col">
+                <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#22272e] min-h-0 flex flex-col">
                   <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60">
                     Message
                   </div>
@@ -4967,7 +4967,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                   <div className="w-8 h-1 rounded-full bg-base-300" />
                 </div>
                 <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
-                  <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 shrink-0">
+                  <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#22272e] shrink-0">
                     Changes
                   </div>
                   <div className="flex-1 min-h-0">

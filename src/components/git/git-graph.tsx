@@ -179,10 +179,10 @@ export const GitGraph = forwardRef<GitGraphHandle, {
     };
 
     return (
-        <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-slate-900 font-mono text-sm select-none">
+        <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-[#22272e] font-mono text-sm select-none">
             {/* Search Input - Sticky on top */}
             {isSearchOpen && (
-                <div className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-base-300 px-2 py-2 flex items-center gap-2">
+                <div className="sticky top-0 z-30 bg-white dark:bg-[#22272e] border-b border-base-300 px-2 py-2 flex items-center gap-2">
                     <span className="opacity-50">🔍</span>
                     <input
                         ref={searchInputRef}

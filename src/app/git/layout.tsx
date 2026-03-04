@@ -15,8 +15,8 @@ export default function WorkspaceLayout({
             <Suspense fallback={null}>
                 <WorkspaceRepoOpenTracker />
             </Suspense>
-            <Suspense fallback={<div className={`${sidebarCollapsed ? 'w-16' : 'w-64'} overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 flex items-center justify-center`}><span className="loading loading-spinner"></span></div>}>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <Suspense fallback={<div className={`${sidebarCollapsed ? 'w-16' : 'w-64'} overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e] flex items-center justify-center`}><span className="loading loading-spinner"></span></div>}>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e]">
                     <Sidebar initialCollapsed={sidebarCollapsed} className="border-r-0 bg-transparent min-h-full" />
                 </div>
             </Suspense>

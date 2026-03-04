@@ -28,7 +28,7 @@ Primary references:
 - Root shell/theme/bootstrap: [src/app/layout.tsx](../../src/app/layout.tsx), [src/app/globals.css](../../src/app/globals.css).
 - Home and new-session flows: [src/app/page.tsx](../../src/app/page.tsx), [src/app/new/page.tsx](../../src/app/new/page.tsx).
 - Session route and loader: [src/app/session/[sessionId]/page.tsx](../../src/app/session/%5BsessionId%5D/page.tsx), [src/app/session/[sessionId]/SessionPageClient.tsx](../../src/app/session/%5BsessionId%5D/SessionPageClient.tsx).
-- Git workspace routes: [src/app/git/layout.tsx](../../src/app/git/layout.tsx), [src/app/git/page.tsx](../../src/app/git/page.tsx), [src/app/git/changes/page.tsx](../../src/app/git/changes/page.tsx), [src/app/git/history/page.tsx](../../src/app/git/history/page.tsx), [src/app/git/stashes/page.tsx](../../src/app/git/stashes/page.tsx), [src/app/git/custom-scripts/page.tsx](../../src/app/git/custom-scripts/page.tsx).
+- Git workspace routes: [src/app/git/layout.tsx](../../src/app/git/layout.tsx), [src/app/git/page.tsx](../../src/app/git/page.tsx), [src/app/git/changes/page.tsx](../../src/app/git/changes/page.tsx), [src/app/git/history/page.tsx](../../src/app/git/history/page.tsx), [src/app/git/stashes/page.tsx](../../src/app/git/stashes/page.tsx).
 
 ### Server actions
 - Session metadata/context/worktree lifecycle: [src/app/actions/session.ts](../../src/app/actions/session.ts).
@@ -41,7 +41,7 @@ Primary references:
 ### API interfaces
 - Git APIs: [src/app/api/git](../../src/app/api/git).
 - Repo/settings/credentials APIs: [src/app/api/repos](../../src/app/api/repos), [src/app/api/settings/route.ts](../../src/app/api/settings/route.ts), [src/app/api/credentials/route.ts](../../src/app/api/credentials/route.ts).
-- Preview, notifications, custom scripts, FS launch: [src/app/api/preview-proxy/start/route.ts](../../src/app/api/preview-proxy/start/route.ts), [src/app/api/notifications/route.ts](../../src/app/api/notifications/route.ts), [src/app/api/custom-scripts/route.ts](../../src/app/api/custom-scripts/route.ts), [src/app/api/fs/open/route.ts](../../src/app/api/fs/open/route.ts).
+- Preview, notifications, FS launch: [src/app/api/preview-proxy/start/route.ts](../../src/app/api/preview-proxy/start/route.ts), [src/app/api/notifications/route.ts](../../src/app/api/notifications/route.ts), [src/app/api/fs/open/route.ts](../../src/app/api/fs/open/route.ts).
 
 ### Domain/infrastructure libraries
 - Git domain: [src/lib/git.ts](../../src/lib/git.ts), [src/lib/git-log-options.ts](../../src/lib/git-log-options.ts).

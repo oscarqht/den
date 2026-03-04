@@ -1,8 +1,7 @@
 'use client';
 
 import { useGitLog, useGitBranches, useGitStatus, useGitAction, useCommitDiff, useCommitFileDiff, CommitFile, useRepository, useUpdateRepository, useSettings, useUpdateSettings } from '@/hooks/use-git';
-import { useQueryClient } from '@tanstack/react-query';
-import { Repository, RepositoryCustomScript, BranchTrackingInfo } from '@/lib/types';
+import { Repository, BranchTrackingInfo } from '@/lib/types';
 import { GitGraph, GitGraphHandle } from './git-graph';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from 'next-themes';
@@ -40,17 +39,6 @@ const MIN_COMMIT_DETAILS_MESSAGE_RATIO = 0.15;
 const MAX_COMMIT_DETAILS_MESSAGE_RATIO = 0.75;
 const DEFAULT_COMMIT_DETAILS_MESSAGE_RATIO = 0.28;
 type MergeConflictStatus = 'checking' | 'no-conflict' | 'has-conflicts';
-
-type ScriptExecutionStatus = 'idle' | 'starting' | 'running' | 'completed' | 'failed' | 'canceled';
-type ScriptExecutionState = {
-  isOpen: boolean;
-  executionId: string | null;
-  scriptName: string;
-  branchRef: string;
-  output: string;
-  status: ScriptExecutionStatus;
-  error: string | null;
-};
 
 type ConflictAgentOperation =
   | {
@@ -144,40 +132,6 @@ function formatCommitMessageForDisplay(message: string): string {
     .replace(/\\n/g, '\n');
 }
 
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-9999px';
-    document.body.appendChild(textArea);
-    textArea.select();
-
-    try {
-      document.execCommand('copy');
-      return true;
-    } catch {
-      return false;
-    } finally {
-      document.body.removeChild(textArea);
-    }
-  }
-}
-
-const DEFAULT_SCRIPT_EXECUTION: ScriptExecutionState = {
-  isOpen: false,
-  executionId: null,
-  scriptName: '',
-  branchRef: '',
-  output: '',
-  status: 'idle',
-  error: null,
-};
-
-
 // File status icon component
 function FileStatusIcon({ status }: { status: string }) {
   switch (status) {
@@ -195,7 +149,6 @@ function FileStatusIcon({ status }: { status: string }) {
 
 
 export function HistoryView({ repoPath }: { repoPath: string }) {
-  const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const router = useRouter();
@@ -477,18 +430,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const [sessionsForRepo, setSessionsForRepo] = useState<SessionMetadata[]>([]);
   const [isBranchPopoverOpen, setIsBranchPopoverOpen] = useState(false);
   const branchPopoverRef = useRef<HTMLDivElement>(null);
-  const [scriptExecution, setScriptExecution] = useState<ScriptExecutionState>(DEFAULT_SCRIPT_EXECUTION);
-  const [isCancelingScriptExecution, setIsCancelingScriptExecution] = useState(false);
-  const [isCopyingScriptOutput, setIsCopyingScriptOutput] = useState(false);
-  const [didCopyScriptOutput, setDidCopyScriptOutput] = useState(false);
-  const isScriptExecutionRunning = scriptExecution.status === 'starting' || scriptExecution.status === 'running';
-  const isScriptExecutionFinished = scriptExecution.status === 'completed' || scriptExecution.status === 'failed' || scriptExecution.status === 'canceled';
-
-  useEffect(() => {
-    if (isScriptExecutionFinished && scriptExecution.executionId) {
-      queryClient.invalidateQueries({ queryKey: ['git', repoPath] });
-    }
-  }, [isScriptExecutionFinished, scriptExecution.executionId, queryClient, repoPath]);
 
   const closeRenameBranchDialog = useCallback(() => {
     setIsRenameOpen(false);
@@ -520,12 +461,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     setCommitToReword(null);
     setNewMessageSubject('');
     setNewMessageBody('');
-  }, []);
-
-  const closeScriptExecutionDialog = useCallback(() => {
-    setScriptExecution(DEFAULT_SCRIPT_EXECUTION);
-    setDidCopyScriptOutput(false);
-    setIsCancelingScriptExecution(false);
   }, []);
 
   const closeTopPopup = useCallback(() => {
@@ -625,9 +560,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
       closeConflictAgentDialog();
       return;
     }
-    if (scriptExecution.isOpen && isScriptExecutionFinished) {
-      closeScriptExecutionDialog();
-    }
   }, [
     isAbortCherryPickOpen,
     isCheckoutToLocalOpen,
@@ -658,9 +590,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     isBranchPopoverOpen,
     isConflictAgentModalOpen,
     closeConflictAgentDialog,
-    scriptExecution.isOpen,
-    isScriptExecutionFinished,
-    closeScriptExecutionDialog,
   ]);
 
   const confirmTopPopup = () => {
@@ -790,9 +719,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
       closeConflictAgentDialog();
       return;
     }
-    if (scriptExecution.isOpen && isScriptExecutionFinished) {
-      closeScriptExecutionDialog();
-    }
   };
 
   const isAnyPopupOpen =
@@ -816,8 +742,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     isCreateTagOpen ||
     isCheckoutToLocalOpen ||
     isBranchPopoverOpen ||
-    isConflictAgentModalOpen ||
-    scriptExecution.isOpen;
+    isConflictAgentModalOpen;
 
   useEscapeDismiss(isAnyPopupOpen, closeTopPopup, confirmTopPopup);
 
@@ -1017,15 +942,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
   const repository = useRepository(repoPath);
   const updateRepository = useUpdateRepository();
-  const customBranchScripts = useMemo(() => {
-    const scripts = repository?.customScripts ?? [];
-    return scripts.filter((script) => (
-      script.target === 'branch' &&
-      script.action === 'run-bash-script' &&
-      script.name.trim().length > 0 &&
-      script.content.trim().length > 0
-    ));
-  }, [repository?.customScripts]);
 
   // Group expanded state (for "Branches", "Remotes", and "Worktrees" group headers)
   const [localGroupExpanded, setLocalGroupExpanded] = useState(true);
@@ -1557,172 +1473,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     setSelectedBranchRefs([branch]);
     setBranchSelectionAnchor(branch);
   }, [selectedBranchSet]);
-
-  const handleRunCustomScript = useCallback(async (script: RepositoryCustomScript, branchRef: string) => {
-    setDidCopyScriptOutput(false);
-    setIsCancelingScriptExecution(false);
-    setScriptExecution({
-      isOpen: true,
-      executionId: null,
-      scriptName: script.name,
-      branchRef,
-      output: '',
-      status: 'starting',
-      error: null,
-    });
-
-    try {
-      const response = await fetch('/api/custom-scripts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: 'start',
-          repoPath,
-          branchRef,
-          scriptContent: script.content,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to start script execution');
-      }
-
-      const prelude: string[] = [];
-      if (result.previousBranch && result.checkedOutBranch && result.previousBranch !== result.checkedOutBranch) {
-        prelude.push(`[info] Checked out ${result.checkedOutBranch} (from ${result.previousBranch})`);
-      }
-
-      setScriptExecution((prev) => ({
-        ...prev,
-        executionId: result.executionId,
-        output: [prelude.join('\n'), result.output].filter(Boolean).join('\n'),
-        status: result.status as ScriptExecutionStatus,
-        error: null,
-      }));
-    } catch (error) {
-      setScriptExecution((prev) => ({
-        ...prev,
-        status: 'failed',
-        error: (error as Error).message,
-        output: prev.output
-          ? `${prev.output}\n[error] ${(error as Error).message}`
-          : `[error] ${(error as Error).message}`,
-      }));
-    }
-  }, [repoPath]);
-
-  const handleCancelCustomScriptExecution = useCallback(async () => {
-    if (!scriptExecution.executionId || !isScriptExecutionRunning) return;
-
-    setIsCancelingScriptExecution(true);
-    try {
-      const response = await fetch('/api/custom-scripts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: 'cancel',
-          executionId: scriptExecution.executionId,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to cancel script execution');
-      }
-
-      setScriptExecution((prev) => ({
-        ...prev,
-        output: result.output,
-        status: result.status as ScriptExecutionStatus,
-      }));
-
-      if (result.status !== 'running' && result.status !== 'starting') {
-        setIsCancelingScriptExecution(false);
-      }
-    } catch (error) {
-      setScriptExecution((prev) => ({
-        ...prev,
-        output: `${prev.output}\n[error] ${(error as Error).message}`,
-      }));
-      setIsCancelingScriptExecution(false);
-    }
-  }, [scriptExecution.executionId, isScriptExecutionRunning]);
-
-  const handleCopyCustomScriptOutput = useCallback(async () => {
-    if (isCopyingScriptOutput) return;
-
-    setIsCopyingScriptOutput(true);
-    const copied = await copyText(scriptExecution.output);
-    setIsCopyingScriptOutput(false);
-    setDidCopyScriptOutput(copied);
-    if (copied) {
-      setTimeout(() => setDidCopyScriptOutput(false), 1500);
-    }
-  }, [isCopyingScriptOutput, scriptExecution.output]);
-
-  useEffect(() => {
-    if (!scriptExecution.executionId || !isScriptExecutionRunning) return;
-
-    let disposed = false;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const poll = async () => {
-      try {
-        const response = await fetch('/api/custom-scripts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            command: 'status',
-            executionId: scriptExecution.executionId,
-          }),
-        });
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to fetch script execution output');
-        }
-
-        if (disposed) return;
-
-        const nextStatus = result.status as ScriptExecutionStatus;
-        setScriptExecution((prev) => {
-          if (prev.executionId !== result.executionId) return prev;
-          return {
-            ...prev,
-            output: result.output,
-            status: nextStatus,
-            error: null,
-          };
-        });
-
-        if (nextStatus === 'running') {
-          pollTimer = setTimeout(poll, 450);
-        } else {
-          setIsCancelingScriptExecution(false);
-        }
-      } catch (error) {
-        if (disposed) return;
-        setIsCancelingScriptExecution(false);
-        setScriptExecution((prev) => ({
-          ...prev,
-          status: 'failed',
-          error: (error as Error).message,
-          output: prev.output
-            ? `${prev.output}\n[error] ${(error as Error).message}`
-            : `[error] ${(error as Error).message}`,
-        }));
-      }
-    };
-
-    void poll();
-
-    return () => {
-      disposed = true;
-      if (pollTimer) {
-        clearTimeout(pollTimer);
-      }
-    };
-  }, [scriptExecution.executionId, isScriptExecutionRunning]);
 
   const confirmDeleteBranches = (branches: string[]) => {
     const deletableBranches = branches.filter((branch) => branch !== currentBranch);
@@ -3200,20 +2950,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
       });
     }
 
-    if (customBranchScripts.length > 0) {
-      menuItems.push({
-        label: 'Custom scripts',
-        icon: <i className="iconoir-terminal text-[14px]" aria-hidden="true" />,
-        children: customBranchScripts.map((script) => ({
-          label: script.name,
-          icon: <i className="iconoir-play text-[14px]" aria-hidden="true" />,
-          onClick: () => {
-            void handleRunCustomScript(script, options.branchRef);
-          },
-        })),
-      });
-    }
-
     return menuItems;
   };
 
@@ -4637,92 +4373,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
           </div>
           <form method="dialog" className="modal-backdrop">
             <button onClick={() => setIsCheckoutToLocalOpen(false)}>close</button>
-          </form>
-        </dialog>
-      )}
-
-      {scriptExecution.isOpen && (
-        <dialog className="modal modal-open">
-          <div className="modal-box max-w-4xl">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h3 className="font-bold text-lg truncate">Custom Script: {scriptExecution.scriptName}</h3>
-                <p className="text-xs opacity-70 mt-1 break-all">
-                  Branch: {scriptExecution.branchRef}
-                </p>
-              </div>
-              <span
-                className={cn(
-                  "badge badge-sm shrink-0",
-                  scriptExecution.status === 'running' || scriptExecution.status === 'starting'
-                    ? 'badge-info'
-                    : scriptExecution.status === 'completed'
-                      ? 'badge-success'
-                      : scriptExecution.status === 'failed'
-                        ? 'badge-error'
-                        : scriptExecution.status === 'canceled'
-                          ? 'badge-warning'
-                          : 'badge-ghost'
-                )}
-              >
-                {scriptExecution.status}
-              </span>
-            </div>
-
-            <div className="mt-4 border border-base-300 rounded bg-base-200/40">
-              <pre className="p-3 font-mono text-xs overflow-auto max-h-[50vh] whitespace-pre-wrap break-words">{scriptExecution.output || 'Waiting for output...'}</pre>
-            </div>
-
-            {scriptExecution.error && (
-              <div className="alert alert-error py-2 mt-3">
-                <span>{scriptExecution.error}</span>
-              </div>
-            )}
-
-            <div className="modal-action">
-              <button
-                className="btn btn-warning"
-                onClick={() => void handleCancelCustomScriptExecution()}
-                disabled={!isScriptExecutionRunning || isCancelingScriptExecution}
-              >
-                {isCancelingScriptExecution && <span className="loading loading-spinner loading-xs"></span>}
-                Cancel
-              </button>
-              <button
-                className="btn btn-outline"
-                onClick={() => void handleCopyCustomScriptOutput()}
-                disabled={isCopyingScriptOutput}
-              >
-                {isCopyingScriptOutput && <span className="loading loading-spinner loading-xs"></span>}
-                {didCopyScriptOutput ? 'Copied' : 'Copy'}
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setScriptExecution(DEFAULT_SCRIPT_EXECUTION);
-                  setDidCopyScriptOutput(false);
-                  setIsCancelingScriptExecution(false);
-                }}
-                disabled={!isScriptExecutionFinished}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button
-              onClick={(e) => {
-                if (!isScriptExecutionFinished) {
-                  e.preventDefault();
-                  return;
-                }
-                setScriptExecution(DEFAULT_SCRIPT_EXECUTION);
-                setDidCopyScriptOutput(false);
-                setIsCancelingScriptExecution(false);
-              }}
-            >
-              close
-            </button>
           </form>
         </dialog>
       )}

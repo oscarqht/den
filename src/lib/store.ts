@@ -10,7 +10,6 @@ type RepositoryRow = {
   display_name: string | null;
   last_opened_at: string | null;
   credential_id: string | null;
-  custom_scripts_json: string | null;
   expanded_folders_json: string | null;
   visibility_map_json: string | null;
   local_group_expanded: number | null;
@@ -50,8 +49,6 @@ function rowToRepository(row: RepositoryRow): Repository {
   if (row.last_opened_at !== null) repo.lastOpenedAt = row.last_opened_at;
   if (row.credential_id !== null) repo.credentialId = row.credential_id;
 
-  const customScripts = parseJsonValue<Repository['customScripts']>(row.custom_scripts_json);
-  if (customScripts) repo.customScripts = customScripts;
   const expandedFolders = parseJsonValue<Repository['expandedFolders']>(row.expanded_folders_json);
   if (expandedFolders) repo.expandedFolders = expandedFolders;
   const visibilityMap = parseJsonValue<Repository['visibilityMap']>(row.visibility_map_json);
@@ -67,11 +64,11 @@ function writeRepository(repo: Repository): void {
   const db = getLocalDb();
   db.prepare(`
     INSERT OR REPLACE INTO repositories (
-      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      path, name, display_name, last_opened_at, credential_id,
       expanded_folders_json, visibility_map_json, local_group_expanded,
       remotes_group_expanded, worktrees_group_expanded
     ) VALUES (
-      @path, @name, @displayName, @lastOpenedAt, @credentialId, @customScriptsJson,
+      @path, @name, @displayName, @lastOpenedAt, @credentialId,
       @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
       @remotesGroupExpanded, @worktreesGroupExpanded
     )
@@ -81,7 +78,6 @@ function writeRepository(repo: Repository): void {
     displayName: repo.displayName ?? null,
     lastOpenedAt: repo.lastOpenedAt ?? null,
     credentialId: repo.credentialId ?? null,
-    customScriptsJson: repo.customScripts ? JSON.stringify(repo.customScripts) : null,
     expandedFoldersJson: repo.expandedFolders ? JSON.stringify(repo.expandedFolders) : null,
     visibilityMapJson: repo.visibilityMap ? JSON.stringify(repo.visibilityMap) : null,
     localGroupExpanded: repo.localGroupExpanded === undefined ? null : Number(repo.localGroupExpanded),
@@ -94,7 +90,7 @@ export function getRepositories(): Repository[] {
   const db = getLocalDb();
   const rows = db.prepare(`
     SELECT
-      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      path, name, display_name, last_opened_at, credential_id,
       expanded_folders_json, visibility_map_json, local_group_expanded,
       remotes_group_expanded, worktrees_group_expanded
     FROM repositories
@@ -129,7 +125,7 @@ export function updateRepository(repoPath: string, updates: Partial<Repository>)
   const db = getLocalDb();
   const row = db.prepare(`
     SELECT
-      path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+      path, name, display_name, last_opened_at, credential_id,
       expanded_folders_json, visibility_map_json, local_group_expanded,
       remotes_group_expanded, worktrees_group_expanded
     FROM repositories

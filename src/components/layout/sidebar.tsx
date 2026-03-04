@@ -74,10 +74,9 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
     return `/git${subPath}?${p.toString()}`;
   };
 
-  const isActive = (view: 'status' | 'history' | 'custom-scripts' | 'stashes') => {
+  const isActive = (view: 'status' | 'history' | 'stashes') => {
     if (view === 'status') return pathname === '/git/changes';
     if (view === 'history') return pathname === '/git' || pathname.startsWith('/git/history');
-    if (view === 'custom-scripts') return pathname.startsWith('/git/custom-scripts');
     if (view === 'stashes') return pathname.startsWith('/git/stashes');
     return false;
   };
@@ -194,20 +193,6 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
               {!isCollapsed && "Stashes"}
             </Link>
 
-            <Link
-              href={getHref('/custom-scripts')}
-              className={cn(
-                "flex items-center w-full rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                isCollapsed ? "justify-center px-0 py-3" : "justify-start",
-                isActive('custom-scripts')
-                  ? "bg-gray-200 text-gray-900 dark:bg-[#2d333b] dark:text-white"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-[#2d333b]/70 dark:hover:text-white"
-              )}
-              title={isCollapsed ? "Custom scripts" : undefined}
-            >
-              <i className={cn("iconoir-terminal text-[20px]", !isCollapsed && "mr-2")} aria-hidden="true" />
-              {!isCollapsed && "Custom scripts"}
-            </Link>
           </div>
         </div>
       </div>

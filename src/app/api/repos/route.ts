@@ -6,14 +6,6 @@ import { z } from 'zod';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const customScriptSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  target: z.literal('branch'),
-  action: z.literal('run-bash-script'),
-  content: z.string(),
-});
-
 export async function GET() {
   const repos = getRepositories();
   return NextResponse.json(repos);
@@ -33,7 +25,6 @@ const updateRepoSchema = z.object({
     displayName: z.string().nullable().optional(),
     lastOpenedAt: z.string().optional(),
     credentialId: z.string().optional().nullable(),
-    customScripts: z.array(customScriptSchema).optional(),
     expandedFolders: z.array(z.string()).optional(),
     visibilityMap: z.record(z.string(), z.enum(['visible', 'hidden'])).optional(),
     localGroupExpanded: z.boolean().optional(),

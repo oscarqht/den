@@ -39,7 +39,6 @@ function createSchema(db: Database.Database): void {
       display_name TEXT,
       last_opened_at TEXT,
       credential_id TEXT,
-      custom_scripts_json TEXT,
       expanded_folders_json TEXT,
       visibility_map_json TEXT,
       local_group_expanded INTEGER,
@@ -216,11 +215,11 @@ function migrateLegacyRepositoriesAndSettings(db: Database.Database): void {
   if (getRowCount(db, 'repositories') === 0) {
     const reposInsert = db.prepare(`
       INSERT OR IGNORE INTO repositories (
-        path, name, display_name, last_opened_at, credential_id, custom_scripts_json,
+        path, name, display_name, last_opened_at, credential_id,
         expanded_folders_json, visibility_map_json, local_group_expanded,
         remotes_group_expanded, worktrees_group_expanded
       ) VALUES (
-        @path, @name, @displayName, @lastOpenedAt, @credentialId, @customScriptsJson,
+        @path, @name, @displayName, @lastOpenedAt, @credentialId,
         @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
         @remotesGroupExpanded, @worktreesGroupExpanded
       )
@@ -241,7 +240,6 @@ function migrateLegacyRepositoriesAndSettings(db: Database.Database): void {
           displayName: asOptionalString(row.displayName),
           lastOpenedAt: asOptionalString(row.lastOpenedAt),
           credentialId: asOptionalString(row.credentialId),
-          customScriptsJson: Array.isArray(row.customScripts) ? JSON.stringify(row.customScripts) : null,
           expandedFoldersJson: Array.isArray(row.expandedFolders) ? JSON.stringify(row.expandedFolders) : null,
           visibilityMapJson: row.visibilityMap && typeof row.visibilityMap === 'object'
             ? JSON.stringify(row.visibilityMap)

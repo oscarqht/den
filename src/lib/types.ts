@@ -1,21 +1,9 @@
-export type RepositoryCustomScriptTarget = 'branch';
-export type RepositoryCustomScriptAction = 'run-bash-script';
-
-export interface RepositoryCustomScript {
-  id: string;
-  name: string;
-  target: RepositoryCustomScriptTarget;
-  action: RepositoryCustomScriptAction;
-  content: string;
-}
-
 export interface Repository {
   path: string;
   name: string;
   displayName?: string | null;
   lastOpenedAt?: string;
   credentialId?: string | null;
-  customScripts?: RepositoryCustomScript[];
   expandedFolders?: string[];
   visibilityMap?: Record<string, 'visible' | 'hidden'>;
   localGroupExpanded?: boolean;

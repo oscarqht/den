@@ -47,7 +47,6 @@ This codebase exposes three interface categories:
 
 | Method | Path | Purpose | Main Code |
 |---|---|---|---|
-| POST | `/api/custom-scripts` | Start/status/cancel repository bash script execution | [src/app/api/custom-scripts/route.ts](../../src/app/api/custom-scripts/route.ts) |
 | POST | `/api/fs/open` | Open folder in system file manager | [src/app/api/fs/open/route.ts](../../src/app/api/fs/open/route.ts) |
 | POST | `/api/fs/open-terminal` | Open folder in system terminal app | [src/app/api/fs/open-terminal/route.ts](../../src/app/api/fs/open-terminal/route.ts) |
 | GET | `/api/file-thumbnail?path=...` | Serve local image thumbnail file | [src/app/api/file-thumbnail/route.ts](../../src/app/api/file-thumbnail/route.ts) |

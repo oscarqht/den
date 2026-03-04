@@ -3,7 +3,7 @@
 ## What This Feature Does
 
 User-facing behavior:
-- Displays branch graph/history, commit details, file diffs (text and images), status/staging, stashes, and custom script execution.
+- Displays branch graph/history, commit details, file diffs (text and images), status/staging, and stashes.
 - Supports local and remote branch management, pull/push, merge/rebase/cherry-pick/reset/revert/reword, conflict resolution, tags/remotes, and lock cleanup.
 - Supports auto commit-message generation via Codex when commit message is omitted.
 
@@ -44,10 +44,6 @@ Core files: [src/lib/git.ts](../../../src/lib/git.ts), [src/app/api/git/action/r
 - `GET /api/git/diff?...` (working tree, commit, commit range, file-level, image diff)
 
 Contracts are implemented in [src/app/api/git/action/route.ts](../../../src/app/api/git/action/route.ts), [src/app/api/git/diff/route.ts](../../../src/app/api/git/diff/route.ts), and related route files.
-
-### Custom script interface
-- `POST /api/custom-scripts` with commands: `start`, `status`, `cancel` ([src/app/api/custom-scripts/route.ts](../../../src/app/api/custom-scripts/route.ts)).
-- Script runs `bash -s` in repository cwd, tracks output/status in in-memory execution map with TTL.
 
 ### Auto commit message interface
 - On commit with empty message, API invokes `runCodexCliNonInteractive` and expects JSON schema `{ message: string }` ([src/app/api/git/action/route.ts](../../../src/app/api/git/action/route.ts), [src/lib/codex-cli.ts](../../../src/lib/codex-cli.ts)).

@@ -50,7 +50,7 @@ flowchart LR
 ### Route + UI layer
 - Home/new/session/git routes: [src/app/page.tsx](../../src/app/page.tsx), [src/app/new/page.tsx](../../src/app/new/page.tsx), [src/app/session/[sessionId]/page.tsx](../../src/app/session/%5BsessionId%5D/page.tsx), [src/app/git/layout.tsx](../../src/app/git/layout.tsx).
 - Session UI orchestration (terminal bootstrap, prompt injection, preview, cleanup): [src/components/SessionView.tsx](../../src/components/SessionView.tsx).
-- Git workspace UI (history/status/stashes/custom scripts): [src/components/git/history-view.tsx](../../src/components/git/history-view.tsx), [src/components/git/status-view.tsx](../../src/components/git/status-view.tsx), [src/app/git/stashes/page.tsx](../../src/app/git/stashes/page.tsx), [src/app/git/custom-scripts/page.tsx](../../src/app/git/custom-scripts/page.tsx).
+- Git workspace UI (history/status/stashes): [src/components/git/history-view.tsx](../../src/components/git/history-view.tsx), [src/components/git/status-view.tsx](../../src/components/git/status-view.tsx), [src/app/git/stashes/page.tsx](../../src/app/git/stashes/page.tsx).
 
 ### Domain + service layer
 - Git abstraction and conflict/branch/stash/remote operations: [src/lib/git.ts](../../src/lib/git.ts).

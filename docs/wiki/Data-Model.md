@@ -54,7 +54,6 @@ Key fields:
 - `path`, `name`, optional `displayName`
 - `lastOpenedAt`
 - `credentialId`
-- `customScripts[]`
 - tree visibility/expansion fields (`visibilityMap`, `expandedFolders`, etc.)
 
 ### App settings (store)

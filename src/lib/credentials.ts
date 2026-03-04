@@ -1,7 +1,15 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  getFallbackKeytarAccountsForCredential,
+  type CredentialLookupMetadata,
+} from './credential-token-fallback';
 import { createKeytarLoader, type KeytarModule } from './keytar-loader';
 import { getLocalDb } from './local-db';
 
 const SERVICE_NAME = 'viba-git-credentials';
+const LEGACY_CREDENTIALS_PATH = path.join(os.homedir(), '.viba', 'credentials.json');
 
 export type CredentialType = 'github' | 'gitlab';
 
@@ -48,8 +56,78 @@ function getDefaultKeytarAccount(id: string): string {
   return `credential-${id}`;
 }
 
-function getKeytarAccountForMetadata(metadata: CredentialMetadata): string {
+function getKeytarAccountForMetadata(metadata: { id: string; keytarAccount?: string }): string {
   return metadata.keytarAccount || getDefaultKeytarAccount(metadata.id);
+}
+
+function parseLegacyCredentials(raw: unknown): CredentialLookupMetadata[] {
+  const credentials: CredentialLookupMetadata[] = [];
+
+  const asString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object') continue;
+      const row = entry as Record<string, unknown>;
+      const id = asString(row.id);
+      const type = asString(row.type);
+      const username = asString(row.username);
+      if (!id || !username || (type !== 'github' && type !== 'gitlab')) continue;
+
+      credentials.push({
+        id,
+        type,
+        username,
+        serverUrl: type === 'gitlab' ? asString(row.serverUrl) ?? 'https://gitlab.com' : undefined,
+        keytarAccount: asString(row.keytarAccount) ?? undefined,
+      });
+    }
+
+    return credentials;
+  }
+
+  if (!raw || typeof raw !== 'object') return credentials;
+  const legacy = raw as Record<string, unknown>;
+
+  const github = legacy.github;
+  if (github && typeof github === 'object') {
+    const row = github as Record<string, unknown>;
+    const username = asString(row.username);
+    if (username) {
+      credentials.push({
+        id: 'legacy-github',
+        type: 'github',
+        username,
+        keytarAccount: asString(row.keytarAccount) ?? 'credential-github',
+      });
+    }
+  }
+
+  const gitlab = legacy.gitlab;
+  if (gitlab && typeof gitlab === 'object') {
+    const row = gitlab as Record<string, unknown>;
+    const username = asString(row.username);
+    if (username) {
+      credentials.push({
+        id: 'legacy-gitlab',
+        type: 'gitlab',
+        username,
+        serverUrl: asString(row.serverUrl) ?? 'https://gitlab.com',
+        keytarAccount: asString(row.keytarAccount) ?? 'credential-gitlab',
+      });
+    }
+  }
+
+  return credentials;
+}
+
+async function readLegacyCredentials(): Promise<CredentialLookupMetadata[]> {
+  try {
+    const raw = await fs.readFile(LEGACY_CREDENTIALS_PATH, 'utf8');
+    return parseLegacyCredentials(JSON.parse(raw));
+  } catch {
+    return [];
+  }
 }
 
 function toCredential(metadata: CredentialMetadata): Credential {
@@ -158,7 +236,23 @@ export async function getCredentialToken(id: string): Promise<string | null> {
     return null;
   }
 
-  return keytar.getPassword(SERVICE_NAME, getKeytarAccountForMetadata(found));
+  const primaryAccount = getKeytarAccountForMetadata(found);
+  const primaryToken = await keytar.getPassword(SERVICE_NAME, primaryAccount);
+  if (primaryToken) {
+    return primaryToken;
+  }
+
+  const legacyCredentials = await readLegacyCredentials();
+  const fallbackAccounts = getFallbackKeytarAccountsForCredential(found, legacyCredentials);
+
+  for (const fallbackAccount of fallbackAccounts) {
+    const fallbackToken = await keytar.getPassword(SERVICE_NAME, fallbackAccount);
+    if (fallbackToken) {
+      return fallbackToken;
+    }
+  }
+
+  return null;
 }
 
 async function verifyGitHubToken(token: string): Promise<{ valid: boolean; username?: string; error?: string }> {

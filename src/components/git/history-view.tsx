@@ -4537,7 +4537,9 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
         <div className="flex min-h-[57px] shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 dark:border-[#30363d] dark:bg-[#161b22]">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <h1 className="font-bold text-lg text-slate-900 dark:text-slate-100">History</h1>
-            <div className="relative" ref={branchPopoverRef}>
+          </div>
+          <div className="shrink-0 flex flex-wrap items-center gap-2">
+            <div className="relative shrink-0" ref={branchPopoverRef}>
               <button
                 className={branchSelectButtonClass}
                 onClick={() => setIsBranchPopoverOpen(prev => !prev)}
@@ -4547,13 +4549,11 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 <i className={cn("iconoir-nav-arrow-down text-[16px] shrink-0 transition-transform opacity-60", isBranchPopoverOpen && "rotate-180")} aria-hidden="true" />
               </button>
               {isBranchPopoverOpen && (
-                <div className="absolute left-0 top-full mt-2 z-50">
+                <div className="absolute right-0 top-full mt-2 z-50">
                   {branchTreePopoverContent}
                 </div>
               )}
             </div>
-          </div>
-          <div className="shrink-0 flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 className={headerActionButtonClass}

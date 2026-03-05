@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useGitAction, useGitBranches, useGitLog, useGitMergeBase, useGitStatus } from '@/hooks/use-git';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import { Commit } from '@/lib/types';
@@ -63,6 +64,8 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [commitMessageError, setCommitMessageError] = useState<string | null>(null);
+  const [isRefreshingLocalChanges, setIsRefreshingLocalChanges] = useState(false);
+  const queryClient = useQueryClient();
   const action = useGitAction();
   const { data: branchData } = useGitBranches(repoPath);
   const { data: statusData } = useGitStatus(repoPath);
@@ -104,6 +107,11 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
     if (branchPointIndex < 0) return allCommits;
     return allCommits.slice(0, branchPointIndex + 1);
   }, [allCommits, mergeBaseHash]);
+  const displayCommitCount = useMemo(() => {
+    const hasMergeBaseBoundaryCommit = !!mergeBaseHash && commits.some((commit) => isSameCommitHash(commit.hash, mergeBaseHash));
+    if (!hasMergeBaseBoundaryCommit) return commits.length;
+    return Math.max(commits.length - 1, 0);
+  }, [commits, mergeBaseHash]);
   const selectedCommitHash = useMemo(() => {
     if (commits.length === 0) return null;
     if (selection.mode === 'unselected') return null;
@@ -163,6 +171,20 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
     setSelection({ mode: 'manual', hash: commitHash });
   };
 
+  const handleRefreshLocalChanges = async () => {
+    setIsRefreshingLocalChanges(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['git', repoPath, 'status'], type: 'active' }),
+        queryClient.refetchQueries({ queryKey: ['git', repoPath, 'diff'], type: 'active' }),
+        queryClient.refetchQueries({ queryKey: ['git', repoPath, 'commit-diff'], type: 'active' }),
+        queryClient.refetchQueries({ queryKey: ['git', repoPath, 'commit-file-diff'], type: 'active' }),
+      ]);
+    } finally {
+      setIsRefreshingLocalChanges(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50 dark:bg-[#0d1117]">
       <div className="flex min-h-0 flex-[2] flex-col border-b border-slate-200 dark:border-[#30363d]">
@@ -176,8 +198,19 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: Sess
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="text-[10px] opacity-70">
-              {commits.length} commit{commits.length === 1 ? '' : 's'}
+              {displayCommitCount} commit{displayCommitCount === 1 ? '' : 's'}
             </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-[10px] text-slate-600 hover:bg-slate-100 disabled:text-slate-400 dark:text-slate-300 dark:hover:bg-[#30363d]/60 dark:disabled:text-slate-600"
+              onClick={() => void handleRefreshLocalChanges()}
+              disabled={action.isPending || isRefreshingLocalChanges}
+              title="Refresh local uncommitted changes"
+              aria-label="Refresh local uncommitted changes"
+            >
+              <RefreshCw className={`h-3 w-3 ${isRefreshingLocalChanges ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
             <button
               type="button"
               className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-[10px] text-red-600 hover:bg-red-50 disabled:text-slate-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:disabled:text-slate-600"

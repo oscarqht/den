@@ -6,7 +6,6 @@ import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
   getBranches,
-  checkoutBranch,
   GitBranch,
   startTtydProcess,
   getStartupScript,
@@ -25,6 +24,7 @@ import { listAgentApiCredentials, listCredentials } from '@/app/actions/credenti
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
+import { resolveInitialBaseBranchSelection } from '@/lib/base-branch-selection';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
 import {
@@ -667,22 +667,7 @@ export default function GitRepoSelector({
 
       // Check current checked out branch
       const currentCheckedOut = data.find(b => b.current)?.name;
-
-      if (lastPicked && data.some(b => b.name === lastPicked)) {
-        setCurrentBranchName(lastPicked);
-        if (lastPicked !== currentCheckedOut) {
-          try {
-            await checkoutBranch(repoPath, lastPicked);
-            const updatedData = await getBranches(repoPath);
-            setBranches(updatedData);
-          } catch (e) {
-            console.warn("Could not auto-checkout to remembered branch", e);
-            if (currentCheckedOut) setCurrentBranchName(currentCheckedOut);
-          }
-        }
-      } else {
-        if (currentCheckedOut) setCurrentBranchName(currentCheckedOut);
-      }
+      setCurrentBranchName(resolveInitialBaseBranchSelection(data, lastPicked, currentCheckedOut));
     } catch (e) {
       console.error("Failed to load branches", e);
       setError("Failed to load branches.");
@@ -695,16 +680,12 @@ export default function GitRepoSelector({
 
     setLoading(true);
     try {
-      await checkoutBranch(selectedRepo, newBranch);
       setCurrentBranchName(newBranch);
 
       const newConfig = await updateRepoSettings(selectedRepo, { lastBranch: newBranch });
       setConfig(newConfig);
-
-      const data = await getBranches(selectedRepo);
-      setBranches(data);
     } catch {
-      setError(`Failed to checkout branch ${newBranch}`);
+      setError(`Failed to save base branch ${newBranch}`);
     } finally {
       setLoading(false);
     }

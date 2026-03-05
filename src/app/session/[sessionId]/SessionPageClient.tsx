@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
-import { getSessionTerminalSources, startTtydProcess } from '@/app/actions/git';
+import { getSessionTerminalSources, resolveRepoCardIcon, startTtydProcess } from '@/app/actions/git';
 import { getRepoAlias } from '@/app/actions/config';
 import { clearPendingSessionNavigation } from '@/lib/session-navigation';
 
@@ -15,6 +15,50 @@ type SessionNotificationPayload = {
     description: string;
     timestamp: string;
 };
+
+const SESSION_FALLBACK_FAVICON_PATH = '/repo-generic-icon.svg';
+const APP_DEFAULT_FAVICON_PATH = '/palx-icon.png';
+const SESSION_FAVICON_DATA_ATTR = 'data-viba-session-favicon';
+
+function withFaviconCacheBuster(href: string, key: string): string {
+    const separator = href.includes('?') ? '&' : '?';
+    return `${href}${separator}${key}=${Date.now()}`;
+}
+
+function upsertManagedFaviconLink(rel: 'icon' | 'shortcut icon', href: string): void {
+    const selector = `link[rel="${rel}"][${SESSION_FAVICON_DATA_ATTR}="1"]`;
+    const existing = document.head.querySelector(selector) as HTMLLinkElement | null;
+    if (existing) {
+        existing.href = href;
+        return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = rel;
+    link.href = href;
+    link.setAttribute(SESSION_FAVICON_DATA_ATTR, '1');
+    document.head.appendChild(link);
+}
+
+function applySessionFavicon(href: string): void {
+    upsertManagedFaviconLink('icon', href);
+    upsertManagedFaviconLink('shortcut icon', href);
+}
+
+function clearManagedSessionFavicons(): void {
+    document.head.querySelectorAll(`link[${SESSION_FAVICON_DATA_ATTR}="1"]`).forEach((node) => {
+        node.remove();
+    });
+}
+
+function restoreAppFavicon(): void {
+    clearManagedSessionFavicons();
+    const defaultHref = withFaviconCacheBuster(APP_DEFAULT_FAVICON_PATH, 'viba-app-favicon');
+    const defaultIconLink = document.head.querySelector(`link[rel="icon"]:not([${SESSION_FAVICON_DATA_ATTR}])`) as HTMLLinkElement | null;
+    if (defaultIconLink) {
+        defaultIconLink.href = defaultHref;
+    }
+}
 
 export default function SessionPage() {
     const params = useParams<{ sessionId: string }>();
@@ -42,6 +86,7 @@ export default function SessionPage() {
     const [isResume, setIsResume] = useState<boolean>(true);
     const [terminalPersistenceMode, setTerminalPersistenceMode] = useState<'tmux' | 'shell'>('shell');
     const [repoDisplayName, setRepoDisplayName] = useState<string | undefined>(undefined);
+    const [sessionFaviconHref, setSessionFaviconHref] = useState<string>(SESSION_FALLBACK_FAVICON_PATH);
 
     const handleOpenSessionNotification = useCallback(() => {
         if (!sessionId) return;
@@ -57,6 +102,17 @@ export default function SessionPage() {
         document.documentElement.classList.add('session-page');
         return () => {
             document.documentElement.classList.remove('session-page');
+        };
+    }, []);
+
+    useEffect(() => {
+        const cacheBustedFavicon = withFaviconCacheBuster(sessionFaviconHref, 'viba-session-favicon');
+        applySessionFavicon(cacheBustedFavicon);
+    }, [sessionFaviconHref]);
+
+    useEffect(() => {
+        return () => {
+            restoreAppFavicon();
         };
     }, []);
 
@@ -185,34 +241,56 @@ export default function SessionPage() {
     useEffect(() => {
         if (!sessionId) return;
 
+        let cancelled = false;
+
         const loadSession = async () => {
             try {
+                setSessionFaviconHref(SESSION_FALLBACK_FAVICON_PATH);
                 setTerminalSources(null);
 
                 // Ensure ttyd is running
                 const ttydResult = await startTtydProcess();
                 if (!ttydResult.success) {
+                    if (cancelled) return;
                     setError('Failed to start terminal service');
                     setLoading(false);
                     return;
                 }
+                if (cancelled) return;
                 setTerminalPersistenceMode(ttydResult.persistenceMode === 'tmux' ? 'tmux' : 'shell');
 
                 const data = await getSessionMetadata(sessionId);
                 if (!data) {
+                    if (cancelled) return;
                     setError('Session not found');
                     setLoading(false);
                     return;
                 }
 
+                try {
+                    const iconResult = await resolveRepoCardIcon(data.repoPath);
+                    if (!cancelled && iconResult.success && iconResult.iconPath) {
+                        setSessionFaviconHref(`/api/file-thumbnail?path=${encodeURIComponent(iconResult.iconPath)}`);
+                    }
+                } catch {
+                    if (!cancelled) {
+                        setSessionFaviconHref(SESSION_FALLBACK_FAVICON_PATH);
+                    }
+                }
+
+                if (cancelled) return;
                 setMetadata(data);
                 const alias = await getRepoAlias(data.repoPath);
-                if (alias) setRepoDisplayName(alias);
+                if (cancelled) return;
+                if (alias) {
+                    setRepoDisplayName(alias);
+                }
                 const resolvedTerminalSources = await getSessionTerminalSources(
                     data.sessionName,
                     data.repoPath,
                     data.agent,
                 );
+                if (cancelled) return;
                 setTerminalSources(resolvedTerminalSources);
 
                 // Determine fresh start vs resume purely from the initialized flag:
@@ -224,6 +302,7 @@ export default function SessionPage() {
                 if (isFirstOpen) {
                     // Consume the launch context (startup params) written by GitRepoSelector
                     const contextResult = await consumeSessionLaunchContext(sessionId);
+                    if (cancelled) return;
                     if (contextResult.success && contextResult.context) {
                         const ctx = contextResult.context;
                         setInitialMessage(ctx.initialMessage);
@@ -253,15 +332,21 @@ export default function SessionPage() {
                     setIsResume(true);
                 }
 
+                if (cancelled) return;
                 setLoading(false);
             } catch (e) {
+                if (cancelled) return;
                 console.error('Failed to load session:', e);
                 setError('Failed to load session');
                 setLoading(false);
             }
         };
 
-        loadSession();
+        void loadSession();
+
+        return () => {
+            cancelled = true;
+        };
     }, [sessionId]);
 
     const handleExit = (force?: boolean) => {

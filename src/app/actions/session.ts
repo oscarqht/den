@@ -88,6 +88,38 @@ function parseStringArray(value: string | null): string[] | undefined {
   }
 }
 
+type TrackingBranch = {
+  remote: string;
+  branch: string;
+};
+
+function parseTrackingUpstream(upstream: string): TrackingBranch | null {
+  const slashIndex = upstream.indexOf('/');
+  if (slashIndex <= 0 || slashIndex >= upstream.length - 1) return null;
+  return {
+    remote: upstream.slice(0, slashIndex),
+    branch: upstream.slice(slashIndex + 1),
+  };
+}
+
+async function getTrackingBranch(
+  git: ReturnType<typeof simpleGit>,
+  localBranch: string,
+): Promise<TrackingBranch | null> {
+  try {
+    const upstream = await git.raw([
+      'for-each-ref',
+      '--format=%(upstream:short)',
+      `refs/heads/${localBranch}`,
+    ]);
+    const upstreamBranch = upstream.trim();
+    if (!upstreamBranch) return null;
+    return parseTrackingUpstream(upstreamBranch);
+  } catch {
+    return null;
+  }
+}
+
 function rowToSessionMetadata(row: SessionRow): SessionMetadata {
   return {
     sessionName: row.session_name,
@@ -609,12 +641,36 @@ export async function rebaseSessionOntoBase(
       return { success: false, error: `Session branch "${metadata.branchName}" not found in repository.` };
     }
 
+    const baseBranchTracking = await getTrackingBranch(repoGit, baseBranch);
+    const repoOriginalBranch = branchSummary.current;
+    if (baseBranchTracking) {
+      if (repoOriginalBranch !== baseBranch) {
+        await repoGit.checkout(baseBranch);
+      }
+      try {
+        await repoGit.raw(['pull', '--ff-only', baseBranchTracking.remote, baseBranchTracking.branch]);
+      } finally {
+        if (repoOriginalBranch && repoOriginalBranch !== baseBranch) {
+          await repoGit.checkout(repoOriginalBranch);
+        }
+      }
+    }
+
     const worktreeBranchSummary = await worktreeGit.branchLocal();
     if (worktreeBranchSummary.current !== metadata.branchName) {
       await worktreeGit.checkout(metadata.branchName);
     }
 
     await worktreeGit.rebase([baseBranch]);
+
+    const sessionBranchTracking = await getTrackingBranch(worktreeGit, metadata.branchName);
+    if (sessionBranchTracking) {
+      await worktreeGit.push([
+        '--force-with-lease',
+        sessionBranchTracking.remote,
+        `${metadata.branchName}:${sessionBranchTracking.branch}`,
+      ]);
+    }
 
     return {
       success: true,

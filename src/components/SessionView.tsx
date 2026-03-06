@@ -3019,7 +3019,7 @@ export function SessionView({
 
                                             <div className="flex shrink-0 items-center gap-2">
                                                 <button
-                                                    className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                    className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 disabled:opacity-30 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
                                                     onClick={handleStartDevServer}
                                                     disabled={isDevButtonDisabled}
                                                     title={devButtonTitle}

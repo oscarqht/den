@@ -16,6 +16,7 @@ import {
   TerminalSessionEnvironment,
   TerminalSessionRole,
 } from '@/lib/terminal-session';
+import { listRepoEntries } from '@/lib/repo-entry-list';
 import { getProjects } from '@/lib/store';
 
 export type FileSystemItem = {
@@ -1202,49 +1203,10 @@ export async function resolveRepoCardIcon(repoPath: string): Promise<ResolveRepo
 }
 
 export async function listRepoFiles(repoPath: string, query: string = ''): Promise<string[]> {
-  const MAX_FILES = 10000;
-  const MAX_DIRS = 15000;
-  const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', '.viba', '.cache', 'dist', 'build', 'coverage']);
-
-  const queue: string[] = [repoPath];
-  const allFiles: string[] = [];
-  let scannedDirs = 0;
-
   try {
-    while (queue.length > 0 && scannedDirs < MAX_DIRS && allFiles.length < MAX_FILES) {
-      const currentDir = queue.shift();
-      if (!currentDir) break;
-      scannedDirs += 1;
-
-      let entries: Array<import('fs').Dirent>;
-      try {
-        entries = await fs.readdir(currentDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const entry of entries) {
-        const fullPath = path.join(currentDir, entry.name);
-        if (entry.isDirectory()) {
-          if (SKIP_DIRS.has(entry.name)) continue;
-          queue.push(fullPath);
-          continue;
-        }
-
-        if (!entry.isFile()) continue;
-        const relativePath = path.relative(repoPath, fullPath);
-        if (!relativePath || relativePath.startsWith('..')) continue;
-        allFiles.push(relativePath);
-        if (allFiles.length >= MAX_FILES) break;
-      }
-    }
-
-    if (!query) return allFiles.slice(0, 50);
-
-    const lowerQuery = query.toLowerCase();
-    return allFiles.filter(f => f.toLowerCase().includes(lowerQuery)).slice(0, 50);
+    return await listRepoEntries(repoPath, query);
   } catch (error) {
-    console.error('Failed to list project files:', error);
+    console.error('Failed to list project files and folders:', error);
     return [];
   }
 }

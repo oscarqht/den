@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Clock3, Loader2, PlayCircle, Send, Square } from 'lucide-react';
+import { AlertCircle, Clock3, Loader2, PlayCircle, Send, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { listRepoFiles } from '@/app/actions/git';
@@ -869,10 +869,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     return details;
   }, [runtime]);
   const turnDiagnostics = runtime?.turnDiagnostics ?? null;
-  const [showTurnDiagnostics, setShowTurnDiagnostics] = useState(false);
+  const [isTurnDiagnosticsDialogOpen, setIsTurnDiagnosticsDialogOpen] = useState(false);
 
   useEffect(() => {
-    setShowTurnDiagnostics(false);
+    setIsTurnDiagnosticsDialogOpen(false);
   }, [sessionId, turnDiagnostics?.queuedAt]);
 
   const submitMessageToAgent = useCallback(async (message: string) => {
@@ -1093,63 +1093,30 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               ))}
               <span className="max-w-full truncate" title={workspacePath}>cwd: {workspacePath}</span>
             </div>
-            {turnDiagnostics ? (
-              <div className="mt-3">
+          </div>
+          {(turnDiagnostics || isTurnActive || isCancelling) ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {turnDiagnostics ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                  onClick={() => setShowTurnDiagnostics((current) => !current)}
-                  aria-expanded={showTurnDiagnostics}
+                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
+                  onClick={() => setIsTurnDiagnosticsDialogOpen(true)}
                 >
-                  {showTurnDiagnostics ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                   Startup Diagnostics
                 </button>
-                {showTurnDiagnostics ? (
-                  <div className="mt-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-[#30363d] dark:bg-[#0d1117]/80">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                        {turnDiagnostics.transport}
-                      </span>
-                      {turnDiagnostics.timeToTurnStartMs != null ? (
-                        <span>to running {formatDuration(turnDiagnostics.timeToTurnStartMs)}</span>
-                      ) : (
-                        <span>queued since {formatTimestamp(turnDiagnostics.queuedAt)}</span>
-                      )}
-                    </div>
-                    {turnDiagnostics.steps.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {turnDiagnostics.steps.map((step) => {
-                          const durationLabel = step.status === 'running'
-                            ? 'in progress'
-                            : formatDuration(step.durationMs);
-                          return (
-                            <span
-                              key={step.key}
-                              title={step.detail || undefined}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${diagnosticStepTone(step.status)}`}
-                            >
-                              <span>{step.label}</span>
-                              {durationLabel ? <span>{durationLabel}</span> : null}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-          {(isTurnActive || isCancelling) ? (
-            <button
-              type="button"
-              className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-              onClick={() => void handleCancel()}
-              disabled={isCancelling}
-            >
-              {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
-              Cancel
-            </button>
+              ) : null}
+              {(isTurnActive || isCancelling) ? (
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
+                  onClick={() => void handleCancel()}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+                  Cancel
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
         {runtime?.lastError ? (
@@ -1159,6 +1126,56 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           </div>
         ) : null}
       </div>
+      {turnDiagnostics && isTurnDiagnosticsDialogOpen ? (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Startup Diagnostics</h3>
+            <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-[#30363d] dark:bg-[#0d1117]/80">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  {turnDiagnostics.transport}
+                </span>
+                {turnDiagnostics.timeToTurnStartMs != null ? (
+                  <span>to running {formatDuration(turnDiagnostics.timeToTurnStartMs)}</span>
+                ) : (
+                  <span>queued since {formatTimestamp(turnDiagnostics.queuedAt)}</span>
+                )}
+              </div>
+              {turnDiagnostics.steps.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {turnDiagnostics.steps.map((step) => {
+                    const durationLabel = step.status === 'running'
+                      ? 'in progress'
+                      : formatDuration(step.durationMs);
+                    return (
+                      <span
+                        key={step.key}
+                        title={step.detail || undefined}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${diagnosticStepTone(step.status)}`}
+                      >
+                        <span>{step.label}</span>
+                        {durationLabel ? <span>{durationLabel}</span> : null}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setIsTurnDiagnosticsDialogOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => setIsTurnDiagnosticsDialogOpen(false)}>close</button>
+          </form>
+        </dialog>
+      ) : null}
 
       <div
         ref={timelineRef}

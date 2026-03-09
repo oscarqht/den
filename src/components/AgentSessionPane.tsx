@@ -47,12 +47,31 @@ type AgentSocketPayload = {
 export type AgentSessionPaneHandle = {
   focusComposer: () => void;
   insertText: (text: string) => boolean;
+  openStartupDiagnostics: () => void;
+  openAgentDetails: () => void;
+  cancelActiveTurn: () => Promise<void>;
+};
+
+export type AgentSessionHeaderMeta = {
+  providerName: string;
+  model: string;
+  runState: SessionAgentRunState | 'idle';
+  socketConnected: boolean;
+  threadId: string | null;
+  reasoningEffort: string | null;
+  workspacePath: string;
+  hasTurnDiagnostics: boolean;
+  canCancel: boolean;
+  isCancelling: boolean;
+  lastActivityAt: string | null;
+  lastError: string | null;
 };
 
 type AgentSessionPaneProps = {
   sessionId: string;
   workspacePath: string;
   onFeedback?: (message: string) => void;
+  onHeaderMetaChange?: (meta: AgentSessionHeaderMeta) => void;
 };
 
 type PendingMessage = {
@@ -542,7 +561,7 @@ function VirtualHistoryRow({ item, onMeasure }: VirtualHistoryRowProps) {
 }
 
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
-  { sessionId, workspacePath, onFeedback },
+  { sessionId, workspacePath, onFeedback, onHeaderMetaChange },
   ref,
 ) {
   const [runtime, setRuntime] = useState<SessionAgentRuntimeState | null>(null);
@@ -623,28 +642,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       setLoading(false);
     }
   }, [sessionId]);
-
-  useImperativeHandle(ref, () => ({
-    focusComposer() {
-      textareaRef.current?.focus();
-    },
-    insertText(text: string) {
-      const value = text ?? '';
-      if (!value) return true;
-
-      setComposerValue((previous) => {
-        const textarea = textareaRef.current;
-        const start = textarea?.selectionStart ?? previous.length;
-        const end = textarea?.selectionEnd ?? previous.length;
-        const nextValue = `${previous.slice(0, start)}${value}${previous.slice(end)}`;
-        pendingSelectionRef.current = start + value.length;
-        return nextValue;
-      });
-
-      onFeedback?.('Inserted text into agent input');
-      return true;
-    },
-  }), [onFeedback]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -889,26 +886,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, [history]);
 
   const providerName = providerLabel(runtime?.agentProvider || null);
-  const runtimeDetails = useMemo(() => {
-    if (!runtime) return [];
-
-    const details: string[] = [];
-    if (runtime.model) {
-      details.push(runtime.model);
-    }
-    if (runtime.reasoningEffort) {
-      details.push(`reasoning: ${runtime.reasoningEffort}`);
-    }
-    if (runtime.threadId) {
-      details.push(`thread ${runtime.threadId}`);
-    }
-    if (runtime.turnDiagnostics?.timeToTurnStartMs != null) {
-      details.push(`startup ${formatDuration(runtime.turnDiagnostics.timeToTurnStartMs)}`);
-    }
-    return details;
-  }, [runtime]);
   const turnDiagnostics = runtime?.turnDiagnostics ?? null;
   const [isTurnDiagnosticsDialogOpen, setIsTurnDiagnosticsDialogOpen] = useState(false);
+  const [isAgentDetailsDialogOpen, setIsAgentDetailsDialogOpen] = useState(false);
 
   useEffect(() => {
     setIsTurnDiagnosticsDialogOpen(false);
@@ -1141,6 +1121,66 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     await handleCancel();
   }, [dispatchQueuedMessage, handleCancel, isCancelling, isSending, isTurnActive, onFeedback]);
 
+  const headerMeta = useMemo<AgentSessionHeaderMeta>(() => ({
+    providerName,
+    model: runtime?.model || '',
+    runState: activeRunState,
+    socketConnected,
+    threadId: runtime?.threadId || null,
+    reasoningEffort: runtime?.reasoningEffort || null,
+    workspacePath,
+    hasTurnDiagnostics: Boolean(turnDiagnostics),
+    canCancel: Boolean(runtime) && (isTurnActive || isCancelling),
+    isCancelling,
+    lastActivityAt: runtime?.lastActivityAt || null,
+    lastError: runtime?.lastError || null,
+  }), [
+    activeRunState,
+    isCancelling,
+    isTurnActive,
+    providerName,
+    runtime,
+    socketConnected,
+    turnDiagnostics,
+    workspacePath,
+  ]);
+
+  useEffect(() => {
+    onHeaderMetaChange?.(headerMeta);
+  }, [headerMeta, onHeaderMetaChange]);
+
+  useImperativeHandle(ref, () => ({
+    focusComposer() {
+      textareaRef.current?.focus();
+    },
+    insertText(text: string) {
+      const value = text ?? '';
+      if (!value) return true;
+
+      setComposerValue((previous) => {
+        const textarea = textareaRef.current;
+        const start = textarea?.selectionStart ?? previous.length;
+        const end = textarea?.selectionEnd ?? previous.length;
+        const nextValue = `${previous.slice(0, start)}${value}${previous.slice(end)}`;
+        pendingSelectionRef.current = start + value.length;
+        return nextValue;
+      });
+
+      onFeedback?.('Inserted text into agent input');
+      return true;
+    },
+    openStartupDiagnostics() {
+      if (!turnDiagnostics) return;
+      setIsTurnDiagnosticsDialogOpen(true);
+    },
+    openAgentDetails() {
+      setIsAgentDetailsDialogOpen(true);
+    },
+    async cancelActiveTurn() {
+      await handleCancel();
+    },
+  }), [handleCancel, onFeedback, turnDiagnostics]);
+
   useEffect(() => {
     if (isTurnActive || isSending || pendingMessages.length === 0) return;
 
@@ -1165,62 +1205,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="border-b border-slate-200 px-4 py-2.5 dark:border-[#30363d]">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{providerName}</span>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(activeRunState)}`}>
-                {formatRunState(activeRunState)}
-              </span>
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                socketConnected
-                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-              }`}>
-                <Clock3 className="h-3 w-3" />
-                {socketConnected ? 'live' : 'offline'}
-              </span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-              {runtimeDetails.map((detail) => (
-                <span key={detail}>{detail}</span>
-              ))}
-              <span className="max-w-full truncate" title={workspacePath}>cwd: {workspacePath}</span>
-            </div>
-          </div>
-          {(turnDiagnostics || isTurnActive || isCancelling) ? (
-            <div className="flex shrink-0 items-center gap-2">
-              {turnDiagnostics ? (
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-                  onClick={() => setIsTurnDiagnosticsDialogOpen(true)}
-                >
-                  Startup Diagnostics
-                </button>
-              ) : null}
-              {(isTurnActive || isCancelling) ? (
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-                  onClick={() => void handleCancel()}
-                  disabled={isCancelling}
-                >
-                  {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
-                  Cancel
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        {runtime?.lastError ? (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="whitespace-pre-wrap break-words">{runtime.lastError}</span>
-          </div>
-        ) : null}
-      </div>
       {turnDiagnostics && isTurnDiagnosticsDialogOpen ? (
         <dialog className="modal modal-open">
           <div className="modal-box max-w-2xl">
@@ -1268,6 +1252,84 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           </div>
           <form method="dialog" className="modal-backdrop">
             <button onClick={() => setIsTurnDiagnosticsDialogOpen(false)}>close</button>
+          </form>
+        </dialog>
+      ) : null}
+      {isAgentDetailsDialogOpen ? (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Agent Details</h3>
+            <div className="mt-3 grid gap-3 text-sm">
+              <div className="grid gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/80 sm:grid-cols-2">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent</div>
+                  <div className="mt-0.5 font-medium text-slate-900 dark:text-slate-100">{providerName}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</div>
+                  <div className="mt-0.5">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(activeRunState)}`}>
+                      {formatRunState(activeRunState)}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Model</div>
+                  <div className="mt-0.5 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{runtime?.model || 'n/a'}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Connection</div>
+                  <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-slate-700 dark:text-slate-200">
+                    <Clock3 className="h-3 w-3" />
+                    {socketConnected ? 'live' : 'offline'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Thread</div>
+                  <div className="mt-0.5 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{runtime?.threadId || 'n/a'}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Reasoning</div>
+                  <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-200">{runtime?.reasoningEffort || 'n/a'}</div>
+                </div>
+                <div className="sm:col-span-2">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">CWD</div>
+                  <div className="mt-0.5 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{workspacePath || '.'}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Last Activity</div>
+                  <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-200">{formatTimestamp(runtime?.lastActivityAt) || 'n/a'}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Startup Diagnostics</div>
+                  <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-200">
+                    {turnDiagnostics
+                      ? (turnDiagnostics.timeToTurnStartMs != null
+                        ? `to running ${formatDuration(turnDiagnostics.timeToTurnStartMs)}`
+                        : `queued since ${formatTimestamp(turnDiagnostics.queuedAt) || 'unknown'}`)
+                      : 'n/a'}
+                  </div>
+                </div>
+              </div>
+              {runtime?.lastError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+                  <div className="mb-1 font-semibold uppercase tracking-wide">Last Error</div>
+                  <div className="whitespace-pre-wrap break-words">{runtime.lastError}</div>
+                </div>
+              ) : null}
+            </div>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setIsAgentDetailsDialogOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => setIsAgentDetailsDialogOpen(false)}>close</button>
           </form>
         </dialog>
       ) : null}
@@ -1330,10 +1392,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       </div>
 
       <div className="border-t border-slate-200 px-4 py-3 dark:border-[#30363d]">
-        {error ? (
+        {(error || runtime?.lastError) ? (
           <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="whitespace-pre-wrap break-words">{error}</span>
+            <span className="whitespace-pre-wrap break-words">{error || runtime?.lastError}</span>
           </div>
         ) : null}
         {pendingMessages.length > 0 ? (

@@ -12,6 +12,8 @@ import React, {
 import { AlertCircle, Clock3, Loader2, PlayCircle, Send, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { listRepoFiles } from '@/app/actions/git';
+import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -495,6 +497,11 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [socketConnected, setSocketConnected] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
   const [steerTargetId, setSteerTargetId] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionList, setSuggestionList] = useState<string[]>([]);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [workspaceEntriesCache, setWorkspaceEntriesCache] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<number | null>(null);
@@ -712,6 +719,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     };
   }, []);
 
+  useEffect(() => {
+    setWorkspaceEntriesCache([]);
+  }, [workspacePath]);
+
   const activeRunState = runtime?.runState ?? 'idle';
   const isTurnActive = activeRunState === 'queued' || activeRunState === 'running';
   const canSend = !loading && !isSending && composerValue.trim().length > 0;
@@ -861,6 +872,59 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       return { success: false as const, error: messageText };
     }
   }, [onFeedback, scheduleRefresh, sessionId]);
+
+  const updateComposerSuggestions = useCallback((query: string, entries: string[]) => {
+    const nextSuggestions = buildRepoMentionSuggestions({
+      query,
+      repoEntries: entries,
+      currentAttachments: [],
+      carriedAttachments: [],
+    });
+    setSuggestionList(nextSuggestions);
+    setSelectedSuggestionIndex(0);
+  }, []);
+
+  const handleSelectSuggestion = useCallback((suggestion: string) => {
+    setComposerValue((previous) => {
+      const textBeforeCursor = previous.substring(0, cursorPosition);
+      const lastAt = textBeforeCursor.lastIndexOf('@');
+      if (lastAt === -1) {
+        return previous;
+      }
+
+      const prefix = previous.substring(0, lastAt);
+      const suffix = previous.substring(cursorPosition);
+      const nextValue = `${prefix}@${suggestion} ${suffix}`;
+      pendingSelectionRef.current = prefix.length + suggestion.length + 2;
+      return nextValue;
+    });
+
+    setShowSuggestions(false);
+  }, [cursorPosition]);
+
+  const handleComposerChange = useCallback(async (nextValue: string, nextCursorPosition: number) => {
+    setComposerValue(nextValue);
+    setCursorPosition(nextCursorPosition);
+
+    const textBeforeCursor = nextValue.substring(0, nextCursorPosition);
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAt !== -1) {
+      const query = textBeforeCursor.substring(lastAt + 1);
+      if (!/\s/.test(query)) {
+        setShowSuggestions(true);
+        let entries = workspaceEntriesCache;
+        if (entries.length === 0) {
+          entries = await listRepoFiles(workspacePath);
+          setWorkspaceEntriesCache(entries);
+        }
+        updateComposerSuggestions(query, entries);
+        return;
+      }
+    }
+
+    setShowSuggestions(false);
+  }, [updateComposerSuggestions, workspaceEntriesCache, workspacePath]);
 
   const handleSubmit = useCallback(async () => {
     const message = composerValue.trim();
@@ -1110,7 +1174,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             })}
           </div>
         ) : null}
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
+        <div className="relative rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
           <textarea
             ref={textareaRef}
             className="max-h-28 min-h-20 w-full resize-y border-none bg-transparent font-mono text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -1119,14 +1183,73 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               ? 'Queue a follow-up message, or add steering instructions...'
               : 'Send a follow-up task or ask the agent to continue...'}
             value={composerValue}
-            onChange={(event) => setComposerValue(event.target.value)}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              const nextCursorPosition = event.target.selectionStart;
+              void handleComposerChange(nextValue, nextCursorPosition);
+            }}
+            onClick={(event) => {
+              setCursorPosition(event.currentTarget.selectionStart);
+              setShowSuggestions(false);
+            }}
+            onKeyUp={(event) => {
+              setCursorPosition(event.currentTarget.selectionStart);
+            }}
             onKeyDown={(event) => {
+              if (showSuggestions && suggestionList.length > 0) {
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setSelectedSuggestionIndex((previous) => (
+                    previous > 0 ? previous - 1 : suggestionList.length - 1
+                  ));
+                  return;
+                }
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setSelectedSuggestionIndex((previous) => (
+                    previous < suggestionList.length - 1 ? previous + 1 : 0
+                  ));
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  event.preventDefault();
+                  handleSelectSuggestion(suggestionList[selectedSuggestionIndex]);
+                  return;
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setShowSuggestions(false);
+                  return;
+                }
+              }
+
               if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                 event.preventDefault();
                 void handleSubmit();
               }
             }}
           />
+          {showSuggestions && suggestionList.length > 0 ? (
+            <div className="absolute bottom-20 left-6 right-6 z-20 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-[#30363d] dark:bg-[#161b22]">
+              {suggestionList.map((suggestion, index) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className={`w-full truncate border-b border-slate-100 px-3 py-2 text-left text-xs last:border-0 ${
+                    index === selectedSuggestionIndex
+                      ? 'bg-primary text-white'
+                      : 'text-slate-700 hover:bg-slate-50 dark:border-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                  }`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    handleSelectSuggestion(suggestion);
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
               {isTurnActive ? (

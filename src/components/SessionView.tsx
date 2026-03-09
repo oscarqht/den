@@ -18,8 +18,8 @@ import {
     terminateTmuxSessionRole,
 } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, ChevronRight, Grip, ChevronDown, Plus, RotateCw, ScrollText, TextCursorInput, X } from 'lucide-react';
-import AgentSessionPane, { type AgentSessionPaneHandle } from './AgentSessionPane';
+import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, ChevronRight, Grip, ChevronDown, Plus, RotateCw, ScrollText, TextCursorInput, X, Info } from 'lucide-react';
+import AgentSessionPane, { type AgentSessionHeaderMeta, type AgentSessionPaneHandle } from './AgentSessionPane';
 import SessionFileBrowser from './SessionFileBrowser';
 import { SessionRepoViewer, type SessionRepoViewerOption } from './SessionRepoViewer';
 import { getBaseName } from '@/lib/path';
@@ -36,7 +36,7 @@ import {
     THEME_MODE_STORAGE_KEY,
     THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
-import type { SessionGitRepoContext, SessionWorkspaceMode } from '@/lib/types';
+import type { SessionAgentRunState, SessionGitRepoContext, SessionWorkspaceMode } from '@/lib/types';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -89,6 +89,30 @@ const getFloatingTerminalTabIdFromSlot = (slot: TerminalBootstrapSlot): string |
 };
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
+
+const formatAgentRunState = (runState: SessionAgentRunState | 'idle' | null | undefined): string => {
+    if (!runState) return 'idle';
+    return runState.replace(/_/g, ' ');
+};
+
+const agentRunStateTone = (runState: SessionAgentRunState | 'idle' | null | undefined): string => {
+    switch (runState) {
+        case 'running':
+            return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200';
+        case 'queued':
+            return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
+        case 'completed':
+            return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
+        case 'cancelled':
+            return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-200';
+        case 'error':
+            return 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200';
+        case 'needs_auth':
+            return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200';
+        default:
+            return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300';
+    }
+};
 
 const buildExportEnvironmentCommand = (environments: TerminalSessionEnvironment[]): string => {
     if (environments.length === 0) return '';
@@ -666,6 +690,7 @@ export function SessionView({
     }, [getTerminalStartupScriptState, isResume, startupScript]);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
+    const [agentHeaderMeta, setAgentHeaderMeta] = useState<AgentSessionHeaderMeta | null>(null);
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
@@ -1211,6 +1236,18 @@ export function SessionView({
         const uri = `${ide.protocol}://file/${encodeURI(worktree)}`;
         window.open(uri, '_blank');
     };
+
+    const handleOpenAgentDetails = useCallback(() => {
+        agentPaneRef.current?.openAgentDetails();
+    }, []);
+
+    const handleOpenStartupDiagnostics = useCallback(() => {
+        agentPaneRef.current?.openStartupDiagnostics();
+    }, []);
+
+    const handleCancelAgentTurn = useCallback(() => {
+        void agentPaneRef.current?.cancelActiveTurn();
+    }, []);
 
     const applyTerminalInteractionMode = useCallback(async (
         mode: TerminalInteractionMode,
@@ -2191,6 +2228,55 @@ export function SessionView({
                             Agent Activity
                         </span>
                         <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto py-1 text-xs font-medium normal-case">
+                            {agentHeaderMeta ? (
+                                <div className="flex min-w-0 max-w-[440px] items-center gap-1.5 overflow-hidden whitespace-nowrap rounded border border-slate-200 bg-white px-2 py-0.5 dark:border-[#30363d] dark:bg-[#0d1117]">
+                                    <span
+                                        className="min-w-0 max-w-[140px] truncate text-slate-700 dark:text-slate-200"
+                                        title={agentHeaderMeta.providerName || 'Agent'}
+                                    >
+                                        {agentHeaderMeta.providerName || 'Agent'}
+                                    </span>
+                                    <span className="shrink-0 text-slate-300 dark:text-slate-500">/</span>
+                                    <span
+                                        className="min-w-0 max-w-[180px] truncate text-slate-500 dark:text-slate-400"
+                                        title={agentHeaderMeta.model || 'n/a'}
+                                    >
+                                        {agentHeaderMeta.model || 'n/a'}
+                                    </span>
+                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${agentRunStateTone(agentHeaderMeta.runState)}`}>
+                                        {formatAgentRunState(agentHeaderMeta.runState)}
+                                    </span>
+                                </div>
+                            ) : null}
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-xs h-6 min-h-6 w-6 shrink-0 border border-slate-200 bg-white p-0 text-slate-700 hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                onClick={handleOpenAgentDetails}
+                                title="Agent details"
+                                aria-label="Agent details"
+                            >
+                                <Info className="h-3.5 w-3.5" />
+                            </button>
+                            {agentHeaderMeta?.hasTurnDiagnostics ? (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 shrink-0 border border-slate-200 bg-white px-2 text-slate-700 hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={handleOpenStartupDiagnostics}
+                                >
+                                    Startup Diagnostics
+                                </button>
+                            ) : null}
+                            {agentHeaderMeta?.canCancel ? (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 shrink-0 border border-slate-200 bg-white px-2 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                    onClick={handleCancelAgentTurn}
+                                    disabled={agentHeaderMeta.isCancelling}
+                                >
+                                    {agentHeaderMeta.isCancelling ? <span className="loading loading-spinner loading-xs"></span> : null}
+                                    Cancel
+                                </button>
+                            ) : null}
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
                                 <select
                                     className="select select-xs h-6 min-h-6 rounded-none border-none bg-slate-100 pr-7 text-slate-700 focus:outline-none dark:bg-[#161b22] dark:text-slate-300"
@@ -2232,6 +2318,7 @@ export function SessionView({
                             sessionId={sessionName}
                             workspacePath={sessionWorkspaceRootPath || worktree || repo}
                             onFeedback={setFeedback}
+                            onHeaderMetaChange={setAgentHeaderMeta}
                         />
                     </div>
                 </div>

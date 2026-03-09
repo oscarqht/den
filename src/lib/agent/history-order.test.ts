@@ -59,24 +59,49 @@ function createItem(overrides: Partial<SessionAgentHistoryItem>): SessionAgentHi
 }
 
 describe('sortSessionHistoryForTimeline', () => {
-  it('moves tool activity ahead of assistant messages inside the same turn', () => {
+  it('keeps mixed message kinds in strict createdAt order', () => {
     const assistant = createItem({
       id: 'assistant-1',
       kind: 'assistant',
       turnId: 'turn-42',
-      ordinal: 1,
+      ordinal: 9,
+      createdAt: '2026-03-09T00:00:02.000Z',
       text: 'Here is the result.',
     });
     const tool = createItem({
       id: 'tool-1',
       kind: 'tool',
       turnId: 'turn-42',
-      ordinal: 2,
+      ordinal: 1,
+      createdAt: '2026-03-09T00:00:03.000Z',
       tool: 'exec_command',
     });
 
     const ordered = sortSessionHistoryForTimeline([assistant, tool]);
-    assert.deepStrictEqual(ordered.map((item) => item.id), ['tool-1', 'assistant-1']);
+    assert.deepStrictEqual(ordered.map((item) => item.id), ['assistant-1', 'tool-1']);
+  });
+
+  it('uses updatedAt to break ties for identical createdAt timestamps', () => {
+    const reasoning = createItem({
+      id: 'reasoning-1',
+      kind: 'reasoning',
+      turnId: 'turn-42',
+      createdAt: '2026-03-09T00:00:10.000Z',
+      updatedAt: '2026-03-09T00:00:10.100Z',
+      summary: 'reasoning summary',
+      text: 'reasoning details',
+    });
+    const assistant = createItem({
+      id: 'assistant-1',
+      kind: 'assistant',
+      turnId: 'turn-42',
+      createdAt: '2026-03-09T00:00:10.000Z',
+      updatedAt: '2026-03-09T00:00:10.900Z',
+      text: 'assistant response',
+    });
+
+    const ordered = sortSessionHistoryForTimeline([assistant, reasoning]);
+    assert.deepStrictEqual(ordered.map((item) => item.id), ['reasoning-1', 'assistant-1']);
   });
 
   it('keeps chronological ordering across different turns', () => {
@@ -85,6 +110,7 @@ describe('sortSessionHistoryForTimeline', () => {
       kind: 'assistant',
       turnId: 'turn-old',
       ordinal: 1,
+      createdAt: '2026-03-09T00:00:01.000Z',
       text: 'older',
     });
     const newerTool = createItem({
@@ -92,6 +118,7 @@ describe('sortSessionHistoryForTimeline', () => {
       kind: 'tool',
       turnId: 'turn-new',
       ordinal: 2,
+      createdAt: '2026-03-09T00:00:05.000Z',
       tool: 'exec_command',
     });
 

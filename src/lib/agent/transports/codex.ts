@@ -24,6 +24,7 @@ import {
   stringifyCompact,
 } from "@/lib/agent/common";
 import { buildCodexAppServerEnv } from "@/lib/agent/spawn-env";
+import type { AgentRuntimeUpdate } from "@/lib/agent/providers/types";
 
 type JsonRpcMessage = {
   id?: number;
@@ -423,6 +424,10 @@ class CodexAppServerConnection {
     this.closed = true;
     this.pending.clear();
     this.child.kill();
+  }
+
+  getRuntimePid() {
+    return this.child.pid ?? null;
   }
 
   private consumeStdout(chunk: string) {
@@ -885,6 +890,7 @@ export async function streamChat(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
   onDiagnostic?: (update: SessionAgentTurnDiagnosticUpdate) => void,
+  onRuntimeUpdate?: (update: AgentRuntimeUpdate) => void,
 ) {
   const emitDiagnostic = (update: SessionAgentTurnDiagnosticUpdate) => {
     onDiagnostic?.(update);
@@ -917,6 +923,9 @@ export async function streamChat(
     model: input.model,
     reasoningEffort: input.reasoningEffort,
     extraEnv: input.extraEnv,
+  });
+  onRuntimeUpdate?.({
+    runtimePid: connection.getRuntimePid(),
   });
   const turnDone = createDeferred<void>();
   const rawToolCalls = new Map<string, { source: ToolTraceSource; tool: string }>();

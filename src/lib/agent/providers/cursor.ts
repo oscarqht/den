@@ -20,5 +20,6 @@ export const cursorAdapter: AgentAdapter = {
   ensureInstalled: (onEvent) => ensureAcpInstalled('cursor', onEvent),
   startLogin: () => startAcpLogin('cursor'),
   readThreadHistory: (input) => readAcpThreadHistory('cursor', input),
-  streamChat: (input, onEvent, signal, onDiagnostic) => streamAcpChat('cursor', input, onEvent, signal, onDiagnostic),
+  streamChat: (input, onEvent, signal, onDiagnostic, onRuntimeUpdate) =>
+    streamAcpChat('cursor', input, onEvent, signal, onDiagnostic, onRuntimeUpdate),
 };

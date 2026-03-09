@@ -9,6 +9,12 @@ import {
   markSessionInitialized,
 } from '@/app/actions/session';
 import { getAgentAdapter } from '@/lib/agent/providers';
+import { readCommandOutput } from '@/lib/agent/common';
+import {
+  collectDescendantProcesses,
+  parsePsProcessTable,
+  type RuntimeProcessEntry,
+} from '@/lib/agent/process-tree';
 import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import {
   listSessionHistory,
@@ -41,6 +47,7 @@ type ActiveRun = {
   abortController: AbortController;
   promise: Promise<void>;
   diagnostics: SessionAgentTurnDiagnostics;
+  runtimePid: number | null;
 };
 
 type ManagerState = {
@@ -54,6 +61,13 @@ type StartTurnInput = {
   displayMessage?: string | null;
   attachmentPaths?: string[];
   markInitialized?: boolean;
+};
+
+export type SessionAgentRuntimeSubprocess = {
+  pid: number;
+  ppid: number;
+  state: string;
+  command: string;
 };
 
 declare global {
@@ -121,6 +135,101 @@ function createTurnDiagnostics(provider: AgentProvider, queuedAt: string): Sessi
     timeToTurnStartMs: null,
     currentStepKey: null,
     steps: [],
+  };
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === 'ESRCH'
+    ) {
+      return false;
+    }
+    return true;
+  }
+}
+
+async function waitForProcessExit(pid: number, timeoutMs = 1200): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessAlive(pid)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !isProcessAlive(pid);
+}
+
+async function terminateProcessGracefully(pid: number): Promise<boolean> {
+  if (!isProcessAlive(pid)) {
+    return true;
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      process.kill(pid);
+      return await waitForProcessExit(pid, 2000);
+    }
+
+    process.kill(pid, 'SIGTERM');
+  } catch (error) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === 'ESRCH'
+    ) {
+      return true;
+    }
+    throw error;
+  }
+
+  if (await waitForProcessExit(pid, 2000)) {
+    return true;
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === 'ESRCH'
+    ) {
+      return true;
+    }
+    throw error;
+  }
+
+  return await waitForProcessExit(pid, 1000);
+}
+
+async function readRuntimeProcessTable(): Promise<RuntimeProcessEntry[]> {
+  if (process.platform === 'win32') {
+    return [];
+  }
+
+  const result = await readCommandOutput('ps', ['-axo', 'pid=,ppid=,state=,command=']);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || 'Failed to read runtime process table.');
+  }
+
+  return parsePsProcessTable(result.stdout);
+}
+
+function toRuntimeSubprocess(entry: RuntimeProcessEntry): SessionAgentRuntimeSubprocess {
+  return {
+    pid: entry.pid,
+    ppid: entry.ppid,
+    state: entry.state,
+    command: entry.command,
   };
 }
 
@@ -632,6 +741,97 @@ export function isSessionTurnRunning(sessionId: string) {
   return getManagerState().runs.has(sessionId);
 }
 
+export async function listSessionTurnSubprocesses(sessionId: string): Promise<{
+  success: boolean;
+  runtimePid?: number | null;
+  subprocesses?: SessionAgentRuntimeSubprocess[];
+  error?: string;
+}> {
+  const normalizedSessionId = normalizeText(sessionId);
+  if (!normalizedSessionId) {
+    return { success: false, error: 'sessionId is required.' };
+  }
+
+  const activeRun = getManagerState().runs.get(normalizedSessionId);
+  if (!activeRun || !activeRun.runtimePid) {
+    return {
+      success: true,
+      runtimePid: activeRun?.runtimePid ?? null,
+      subprocesses: [],
+    };
+  }
+
+  try {
+    const processTable = await readRuntimeProcessTable();
+    const descendants = collectDescendantProcesses(processTable, activeRun.runtimePid)
+      .map(toRuntimeSubprocess);
+
+    return {
+      success: true,
+      runtimePid: activeRun.runtimePid,
+      subprocesses: descendants,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to list runtime subprocesses.',
+    };
+  }
+}
+
+export async function terminateSessionTurnSubprocess(
+  sessionId: string,
+  pid: number,
+): Promise<{
+  success: boolean;
+  terminated?: boolean;
+  error?: string;
+}> {
+  const normalizedSessionId = normalizeText(sessionId);
+  if (!normalizedSessionId) {
+    return { success: false, error: 'sessionId is required.' };
+  }
+
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return { success: false, error: 'pid must be a positive integer.' };
+  }
+
+  const activeRun = getManagerState().runs.get(normalizedSessionId);
+  if (!activeRun || !activeRun.runtimePid) {
+    return { success: false, error: 'No active runtime process is available for this session.' };
+  }
+
+  try {
+    const processTable = await readRuntimeProcessTable();
+    const descendants = collectDescendantProcesses(processTable, activeRun.runtimePid);
+    const allowedPids = new Set(descendants.map((entry) => entry.pid));
+    if (!allowedPids.has(pid)) {
+      return {
+        success: false,
+        error: 'Refusing to terminate a process outside this active agent runtime.',
+      };
+    }
+
+    const terminated = await terminateProcessGracefully(pid);
+    if (!terminated) {
+      return {
+        success: false,
+        error: `Failed to terminate subprocess ${pid}.`,
+      };
+    }
+
+    return {
+      success: true,
+      terminated: true,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to terminate runtime subprocess.',
+    };
+  }
+}
+
 export async function startSessionTurn(input: StartTurnInput): Promise<{
   success: boolean;
   runtime?: SessionAgentRuntimeState | null;
@@ -693,6 +893,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
     abortController,
     promise: Promise.resolve(),
     diagnostics,
+    runtimePid: null,
   };
   state.runs.set(sessionId, activeRun);
   const promise = (async () => {
@@ -732,6 +933,12 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
       }, abortController.signal, (update) => {
         applyRunDiagnosticUpdate(sessionId, update);
         void publishDiagnosticEvent(sessionId, update);
+      }, (runtimeUpdate) => {
+        const runtimePid = runtimeUpdate.runtimePid;
+        if (!Number.isInteger(runtimePid) || runtimePid <= 0) {
+          return;
+        }
+        activeRun.runtimePid = runtimePid;
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Agent turn failed.';

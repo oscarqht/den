@@ -44,6 +44,18 @@ type AgentSocketPayload = {
   timestamp: string;
 };
 
+type RuntimeSubprocess = {
+  pid: number;
+  ppid: number;
+  state: string;
+  command: string;
+};
+
+type RuntimeSubprocessResponse = {
+  runtimePid: number | null;
+  subprocesses: RuntimeSubprocess[];
+};
+
 export type AgentSessionPaneHandle = {
   focusComposer: () => void;
   insertText: (text: string) => boolean;
@@ -89,6 +101,7 @@ const HISTORY_ITEM_GAP_PX = 12;
 const HISTORY_ITEM_OVERSCAN_PX = 600;
 const COMPOSER_MAX_HEIGHT = 112;
 const STREAMING_HISTORY_TAIL_COUNT = 4;
+const SUBPROCESS_POLL_INTERVAL_MS = 2000;
 
 const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -572,6 +585,11 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [isPastingAttachments, setIsPastingAttachments] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [runtimePid, setRuntimePid] = useState<number | null>(null);
+  const [subprocesses, setSubprocesses] = useState<RuntimeSubprocess[]>([]);
+  const [subprocessesLoading, setSubprocessesLoading] = useState(false);
+  const [subprocessesError, setSubprocessesError] = useState<string | null>(null);
+  const [terminatingPid, setTerminatingPid] = useState<number | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
   const [steerTargetId, setSteerTargetId] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -618,6 +636,47 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     }, delay);
   }, [sessionId]);
 
+  const loadRuntimeSubprocesses = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setSubprocessesLoading(true);
+    }
+
+    try {
+      const response = await fetch(`/api/agent/subprocesses?sessionId=${encodeURIComponent(sessionId)}`, {
+        cache: 'no-store',
+      });
+      const payload = await response.json().catch(() => null) as RuntimeSubprocessResponse | { error?: string } | null;
+      if (
+        !response.ok
+        || !payload
+        || !('subprocesses' in payload)
+        || !Array.isArray(payload.subprocesses)
+      ) {
+        throw new Error(
+          payload && 'error' in payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to load runtime subprocesses.',
+        );
+      }
+
+      setRuntimePid(typeof payload.runtimePid === 'number' ? payload.runtimePid : null);
+      setSubprocesses(payload.subprocesses);
+      setSubprocessesError(null);
+    } catch (subprocessError) {
+      setSubprocesses([]);
+      setRuntimePid(null);
+      setSubprocessesError(
+        subprocessError instanceof Error
+          ? subprocessError.message
+          : 'Failed to load runtime subprocesses.',
+      );
+    } finally {
+      if (!options?.silent) {
+        setSubprocessesLoading(false);
+      }
+    }
+  }, [sessionId]);
+
   const loadSnapshot = useCallback(async () => {
     setLoading(true);
     try {
@@ -644,6 +703,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
+
+  useEffect(() => {
+    void loadRuntimeSubprocesses();
+  }, [loadRuntimeSubprocesses]);
 
   useEffect(() => {
     const nextSelection = pendingSelectionRef.current;
@@ -780,6 +843,28 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
   const activeRunState = runtime?.runState ?? 'idle';
   const isTurnActive = activeRunState === 'queued' || activeRunState === 'running';
+  useEffect(() => {
+    if (!isTurnActive) {
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      if (cancelled) return;
+      await loadRuntimeSubprocesses({ silent: true });
+    };
+
+    void refresh();
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, SUBPROCESS_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isTurnActive, loadRuntimeSubprocesses]);
+
   const canSend = !loading && !isSending && (composerValue.trim().length > 0 || pendingAttachmentPaths.length > 0);
   const liveHistoryTailCount = useMemo(
     () => Math.min(history.length, isTurnActive ? STREAMING_HISTORY_TAIL_COUNT : Math.min(2, history.length)),
@@ -1075,6 +1160,40 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     }
   }, [isCancelling, isTurnActive, onFeedback, runtime, scheduleRefresh, sessionId]);
 
+  const handleTerminateSubprocess = useCallback(async (pid: number) => {
+    if (!Number.isInteger(pid) || pid <= 0 || terminatingPid !== null) return;
+
+    setTerminatingPid(pid);
+    setSubprocessesError(null);
+    try {
+      const response = await fetch('/api/agent/subprocesses/terminate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId,
+          pid,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to terminate subprocess ${pid}.`);
+      }
+
+      onFeedback?.(`Terminated subprocess ${pid}`);
+      await loadRuntimeSubprocesses({ silent: true });
+    } catch (terminateError) {
+      const messageText = terminateError instanceof Error
+        ? terminateError.message
+        : `Failed to terminate subprocess ${pid}.`;
+      setSubprocessesError(messageText);
+      onFeedback?.(messageText);
+    } finally {
+      setTerminatingPid(null);
+    }
+  }, [loadRuntimeSubprocesses, onFeedback, sessionId, terminatingPid]);
+
   const dispatchQueuedMessage = useCallback(async (targetId?: string | null) => {
     if (isSending) return false;
 
@@ -1273,6 +1392,67 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                     </div>
                   </div>
                 ) : null}
+              </div>
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/80">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Runtime Subprocesses
+                  </div>
+                  <div className="inline-flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    {runtimePid ? <span className="font-mono">runtime pid {runtimePid}</span> : <span>runtime pid n/a</span>}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs h-6 min-h-6 border border-slate-200 bg-white px-2 text-slate-700 hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                      onClick={() => void loadRuntimeSubprocesses()}
+                      disabled={subprocessesLoading}
+                    >
+                      {subprocessesLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                {subprocessesError ? (
+                  <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+                    {subprocessesError}
+                  </div>
+                ) : null}
+                {subprocesses.length === 0 ? (
+                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No active subprocesses detected.
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {subprocesses.map((entry) => {
+                      const isTerminating = terminatingPid === entry.pid;
+                      return (
+                        <div
+                          key={entry.pid}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs dark:border-[#30363d] dark:bg-[#161b22]"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                              <span className="font-mono">pid {entry.pid}</span>
+                              <span className="text-slate-400 dark:text-slate-500">ppid {entry.ppid}</span>
+                              <span className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] uppercase dark:border-slate-700">{entry.state || 'n/a'}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs h-6 min-h-6 border border-red-200 bg-white px-2 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/30 dark:bg-[#0d1117] dark:text-red-200 dark:hover:bg-red-500/10"
+                              onClick={() => void handleTerminateSubprocess(entry.pid)}
+                              disabled={isTerminating || terminatingPid !== null}
+                            >
+                              {isTerminating ? <span className="loading loading-spinner loading-xs"></span> : null}
+                              Terminate
+                            </button>
+                          </div>
+                          <div className="mt-1 break-all font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                            {entry.command || 'n/a'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               {runtime?.lastError ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">

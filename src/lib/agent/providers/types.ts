@@ -14,6 +14,10 @@ export type InstallLogEvent = {
   text: string;
 };
 
+export type AgentRuntimeUpdate = {
+  runtimePid: number | null;
+};
+
 export type AgentAdapter = {
   provider: AgentProvider;
   metadata: ProviderCatalogEntry;
@@ -31,5 +35,6 @@ export type AgentAdapter = {
     onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal,
     onDiagnostic?: (update: SessionAgentTurnDiagnosticUpdate) => void,
+    onRuntimeUpdate?: (update: AgentRuntimeUpdate) => void,
   ): Promise<void>;
 };

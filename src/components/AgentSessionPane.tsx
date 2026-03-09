@@ -1291,6 +1291,31 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               setCursorPosition(event.currentTarget.selectionStart);
             }}
             onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                if (showSuggestions && suggestionList.length > 0) {
+                  if (event.shiftKey) {
+                    event.preventDefault();
+                    setShowSuggestions(false);
+                    const textarea = event.currentTarget;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const val = composerValue;
+                    const newVal = val.slice(0, start) + '\n' + val.slice(end);
+                    void handleComposerChange(newVal, start + 1);
+                    return;
+                  }
+                  event.preventDefault();
+                  handleSelectSuggestion(suggestionList[selectedSuggestionIndex]);
+                  return;
+                }
+                if (!event.shiftKey) {
+                  event.preventDefault();
+                  void handleSubmit();
+                  return;
+                }
+                return;
+              }
+
               if (showSuggestions && suggestionList.length > 0) {
                 if (event.key === 'ArrowUp') {
                   event.preventDefault();
@@ -1306,7 +1331,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                   ));
                   return;
                 }
-                if (event.key === 'Enter' || event.key === 'Tab') {
+                if (event.key === 'Tab') {
                   event.preventDefault();
                   handleSelectSuggestion(suggestionList[selectedSuggestionIndex]);
                   return;
@@ -1316,11 +1341,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                   setShowSuggestions(false);
                   return;
                 }
-              }
-
-              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                event.preventDefault();
-                void handleSubmit();
               }
             }}
           />
@@ -1353,7 +1373,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                   Turn in progress
                 </span>
               ) : (
-                <span>Press Ctrl+Enter to send</span>
+                <span>Press Enter to send, Shift+Enter for new line</span>
               )}
             </div>
             <button

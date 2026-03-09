@@ -1097,10 +1097,29 @@ export default function GitRepoSelector({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Cmd+Enter to submit
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleStartSession();
+    if (e.key === 'Enter') {
+      if (showSuggestions && suggestionList.length > 0) {
+        if (e.shiftKey) {
+          e.preventDefault();
+          setShowSuggestions(false);
+          const textarea = e.currentTarget;
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          const val = initialMessage;
+          const newVal = val.slice(0, start) + '\n' + val.slice(end);
+          setInitialMessage(newVal);
+          setCursorPosition(start + 1);
+          return;
+        }
+        e.preventDefault();
+        handleSelectSuggestion(suggestionList[selectedIndex]);
+        return;
+      }
+      if (!e.shiftKey) {
+        e.preventDefault();
+        handleStartSession();
+        return;
+      }
       return;
     }
 
@@ -1111,7 +1130,7 @@ export default function GitRepoSelector({
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => (prev < suggestionList.length - 1 ? prev + 1 : 0)); // Wrap around
-      } else if (e.key === 'Enter' || e.key === 'Tab') {
+      } else if (e.key === 'Tab') {
         e.preventDefault();
         handleSelectSuggestion(suggestionList[selectedIndex]);
       } else if (e.key === 'Escape') {
@@ -2876,7 +2895,7 @@ export default function GitRepoSelector({
 
                 <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5 dark:border-slate-700/70">
                   <span className="mr-auto hidden text-xs text-slate-400 dark:text-slate-500 sm:block">
-                    Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Ctrl + Enter</kbd> to submit
+                    Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Enter</kbd> to submit, <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Shift+Enter</kbd> for new line
                   </span>
                   <button
                     type="button"

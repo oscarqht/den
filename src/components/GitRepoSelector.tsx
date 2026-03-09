@@ -2641,7 +2641,7 @@ export default function GitRepoSelector({
                   {existingSessions.map((session) => (
                     <div
                       key={session.sessionName}
-                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
+                      className="group relative flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
                     >
                       <div
                         className={`h-2 w-2 flex-shrink-0 rounded-full ${deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'
@@ -2657,7 +2657,7 @@ export default function GitRepoSelector({
                           {session.runState ? ` • ${session.runState}` : ''}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                      <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                         <button
                           type="button"
                           className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
@@ -2703,7 +2703,7 @@ export default function GitRepoSelector({
                   {existingDrafts.map((draft) => (
                     <div
                       key={draft.id}
-                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
+                      className="group relative flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
                     >
                       <div
                         className={`h-2 w-2 flex-shrink-0 rounded-full bg-blue-500`}
@@ -2718,7 +2718,7 @@ export default function GitRepoSelector({
                           {draft.reasoningEffort ? ` • ${draft.reasoningEffort}` : ''}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                      <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                         <button
                           type="button"
                           className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"

@@ -12,9 +12,10 @@ function normalizeProvider(value: string | null): AgentProvider {
 
 export async function GET(request: NextRequest) {
   const provider = normalizeProvider(request.nextUrl.searchParams.get('provider'));
+  const includeUsage = request.nextUrl.searchParams.get('includeUsage') === '1';
 
   try {
-    const status = await getAgentAdapter(provider).getStatus();
+    const status = await getAgentAdapter(provider).getStatus({ includeUsage });
     return NextResponse.json({
       providers: listAgentProviders(),
       defaultProvider: getDefaultAgentProvider(),

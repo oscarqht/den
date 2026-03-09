@@ -14,10 +14,14 @@ export type InstallLogEvent = {
   text: string;
 };
 
+type GetStatusInput = {
+  includeUsage?: boolean;
+};
+
 export type AgentAdapter = {
   provider: AgentProvider;
   metadata: ProviderCatalogEntry;
-  getStatus(): Promise<AppStatus>;
+  getStatus(input?: GetStatusInput): Promise<AppStatus>;
   ensureInstalled(onEvent: (event: InstallLogEvent) => void): Promise<AppStatus>;
   startLogin(): Promise<LoginStartResponse>;
   readThreadHistory(input: {

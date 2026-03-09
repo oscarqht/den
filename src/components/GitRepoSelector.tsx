@@ -2275,6 +2275,7 @@ export default function GitRepoSelector({
           discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
           onHomeSearchQueryChange={setHomeSearchQuery}
           onOpenCredentials={() => router.push('/credentials')}
+          onOpenAgentUsage={() => router.push('/agent-usage')}
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}

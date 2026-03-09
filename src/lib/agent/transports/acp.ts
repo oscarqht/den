@@ -25,6 +25,7 @@ import {
 
 import type {
   AgentAccount,
+  AgentUsageSnapshot,
   AppStatus,
   ChatInput,
   ChatStreamEvent,
@@ -479,6 +480,19 @@ function parseCursorModelCatalog(stdout: string): ModelCatalog {
   return {
     models: dedupeModels(models),
     defaultModel: currentModel || defaultModel || models[0]?.id || null,
+  };
+}
+
+function usageUnavailableSnapshot(provider: AcpProviderId): AgentUsageSnapshot {
+  return {
+    available: false,
+    source: "cli",
+    checkedAt: new Date().toISOString(),
+    summary:
+      provider === "cursor"
+        ? "Cursor Agent CLI does not expose quota details via CLI."
+        : "Gemini CLI does not expose quota details via CLI.",
+    metrics: [],
   };
 }
 
@@ -1402,7 +1416,11 @@ async function startCommandLogin(config: AcpProviderConfig) {
   return await response;
 }
 
-export async function getAcpAppStatus(provider: AcpProviderId): Promise<AppStatus> {
+export async function getAcpAppStatus(
+  provider: AcpProviderId,
+  input: { includeUsage?: boolean } = {},
+): Promise<AppStatus> {
+  const includeUsage = input.includeUsage === true;
   const config = providerConfigs[provider];
   const versionInfo = await getVersionInfo(config);
   const modelCatalog = await getModelCatalog(config, versionInfo);
@@ -1417,6 +1435,7 @@ export async function getAcpAppStatus(provider: AcpProviderId): Promise<AppStatu
       installCommand: config.install.display,
       models: modelCatalog.models,
       defaultModel: modelCatalog.defaultModel,
+      usage: null,
     };
   }
 
@@ -1436,6 +1455,7 @@ export async function getAcpAppStatus(provider: AcpProviderId): Promise<AppStatu
     installCommand: config.install.display,
     models: modelCatalog.models,
     defaultModel: modelCatalog.defaultModel,
+    usage: includeUsage && loginProbe.loggedIn ? usageUnavailableSnapshot(provider) : null,
   };
 }
 

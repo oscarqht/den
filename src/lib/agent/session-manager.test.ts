@@ -24,6 +24,7 @@ function createStatus(overrides: Partial<AppStatus> = {}): AppStatus {
     installCommand: 'codex install',
     models: [],
     defaultModel: null,
+    usage: null,
     ...overrides,
   };
 }

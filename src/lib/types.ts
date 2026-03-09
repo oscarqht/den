@@ -147,6 +147,26 @@ export type CodexAccount = {
   planType?: string | null;
 };
 
+export type AgentUsageMetric = {
+  id: string;
+  label: string;
+  used: number | null;
+  remaining: number | null;
+  limit: number | null;
+  unit: string | null;
+  window: string | null;
+  resetAt: string | null;
+  note: string | null;
+};
+
+export type AgentUsageSnapshot = {
+  available: boolean;
+  source: 'cli' | 'app-server' | 'none';
+  checkedAt: string;
+  summary: string | null;
+  metrics: AgentUsageMetric[];
+};
+
 export type ToolTraceSource =
   | 'mcp'
   | 'function'
@@ -171,6 +191,7 @@ export type AppStatus = {
   installCommand: string;
   models: ModelOption[];
   defaultModel: string | null;
+  usage: AgentUsageSnapshot | null;
 };
 
 export type HistoryEntry =

@@ -1,4 +1,4 @@
-import { KeyRound, LogOut, Plus, Search } from 'lucide-react';
+import { Activity, KeyRound, LogOut, Plus, Search } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
 import { HomeRepoCard } from './HomeRepoCard';
@@ -23,6 +23,7 @@ export type HomeDashboardProps = {
   getProjectDisplayName: (project: string) => string;
   onHomeSearchQueryChange: (value: string) => void;
   onOpenCredentials: () => void;
+  onOpenAgentUsage: () => void;
   onCycleThemeMode: () => void;
   onSelectProject: (project: string) => void | Promise<boolean>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
@@ -54,6 +55,7 @@ export function HomeDashboard({
   getProjectDisplayName,
   onHomeSearchQueryChange,
   onOpenCredentials,
+  onOpenAgentUsage,
   onCycleThemeMode,
   onSelectProject,
   onOpenGitWorkspace,
@@ -95,6 +97,14 @@ export function HomeDashboard({
           >
             <KeyRound className="h-4 w-4" />
             Credentials
+          </button>
+          <button
+            className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            onClick={onOpenAgentUsage}
+            title="View agent usage and quota"
+          >
+            <Activity className="h-4 w-4" />
+            Agent Usage
           </button>
           {showLogout && (
             logoutEnabled ? (

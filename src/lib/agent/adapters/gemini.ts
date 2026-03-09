@@ -16,7 +16,7 @@ export const geminiAdapter: AgentAdapter = {
     description: "Google's coding agent runtime over ACP.",
     available: true,
   },
-  getStatus: async () => await getAcpAppStatus("gemini"),
+  getStatus: async (input) => await getAcpAppStatus("gemini", input),
   ensureInstalled: async (onEvent) => await ensureAcpInstalled("gemini", onEvent),
   startLogin: async () => await startAcpLogin("gemini"),
   readThreadHistory: async (input) => await readAcpThreadHistory("gemini", input),

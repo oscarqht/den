@@ -1,5 +1,7 @@
 export type {
   AgentProvider,
+  AgentUsageMetric,
+  AgentUsageSnapshot,
   AppStatus,
   ChatStreamEvent,
   CodexAccount as AgentAccount,

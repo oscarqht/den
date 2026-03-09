@@ -6,6 +6,8 @@ import { readFile } from "node:fs/promises";
 import type {
   AgentAccount,
   AgentReasoningEffort,
+  AgentUsageMetric,
+  AgentUsageSnapshot,
   AppStatus,
   ChatStreamEvent,
   FileChange,
@@ -258,6 +260,104 @@ function parseJsonRecord(value: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringField(source: Record<string, unknown> | null, keys: string[]) {
+  if (!source) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function readNumberField(source: Record<string, unknown> | null, keys: string[]) {
+  if (!source) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number.parseFloat(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function readBooleanField(source: Record<string, unknown> | null, keys: string[]) {
+  if (!source) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readWindowMetric(input: {
+  id: string;
+  label: string;
+  source: Record<string, unknown> | null;
+  unit: string;
+}): AgentUsageMetric | null {
+  const used = readNumberField(input.source, ["used", "usedCount", "countUsed", "requestsUsed"]);
+  const remaining = readNumberField(input.source, [
+    "remaining",
+    "remainingCount",
+    "remainingRequests",
+  ]);
+  const limit = readNumberField(input.source, ["limit", "max", "requestLimit"]);
+  const windowSeconds = readNumberField(input.source, [
+    "windowSeconds",
+    "windowSec",
+    "window_secs",
+  ]);
+  const resetAt = readStringField(input.source, ["resetsAt", "resetAt", "reset_at"]);
+
+  if (
+    used === null
+    && remaining === null
+    && limit === null
+    && windowSeconds === null
+    && resetAt === null
+  ) {
+    return null;
+  }
+
+  return {
+    id: input.id,
+    label: input.label,
+    used,
+    remaining,
+    limit,
+    unit: input.unit,
+    window: windowSeconds !== null ? `${windowSeconds}s` : null,
+    resetAt,
+    note: null,
+  };
 }
 
 function parseExecCommandSeed(value: string, workspacePath: string) {
@@ -599,6 +699,88 @@ async function readAccount() {
   });
 }
 
+async function readRateLimitUsage() {
+  return await withConnection(process.cwd(), async (connection) => {
+    return (await connection.request("account/rateLimits/read", {})) as {
+      rateLimits?: unknown;
+      rateLimitsByLimitId?: unknown;
+    };
+  });
+}
+
+function normalizeRateLimitUsage(
+  payload: { rateLimits?: unknown; rateLimitsByLimitId?: unknown },
+): AgentUsageSnapshot {
+  const fallbackLimits = isRecord(payload.rateLimits) ? payload.rateLimits : null;
+  const byLimitId = isRecord(payload.rateLimitsByLimitId) ? payload.rateLimitsByLimitId : null;
+  const records = byLimitId
+    ? Object.entries(byLimitId).flatMap(([id, value]) => (isRecord(value) ? [[id, value] as const] : []))
+    : [];
+  const active =
+    records[0]
+    || (fallbackLimits ? ([readStringField(fallbackLimits, ["limitId"]) || "codex", fallbackLimits] as const) : null);
+
+  if (!active) {
+    return {
+      available: false,
+      source: "app-server",
+      checkedAt: new Date().toISOString(),
+      summary: "Usage details are unavailable for this account.",
+      metrics: [],
+    };
+  }
+
+  const [limitId, limitRecord] = active;
+  const limitLabel = readStringField(limitRecord, ["limitName"]) || "Rate limit";
+  const planType = readStringField(limitRecord, ["planType"]);
+
+  const metrics: AgentUsageMetric[] = [];
+  const primaryMetric = readWindowMetric({
+    id: `${limitId}:primary`,
+    label: `${limitLabel} (primary)`,
+    source: isRecord(limitRecord.primary) ? limitRecord.primary : null,
+    unit: "requests",
+  });
+  if (primaryMetric) {
+    metrics.push(primaryMetric);
+  }
+
+  const secondaryMetric = readWindowMetric({
+    id: `${limitId}:secondary`,
+    label: `${limitLabel} (secondary)`,
+    source: isRecord(limitRecord.secondary) ? limitRecord.secondary : null,
+    unit: "requests",
+  });
+  if (secondaryMetric) {
+    metrics.push(secondaryMetric);
+  }
+
+  const credits = isRecord(limitRecord.credits) ? limitRecord.credits : null;
+  if (credits && readBooleanField(credits, ["hasCredits"])) {
+    const unlimited = readBooleanField(credits, ["unlimited"]);
+    const balance = readNumberField(credits, ["balance", "remaining", "credits"]);
+    metrics.push({
+      id: `${limitId}:credits`,
+      label: "Credits",
+      used: null,
+      remaining: balance,
+      limit: null,
+      unit: "credits",
+      window: null,
+      resetAt: null,
+      note: unlimited ? "Unlimited" : null,
+    });
+  }
+
+  return {
+    available: metrics.length > 0,
+    source: "app-server",
+    checkedAt: new Date().toISOString(),
+    summary: planType ? `Plan: ${planType}` : null,
+    metrics,
+  };
+}
+
 export async function isCodexInstalled() {
   const env = defaultSpawnEnv();
   try {
@@ -616,7 +798,8 @@ export async function isCodexInstalled() {
   }
 }
 
-export async function getAppStatus(): Promise<AppStatus> {
+export async function getAppStatus(input: { includeUsage?: boolean } = {}): Promise<AppStatus> {
+  const includeUsage = input.includeUsage === true;
   const installCommand = getInstallCommandString();
   const installProbe = await isCodexInstalled();
   const configuredModel = await readCodexConfiguredModel();
@@ -633,11 +816,27 @@ export async function getAppStatus(): Promise<AppStatus> {
       installCommand,
       models,
       defaultModel,
+      usage: null,
     };
   }
 
   try {
     const account = await readAccount();
+    let usage: AgentUsageSnapshot | null = null;
+    if (includeUsage && account) {
+      try {
+        usage = normalizeRateLimitUsage(await readRateLimitUsage());
+      } catch {
+        usage = {
+          available: false,
+          source: "app-server",
+          checkedAt: new Date().toISOString(),
+          summary: "Failed to load usage data.",
+          metrics: [],
+        };
+      }
+    }
+
     return {
       provider: "codex",
       installed: true,
@@ -647,6 +846,7 @@ export async function getAppStatus(): Promise<AppStatus> {
       installCommand,
       models,
       defaultModel,
+      usage,
     };
   } catch {
     const loginStatus = await readCommandOutput("codex", ["login", "status"], defaultSpawnEnv());
@@ -659,6 +859,7 @@ export async function getAppStatus(): Promise<AppStatus> {
       installCommand,
       models,
       defaultModel,
+      usage: null,
     };
   }
 }

@@ -16,7 +16,7 @@ export const cursorAdapter: AgentAdapter = {
     description: "Cursor's coding agent runtime over ACP.",
     available: true,
   },
-  getStatus: async () => await getAcpAppStatus("cursor"),
+  getStatus: async (input) => await getAcpAppStatus("cursor", input),
   ensureInstalled: async (onEvent) => await ensureAcpInstalled("cursor", onEvent),
   startLogin: async () => await startAcpLogin("cursor"),
   readThreadHistory: async (input) => await readAcpThreadHistory("cursor", input),

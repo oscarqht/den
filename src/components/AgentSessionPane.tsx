@@ -52,6 +52,11 @@ type AgentSessionPaneProps = {
   onFeedback?: (message: string) => void;
 };
 
+type PendingMessage = {
+  id: string;
+  text: string;
+};
+
 type VirtualHistoryMetrics = {
   end: number;
   size: number;
@@ -60,6 +65,7 @@ type VirtualHistoryMetrics = {
 
 const HISTORY_ITEM_GAP_PX = 12;
 const HISTORY_ITEM_OVERSCAN_PX = 600;
+const COMPOSER_MAX_HEIGHT = 112;
 
 const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -265,7 +271,7 @@ function renderCollapsibleHistoryItem({
         <span className={labelClassName}>{label}</span>
         {title ? <span className={titleClassName}>{title}</span> : null}
       </summary>
-      <div className="mt-3 space-y-3">
+      <div className="mt-2 space-y-2.5">
         {children}
       </div>
       {timestamp ? <div className={timestampClassName}>{timestamp}</div> : null}
@@ -280,15 +286,15 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
     case 'user':
       return (
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-3 text-sm text-white shadow-sm">
+          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-100 px-4 py-3 text-sm text-blue-950 shadow-sm dark:bg-blue-500/15 dark:text-blue-50">
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
-            {timestamp ? <div className="mt-2 text-[10px] text-blue-100/80">{timestamp}</div> : null}
+            {timestamp ? <div className="mt-2 text-[10px] text-blue-700/80 dark:text-blue-100/70">{timestamp}</div> : null}
           </div>
         </div>
       );
     case 'assistant':
       return (
-        <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100">
+        <div className="px-1 py-1 text-sm text-slate-800 dark:text-slate-100">
           {item.phase ? (
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {item.phase}
@@ -302,12 +308,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
       return renderCollapsibleHistoryItem({
         label: 'Reasoning',
         title: plainTextPreview(item.summary) || plainTextPreview(item.text) || undefined,
-        className: 'rounded-2xl border border-violet-200 bg-violet-50/60 px-4 py-3 text-sm text-violet-950 shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100',
+        className: 'rounded-xl border border-violet-200/80 bg-violet-50/45 px-3 py-2 text-sm text-violet-950 dark:border-violet-500/25 dark:bg-violet-500/8 dark:text-violet-100',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
-        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-200',
-        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-violet-700/75 dark:text-violet-200/75',
+        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-200',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-violet-700/75 dark:text-violet-200/75',
         timestamp,
-        timestampClassName: 'mt-3 text-[10px] text-violet-700/70 dark:text-violet-200/70',
+        timestampClassName: 'mt-2 text-[10px] text-violet-700/65 dark:text-violet-200/65',
         children: (
           <>
             {trimEmpty(item.summary) ? (
@@ -335,12 +341,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
       return renderCollapsibleHistoryItem({
         label: 'Command',
         title: firstLinePreview(item.command) || undefined,
-        className: 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]',
+        className: 'rounded-xl border border-slate-200/80 bg-slate-50/65 px-3 py-2 text-sm dark:border-[#30363d] dark:bg-[#0d1117]/75',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
-        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300',
-        titleClassName: 'min-w-0 truncate whitespace-nowrap font-mono text-xs font-normal text-slate-500 dark:text-slate-400',
+        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap font-mono text-[11px] font-normal text-slate-500 dark:text-slate-400',
         timestamp,
-        timestampClassName: 'mt-3 text-[10px] text-slate-400 dark:text-slate-500',
+        timestampClassName: 'mt-2 text-[10px] text-slate-400 dark:text-slate-500',
         children: (
           <>
             <div className="flex flex-wrap items-center gap-2">
@@ -351,7 +357,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
                 <span className="text-[10px] text-slate-500 dark:text-slate-400">exit {item.exitCode}</span>
               ) : null}
             </div>
-            <div className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-[11px] text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+            <div className="rounded-md bg-slate-100 px-2.5 py-1.5 font-mono text-[11px] text-slate-800 dark:bg-slate-900 dark:text-slate-100">
               {item.command}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">cwd: {item.cwd || '.'}</div>
@@ -363,12 +369,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
       return renderCollapsibleHistoryItem({
         label: `Tool: ${item.tool}`,
         title: firstLinePreview(item.message) || firstLinePreview(item.input) || firstLinePreview(item.result) || undefined,
-        className: 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]',
+        className: 'rounded-xl border border-slate-200/80 bg-slate-50/65 px-3 py-2 text-sm dark:border-[#30363d] dark:bg-[#0d1117]/75',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
-        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300',
-        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-slate-500 dark:text-slate-400',
+        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-slate-500 dark:text-slate-400',
         timestamp,
-        timestampClassName: 'mt-3 text-[10px] text-slate-400 dark:text-slate-500',
+        timestampClassName: 'mt-2 text-[10px] text-slate-400 dark:text-slate-500',
         children: (
           <>
             <div className="flex flex-wrap items-center gap-2">
@@ -395,12 +401,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
             ? `${item.changes[0].path.trim()} +${item.changes.length - 1} more`
             : item.changes[0].path.trim())
           : (item.changes.length > 0 ? `${item.changes.length} files` : undefined),
-        className: 'rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100',
+        className: 'rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-500/8 dark:text-emerald-100',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
-        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200',
-        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-emerald-700/75 dark:text-emerald-200/75',
+        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-200',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-emerald-700/75 dark:text-emerald-200/75',
         timestamp,
-        timestampClassName: 'mt-3 text-[10px] text-emerald-700/70 dark:text-emerald-200/70',
+        timestampClassName: 'mt-2 text-[10px] text-emerald-700/65 dark:text-emerald-200/65',
         children: (
           <>
             <div className="flex flex-wrap items-center gap-2">
@@ -414,7 +420,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
             {item.changes.length > 0 ? (
               <div className="space-y-2">
                 {item.changes.map((change) => (
-                  <div key={`${item.id}-${change.path}`} className="rounded-lg border border-emerald-200/80 bg-white/80 px-3 py-2 text-[11px] dark:border-emerald-500/20 dark:bg-emerald-950/20">
+                  <div key={`${item.id}-${change.path}`} className="rounded-md border border-emerald-200/80 bg-white/80 px-2.5 py-2 text-[11px] dark:border-emerald-500/20 dark:bg-emerald-950/20">
                     <div className="font-mono">{change.path}</div>
                     <div className="mt-1 uppercase tracking-wide opacity-70">{change.kind}</div>
                     {codeBlock(change.diff)}
@@ -429,6 +435,13 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
     default:
       return null;
   }
+}
+
+function createPendingMessage(text: string): PendingMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text,
+  };
 }
 
 type VirtualHistoryRowProps = {
@@ -479,6 +492,8 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [isSending, setIsSending] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
+  const [steerTargetId, setSteerTargetId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<number | null>(null);
@@ -698,7 +713,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
   const activeRunState = runtime?.runState ?? 'idle';
   const isTurnActive = activeRunState === 'queued' || activeRunState === 'running';
-  const canSend = !loading && !isSending && !isTurnActive && composerValue.trim().length > 0;
+  const canSend = !loading && !isSending && composerValue.trim().length > 0;
   const historyMetrics = useMemo(() => {
     void historySizeVersion;
     const metrics: VirtualHistoryMetrics[] = [];
@@ -806,11 +821,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     return details;
   }, [runtime]);
 
-  const handleSubmit = useCallback(async () => {
-    const message = composerValue.trim();
-    if (!message || isTurnActive || isSending) return;
-
-    setIsSending(true);
+  const submitMessageToAgent = useCallback(async (message: string) => {
     setError(null);
     try {
       const response = await fetch('/api/agent/message', {
@@ -827,19 +838,36 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       if (!response.ok) {
         throw new Error(payload?.error || 'Failed to send message.');
       }
-
-      setComposerValue('');
-      onFeedback?.('Sent message to agent');
       shouldStickToBottomRef.current = true;
       scheduleRefresh(0);
+      return { success: true as const };
     } catch (submitError) {
       const messageText = submitError instanceof Error ? submitError.message : 'Failed to send message.';
       setError(messageText);
       onFeedback?.(messageText);
-    } finally {
-      setIsSending(false);
+      return { success: false as const, error: messageText };
     }
-  }, [composerValue, isSending, isTurnActive, onFeedback, scheduleRefresh, sessionId]);
+  }, [onFeedback, scheduleRefresh, sessionId]);
+
+  const handleSubmit = useCallback(async () => {
+    const message = composerValue.trim();
+    if (!message || isSending) return;
+
+    setComposerValue('');
+
+    if (isTurnActive) {
+      setPendingMessages((current) => [...current, createPendingMessage(message)]);
+      onFeedback?.('Queued message for the next turn');
+      return;
+    }
+
+    setIsSending(true);
+    const result = await submitMessageToAgent(message);
+    if (result.success) {
+      onFeedback?.('Sent message to agent');
+    }
+    setIsSending(false);
+  }, [composerValue, isSending, isTurnActive, onFeedback, submitMessageToAgent]);
 
   const handleCancel = useCallback(async () => {
     if (!runtime || !isTurnActive || isCancelling) return;
@@ -871,6 +899,67 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       setIsCancelling(false);
     }
   }, [isCancelling, isTurnActive, onFeedback, runtime, scheduleRefresh, sessionId]);
+
+  const dispatchQueuedMessage = useCallback(async (targetId?: string | null) => {
+    if (isSending) return false;
+
+    const queue = pendingMessages;
+    if (queue.length === 0) return false;
+
+    const nextIndex = targetId
+      ? queue.findIndex((item) => item.id === targetId)
+      : 0;
+    if (nextIndex < 0) return false;
+
+    const nextMessage = queue[nextIndex];
+    setIsSending(true);
+    setPendingMessages((current) => current.filter((item) => item.id !== nextMessage.id));
+    const result = await submitMessageToAgent(nextMessage.text);
+    setIsSending(false);
+
+    if (result.success) {
+      onFeedback?.(targetId ? 'Sent steer message to agent' : 'Sent queued message to agent');
+      return true;
+    }
+
+    setPendingMessages((current) => [nextMessage, ...current]);
+    return false;
+  }, [isSending, onFeedback, pendingMessages, submitMessageToAgent]);
+
+  const handleSteerMessage = useCallback(async (messageId: string) => {
+    if (isSending || isCancelling) return;
+
+    if (!isTurnActive) {
+      void dispatchQueuedMessage(messageId);
+      return;
+    }
+
+    setSteerTargetId(messageId);
+    onFeedback?.('Steering agent with queued message...');
+    await handleCancel();
+  }, [dispatchQueuedMessage, handleCancel, isCancelling, isSending, isTurnActive, onFeedback]);
+
+  useEffect(() => {
+    if (isTurnActive || isSending || pendingMessages.length === 0) return;
+
+    const nextTargetId = steerTargetId ?? pendingMessages[0]?.id ?? null;
+    if (!nextTargetId) return;
+
+    let cancelled = false;
+    void (async () => {
+      const dispatched = await dispatchQueuedMessage(nextTargetId);
+      if (!cancelled && steerTargetId === nextTargetId) {
+        setSteerTargetId(null);
+      }
+      if (!dispatched && !cancelled && steerTargetId === nextTargetId) {
+        setSteerTargetId(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatchQueuedMessage, isSending, isTurnActive, pendingMessages, steerTargetId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
@@ -961,11 +1050,42 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             <span className="whitespace-pre-wrap break-words">{error}</span>
           </div>
         ) : null}
+        {pendingMessages.length > 0 ? (
+          <div className="mb-3 space-y-2">
+            {pendingMessages.map((item, index) => {
+              const isSteerTarget = item.id === steerTargetId;
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700/80 dark:text-amber-200/80">
+                      {index === 0 ? 'Next in Queue' : `Queued ${index + 1}`}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words">{item.text}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-950/50"
+                    onClick={() => void handleSteerMessage(item.id)}
+                    disabled={isSending || isCancelling || isSteerTarget}
+                  >
+                    {isSteerTarget ? 'Steering' : 'Steer'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
           <textarea
             ref={textareaRef}
-            className="h-28 w-full resize-none border-none bg-transparent font-mono text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
-            placeholder="Send a follow-up task or ask the agent to continue..."
+            className="max-h-28 min-h-20 w-full resize-y border-none bg-transparent font-mono text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+            style={{ height: COMPOSER_MAX_HEIGHT / 1.4 }}
+            placeholder={isTurnActive
+              ? 'Queue a follow-up message, or add steering instructions...'
+              : 'Send a follow-up task or ask the agent to continue...'}
             value={composerValue}
             onChange={(event) => setComposerValue(event.target.value)}
             onKeyDown={(event) => {
@@ -993,7 +1113,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               disabled={!canSend}
             >
               {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Send
+              {isTurnActive ? 'Queue' : 'Send'}
             </button>
           </div>
         </div>

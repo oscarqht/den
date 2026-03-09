@@ -22,6 +22,7 @@ import { listCredentials } from '@/app/actions/credentials';
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
+import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
@@ -1039,7 +1040,7 @@ export default function GitRepoSelector({
   const [cursorPosition, setCursorPosition] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Cache filtered files
+  // Cache repo entries for @ mention suggestions.
   const [repoFilesCache, setRepoFilesCache] = useState<string[]>([]);
   const selectedAttachmentNames = useMemo(
     () => attachments.map((attachmentPath) => getBaseName(attachmentPath)),
@@ -1084,14 +1085,12 @@ export default function GitRepoSelector({
   }, [handleApplyPredefinedPrompt, predefinedPromptById]);
 
   const updateSuggestions = (query: string, files: string[], currentAttachments: string[], carriedAttachments: string[]) => {
-    const lowerQ = query.toLowerCase();
-
-    const attachmentNames = [...currentAttachments, ...carriedAttachments];
-    // prioritize attachments
-    const matchedAttachments = attachmentNames.filter(n => n.toLowerCase().includes(lowerQ));
-    const matchedFiles = files.filter(f => f.toLowerCase().includes(lowerQ)).slice(0, 20);
-
-    const newList = [...matchedAttachments, ...matchedFiles];
+    const newList = buildRepoMentionSuggestions({
+      query,
+      repoEntries: files,
+      currentAttachments,
+      carriedAttachments,
+    });
     setSuggestionList(newList);
     setSelectedIndex(0); // Reset selection
   };

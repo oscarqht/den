@@ -349,6 +349,25 @@ async function findAvailablePort(startPort, maxAttempts = 20) {
   throw new Error(`Could not find an available port in range ${startPort}-${startPort + maxAttempts - 1}.`);
 }
 
+export async function resolveStartupPort(
+  { port: requestedPort, portExplicit = false, env = process.env },
+  { findAvailablePortImpl = findAvailablePort } = {},
+) {
+  const envPort = Number.parseInt(env.PORT || "", 10);
+  const preferredPort =
+    requestedPort ??
+    (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535 ? envPort : DEFAULT_PORT);
+
+  if (portExplicit || env.PORT) {
+    return { port: preferredPort, preferredPort };
+  }
+
+  return {
+    port: await findAvailablePortImpl(preferredPort),
+    preferredPort,
+  };
+}
+
 function runNext(args) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [getNextBin(), ...args], {
@@ -467,17 +486,9 @@ async function main() {
     }
     ensureCodexSkillsInstalled();
 
-    const envPort = Number.parseInt(process.env.PORT || "", 10);
-    const preferredPort =
-      options.port ??
-      (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535 ? envPort : DEFAULT_PORT);
-
-    let port = preferredPort;
-    if (!options.portExplicit && !process.env.PORT) {
-      port = await findAvailablePort(preferredPort);
-      if (port !== preferredPort) {
-        console.log(`Port ${preferredPort} is in use. Using ${port} instead.`);
-      }
+    const { port, preferredPort } = await resolveStartupPort(options);
+    if (port !== preferredPort) {
+      console.log(`Port ${preferredPort} is in use. Using ${port} instead.`);
     }
 
     if (options.mode === "dev") {

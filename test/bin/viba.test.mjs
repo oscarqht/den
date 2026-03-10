@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getInstallStrategies, getBrowserOpenCommand, shouldAutoOpenBrowser } from '../../bin/viba.mjs';
+import { getInstallStrategies, getBrowserOpenCommand, resolveStartupPort, shouldAutoOpenBrowser } from '../../bin/viba.mjs';
 
 describe('getInstallStrategies', () => {
   const originalPlatform = process.platform;
@@ -148,5 +148,75 @@ describe('shouldAutoOpenBrowser', () => {
   it('disables when BROWSER is falsey string', () => {
     assert.strictEqual(shouldAutoOpenBrowser({ BROWSER: 'false' }), false);
     assert.strictEqual(shouldAutoOpenBrowser({ BROWSER: '0' }), false);
+  });
+});
+
+describe('resolveStartupPort', () => {
+  it('uses the probe fallback for dev mode when the port is not explicit', async () => {
+    let fallbackBase = null;
+
+    const result = await resolveStartupPort(
+      { mode: 'dev' },
+      {
+        findAvailablePortImpl: async (port) => {
+          fallbackBase = port;
+          return port + 3;
+        },
+      },
+    );
+
+    assert.strictEqual(fallbackBase, 3200);
+    assert.deepStrictEqual(result, { preferredPort: 3200, port: 3203 });
+  });
+
+  it('uses the probe fallback outside dev mode when the port is not explicit', async () => {
+    let fallbackBase = null;
+
+    const result = await resolveStartupPort(
+      { mode: 'start' },
+      {
+        findAvailablePortImpl: async (port) => {
+          fallbackBase = port;
+          return port + 1;
+        },
+      },
+    );
+
+    assert.strictEqual(fallbackBase, 3200);
+    assert.deepStrictEqual(result, { preferredPort: 3200, port: 3201 });
+  });
+
+  it('honors an explicit CLI port without allocating a different one', async () => {
+    let allocatorCalled = false;
+
+    const result = await resolveStartupPort(
+      { mode: 'dev', port: 4100, portExplicit: true },
+      {
+        findAvailablePortImpl: async () => {
+          allocatorCalled = true;
+          return 0;
+        },
+      },
+    );
+
+    assert.strictEqual(allocatorCalled, false);
+    assert.deepStrictEqual(result, { preferredPort: 4100, port: 4100 });
+  });
+
+  it('honors PORT from the environment without reallocating it', async () => {
+    let allocatorCalled = false;
+
+    const result = await resolveStartupPort(
+      { mode: 'dev', env: { PORT: '4300' } },
+      {
+        findAvailablePortImpl: async () => {
+          allocatorCalled = true;
+          return 0;
+        },
+      },
+    );
+
+    assert.strictEqual(allocatorCalled, false);
+    assert.deepStrictEqual(result, { preferredPort: 4300, port: 4300 });
   });
 });

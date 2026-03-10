@@ -14,6 +14,7 @@ import {
   TerminalSessionRole,
   TerminalShellKind,
 } from '@/lib/terminal-session';
+import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
 import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import { listRepoEntries } from '@/lib/repo-entry-list';
 import { getProjects } from '@/lib/store';
@@ -817,9 +818,14 @@ export async function startTtydProcess(): Promise<{
     if (global.ttydPersistenceMode === 'tmux') {
       try {
         const { spawnSync } = await import('child_process');
+        const terminalEnv = buildTerminalProcessEnv();
+        spawnSync('tmux', ['set-environment', '-gu', 'NODE_ENV'], {
+          stdio: 'ignore',
+          env: terminalEnv as NodeJS.ProcessEnv,
+        });
         spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
           stdio: 'ignore',
-          env: process.env,
+          env: terminalEnv as NodeJS.ProcessEnv,
         });
       } catch (error) {
         console.error('Failed to apply tmux mouse option:', error);
@@ -834,18 +840,7 @@ export async function startTtydProcess(): Promise<{
 
   try {
     const { spawn, spawnSync } = await import('child_process');
-
-    // Omit variables that can cause conflicts for nested Next.js/terminal processes.
-    const {
-      TURBOPACK: _turbopack,
-      PORT: _port,
-      NODE_ENV: _nodeEnv,
-      COLORTERM: _colorTerm,
-      FORCE_COLOR: _forceColor,
-      CLICOLOR: _cliColor,
-      CLICOLOR_FORCE: _cliColorForce,
-      ...env
-    } = process.env;
+    const terminalEnv = buildTerminalProcessEnv();
 
     const workingDir = os.homedir();
     const hasTmux = resolveTerminalPersistenceMode() === 'tmux';
@@ -867,15 +862,19 @@ export async function startTtydProcess(): Promise<{
       // Keep deep history and wheel scrollback in tmux-backed ttyd sessions.
       spawnSync('tmux', ['start-server'], {
         stdio: 'ignore',
-        env: process.env,
+        env: terminalEnv as NodeJS.ProcessEnv,
+      });
+      spawnSync('tmux', ['set-environment', '-gu', 'NODE_ENV'], {
+        stdio: 'ignore',
+        env: terminalEnv as NodeJS.ProcessEnv,
       });
       spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
         stdio: 'ignore',
-        env: process.env,
+        env: terminalEnv as NodeJS.ProcessEnv,
       });
       spawnSync('tmux', ['set-option', '-g', 'history-limit', String(TMUX_HISTORY_LIMIT)], {
         stdio: 'ignore',
-        env: process.env,
+        env: terminalEnv as NodeJS.ProcessEnv,
       });
 
       // Use URL args so each iframe can attach to a dedicated tmux session.
@@ -890,15 +889,7 @@ export async function startTtydProcess(): Promise<{
       stdio: 'ignore',
       detached: false,
       cwd: workingDir,
-      env: {
-        ...env,
-        NODE_ENV: 'development',
-        TERM: 'xterm',
-        NO_COLOR: '1',
-        CLICOLOR: '0',
-        CLICOLOR_FORCE: '0',
-        FORCE_COLOR: '0',
-      },
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     child.on('error', (err) => {

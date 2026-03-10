@@ -307,6 +307,7 @@ export default function GitRepoSelector({
   const activePreparedWorkspaceRef = useRef<WorkspacePreparationState | null>(null);
   const workspacePreparationInputKeyRef = useRef<string | null>(null);
   const workspacePreparationRequestRef = useRef(0);
+  const preparedWorkspaceStartupSyncRequestRef = useRef(0);
   const ttydWarmupStartedRef = useRef(false);
   const latestStartupScriptRef = useRef('');
   const latestSelectedAgentProviderRef = useRef<AgentProvider>('codex');
@@ -1008,18 +1009,52 @@ export default function GitRepoSelector({
   ]);
 
   useEffect(() => {
+    if (mode !== 'new') return;
+
+    const activePreparation = activePreparedWorkspaceRef.current;
+    const activePreparationInputKey = workspacePreparationInputKeyRef.current;
+    if (!activePreparation || !activePreparationInputKey || !workspacePreparationInputKey) return;
+    if (
+      activePreparation.projectPath === selectedRepo
+      && activePreparationInputKey === workspacePreparationInputKey
+    ) {
+      return;
+    }
+
+    void releaseActivePreparedWorkspace();
+  }, [
+    mode,
+    releaseActivePreparedWorkspace,
+    selectedRepo,
+    workspacePreparationInputKey,
+  ]);
+
+  useEffect(() => {
     if (mode !== 'new' || !preparedWorkspace) return;
 
-    void startPreparedSessionWorkspaceStartupCommand(
-      preparedWorkspace.preparationId,
-      latestStartupScriptRef.current,
-      latestSelectedAgentProviderRef.current,
-    ).then((result) => {
-      if (!result.success) {
-        console.warn('Failed to start prepared workspace startup command:', result.error || 'unknown error');
-      }
-    });
-  }, [mode, preparedWorkspace]);
+    const requestId = preparedWorkspaceStartupSyncRequestRef.current + 1;
+    preparedWorkspaceStartupSyncRequestRef.current = requestId;
+    const preparationId = preparedWorkspace.preparationId;
+    const startupSyncTimeout = window.setTimeout(() => {
+      void startPreparedSessionWorkspaceStartupCommand(
+        preparationId,
+        latestStartupScriptRef.current,
+        latestSelectedAgentProviderRef.current,
+      ).then((result) => {
+        if (preparedWorkspaceStartupSyncRequestRef.current !== requestId) {
+          return;
+        }
+
+        if (!result.success) {
+          console.warn('Failed to start prepared workspace startup command:', result.error || 'unknown error');
+        }
+      });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(startupSyncTimeout);
+    };
+  }, [mode, preparedWorkspace, selectedAgentProvider, startupScript]);
 
   useEffect(() => {
     if (mode !== 'new') return;

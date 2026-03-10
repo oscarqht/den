@@ -20,6 +20,7 @@ import {
 } from '@/lib/agent/reasoning';
 import { sortSessionHistoryForTimeline } from '@/lib/agent/history-order';
 import { publishSessionListUpdated } from '@/lib/sessionNotificationServer';
+import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
 import { getTmuxSessionName } from '@/lib/terminal-session';
 import type {
   AgentProvider,
@@ -1028,12 +1029,17 @@ async function launchStartupCommandForProvision(
   if (persistenceMode === 'tmux') {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(provision.sessionName, 'terminal');
+    const terminalEnv = buildTerminalProcessEnv();
     const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     if (typeof hasSessionResult.status === 'number' && hasSessionResult.status !== 0) {
+      spawnSync('tmux', ['set-environment', '-gu', 'NODE_ENV'], {
+        stdio: 'ignore',
+        env: terminalEnv as NodeJS.ProcessEnv,
+      });
       const createArgs = ['new-session', '-d'];
       for (const environment of environments) {
         if (!environment.value) continue;
@@ -1043,7 +1049,7 @@ async function launchStartupCommandForProvision(
 
       const createResult = spawnSync('tmux', createArgs, {
         stdio: 'ignore',
-        env: process.env,
+        env: terminalEnv as NodeJS.ProcessEnv,
       });
       if (typeof createResult.status === 'number' && createResult.status !== 0) {
         throw new Error(`tmux new-session exited with status ${createResult.status}`);
@@ -1052,7 +1058,7 @@ async function launchStartupCommandForProvision(
 
     const sendLiteralResult = spawnSync('tmux', ['send-keys', '-t', tmuxSession, '-l', startupScript], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
     if (typeof sendLiteralResult.status === 'number' && sendLiteralResult.status !== 0) {
       throw new Error(`tmux send-keys -l exited with status ${sendLiteralResult.status}`);
@@ -1060,7 +1066,7 @@ async function launchStartupCommandForProvision(
 
     const sendResult = spawnSync('tmux', ['send-keys', '-t', tmuxSession, 'C-m'], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
     if (typeof sendResult.status === 'number' && sendResult.status !== 0) {
       throw new Error(`tmux send-keys exited with status ${sendResult.status}`);

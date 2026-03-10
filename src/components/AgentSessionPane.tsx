@@ -9,11 +9,16 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Clock3, Loader2, Paperclip, PlayCircle, Send, Square, X } from 'lucide-react';
+import { AlertCircle, Clock3, Loader2, Paperclip, PlayCircle, Send, Square, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import remarkGfm from 'remark-gfm';
 import { listRepoFiles, saveAttachments } from '@/app/actions/git';
+import {
+  createOptimisticUserMessage,
+  reconcileOptimisticUserMessages,
+  type OptimisticUserMessage,
+} from '@/lib/optimistic-user-history';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import type {
@@ -392,14 +397,21 @@ function renderCollapsibleHistoryItem({
   );
 }
 
-function renderHistoryItem(item: SessionAgentHistoryItem) {
+function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistoryItemOptions = {}) {
   const timestamp = formatTimestamp(item.updatedAt || item.createdAt);
 
   switch (item.kind) {
     case 'user':
       return (
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-100 px-4 py-3 text-sm text-blue-950 shadow-sm dark:bg-blue-500/15 dark:text-blue-50">
+          <div className={`max-w-[85%] rounded-2xl rounded-br-md bg-blue-100 px-4 py-3 text-sm text-blue-950 shadow-sm dark:bg-blue-500/15 dark:text-blue-50 ${options.pulse ? 'animate-pulse' : ''}`}>
+            {options.status ? (
+              <div className="mb-2 flex items-center justify-end">
+                <span className="rounded-full border border-blue-300/80 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-300/20 dark:bg-blue-950/40 dark:text-blue-100">
+                  {options.status}
+                </span>
+              </div>
+            ) : null}
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
             {timestamp ? <div className="mt-2 text-[10px] text-blue-700/80 dark:text-blue-100/70">{timestamp}</div> : null}
           </div>
@@ -572,6 +584,11 @@ type VirtualHistoryRowProps = {
   onMeasure: (key: string, height: number) => void;
 };
 
+type RenderHistoryItemOptions = {
+  status?: string | null;
+  pulse?: boolean;
+};
+
 function VirtualHistoryRow({ item, onMeasure }: VirtualHistoryRowProps) {
   const itemKey = `${item.id}-${item.updatedAt}`;
   const rowRef = useRef<HTMLDivElement>(null);
@@ -598,9 +615,26 @@ function VirtualHistoryRow({ item, onMeasure }: VirtualHistoryRowProps) {
 
   return (
     <div ref={rowRef}>
-      {renderHistoryItem(item)}
+      {renderHistoryItem(item, item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : undefined)}
     </div>
   );
+}
+
+function buildOptimisticHistoryItem(
+  message: OptimisticUserMessage,
+  sessionName: string,
+  ordinal: number,
+): SessionAgentHistoryItem {
+  return {
+    kind: 'user',
+    id: message.id,
+    text: message.text,
+    sessionName,
+    ordinal,
+    itemStatus: 'sending',
+    createdAt: message.createdAt,
+    updatedAt: message.createdAt,
+  };
 }
 
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
@@ -623,6 +657,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [subprocessesError, setSubprocessesError] = useState<string | null>(null);
   const [terminatingPid, setTerminatingPid] = useState<number | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticUserMessage[]>([]);
   const [steerTargetId, setSteerTargetId] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
@@ -757,7 +792,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     if (!shouldStickToBottomRef.current) return;
 
     timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-  }, [history, historySizeVersion, loading]);
+  }, [historySizeVersion, loading, optimisticMessages, history]);
 
   useEffect(() => {
     const element = timelineRef.current;
@@ -898,17 +933,29 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, [isTurnActive, loadRuntimeSubprocesses]);
 
   const canSend = !loading && !isSending && (composerValue.trim().length > 0 || pendingAttachmentPaths.length > 0);
+  const optimisticHistory = useMemo(
+    () => optimisticMessages.map((message, index) => buildOptimisticHistoryItem(
+      message,
+      runtime?.sessionName || sessionId,
+      history.length + index,
+    )),
+    [history.length, optimisticMessages, runtime?.sessionName, sessionId],
+  );
+  const displayHistory = useMemo(
+    () => [...history, ...optimisticHistory],
+    [history, optimisticHistory],
+  );
   const liveHistoryTailCount = useMemo(
-    () => Math.min(history.length, isTurnActive ? STREAMING_HISTORY_TAIL_COUNT : Math.min(2, history.length)),
-    [history.length, isTurnActive],
+    () => Math.min(displayHistory.length, isTurnActive ? STREAMING_HISTORY_TAIL_COUNT : Math.min(2, displayHistory.length)),
+    [displayHistory.length, isTurnActive],
   );
   const virtualizedHistory = useMemo(
-    () => history.slice(0, Math.max(0, history.length - liveHistoryTailCount)),
-    [history, liveHistoryTailCount],
+    () => displayHistory.slice(0, Math.max(0, displayHistory.length - liveHistoryTailCount)),
+    [displayHistory, liveHistoryTailCount],
   );
   const liveTailHistory = useMemo(
-    () => history.slice(Math.max(0, history.length - liveHistoryTailCount)),
-    [history, liveHistoryTailCount],
+    () => displayHistory.slice(Math.max(0, displayHistory.length - liveHistoryTailCount)),
+    [displayHistory, liveHistoryTailCount],
   );
   const historyMetrics = useMemo(() => {
     void historySizeVersion;
@@ -985,7 +1032,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, []);
 
   useEffect(() => {
-    const activeKeys = new Set(history.map((item) => `${item.id}-${item.updatedAt}`));
+    const activeKeys = new Set(displayHistory.map((item) => `${item.id}-${item.updatedAt}`));
     const currentKeys = Object.keys(historySizeMapRef.current);
     if (currentKeys.every((key) => activeKeys.has(key))) return;
 
@@ -998,6 +1045,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     });
     historySizeMapRef.current = nextSizeMap;
     setHistorySizeVersion((current) => current + 1);
+  }, [displayHistory]);
+
+  useEffect(() => {
+    setOptimisticMessages((current) => reconcileOptimisticUserMessages(history, current));
   }, [history]);
 
   const providerName = providerLabel(runtime?.agentProvider || null);
@@ -1153,10 +1204,15 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       return;
     }
 
+    const optimisticMessage = createOptimisticUserMessage(buildDisplayMessage(message, attachmentPaths));
+    setOptimisticMessages((current) => [...current, optimisticMessage]);
+    shouldStickToBottomRef.current = true;
     setIsSending(true);
     const result = await submitMessageToAgent(message, attachmentPaths);
     if (result.success) {
       onFeedback?.('Sent message to agent');
+    } else {
+      setOptimisticMessages((current) => current.filter((item) => item.id !== optimisticMessage.id));
     }
     setIsSending(false);
   }, [composerValue, isSending, isTurnActive, onFeedback, pendingAttachmentPaths, submitMessageToAgent]);
@@ -1526,7 +1582,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               Loading agent timeline...
             </div>
           </div>
-        ) : history.length === 0 ? (
+        ) : displayHistory.length === 0 ? (
           <div className="flex h-full min-h-[180px] items-center justify-center">
             <div className="max-w-md rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/50 dark:text-slate-400">
               No agent activity yet. Send a task below to start a background turn.
@@ -1557,7 +1613,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               <div className="space-y-3">
                 {liveTailHistory.map((item) => (
                   <div key={`${item.id}-${item.updatedAt}`}>
-                    {renderHistoryItem(item)}
+                    {renderHistoryItem(item, item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : undefined)}
                   </div>
                 ))}
               </div>
@@ -1753,15 +1809,28 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                 <span>Paste images with Cmd/Ctrl+V · Press Enter to send, Shift+Enter for new line</span>
               )}
             </div>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={() => void handleSubmit()}
-              disabled={!canSend}
-            >
-              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {isTurnActive ? 'Queue' : 'Send'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleSubmit()}
+                disabled={!canSend}
+              >
+                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isTurnActive ? 'Queue' : 'Send'}
+              </button>
+              {(isTurnActive || isCancelling) ? (
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937]"
+                  onClick={() => void handleCancel()}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+                  Stop
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

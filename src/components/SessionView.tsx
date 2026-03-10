@@ -1217,10 +1217,6 @@ export function SessionView({
         agentPaneRef.current?.openAgentDetails();
     }, []);
 
-    const handleCancelAgentTurn = useCallback(() => {
-        void agentPaneRef.current?.cancelActiveTurn();
-    }, []);
-
     const applyTerminalInteractionMode = useCallback(async (
         mode: TerminalInteractionMode,
         options?: { silent?: boolean }
@@ -2229,17 +2225,6 @@ export function SessionView({
                                         {formatAgentRunState(agentHeaderMeta.runState)}
                                     </span>
                                 </div>
-                            ) : null}
-                            {agentHeaderMeta?.canCancel ? (
-                                <button
-                                    type="button"
-                                    className="btn btn-ghost btn-xs h-6 min-h-6 shrink-0 border border-slate-200 bg-white px-2 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                    onClick={handleCancelAgentTurn}
-                                    disabled={agentHeaderMeta.isCancelling}
-                                >
-                                    {agentHeaderMeta.isCancelling ? <span className="loading loading-spinner loading-xs"></span> : null}
-                                    Cancel
-                                </button>
                             ) : null}
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
                                 <select

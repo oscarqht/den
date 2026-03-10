@@ -11,8 +11,7 @@ import React, {
 } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, Clock3, Loader2, Paperclip, PlayCircle, Send, Square, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import SyntaxHighlighter from 'react-syntax-highlighter';
 import remarkGfm from 'remark-gfm';
 import { listRepoFiles, saveAttachments } from '@/app/actions/git';
 import { getBaseName } from '@/lib/path';
@@ -326,13 +325,10 @@ function MarkdownMessage({ value }: { value: string | null | undefined }) {
               return (
                 <SyntaxHighlighter
                   language={language}
-                  style={oneDark}
-                  PreTag="div"
+                  useInlineStyles={false}
                   customStyle={{
                     margin: 0,
                     borderRadius: '0.5rem',
-                    padding: '0.5rem 0.75rem',
-                    background: 'rgba(2, 6, 23, 0.95)',
                     fontSize: '11px',
                     lineHeight: 1.6,
                   }}

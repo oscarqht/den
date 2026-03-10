@@ -22,6 +22,18 @@ import { sortSessionHistoryForTimeline } from '@/lib/agent/history-order';
 import { publishSessionListUpdated } from '@/lib/sessionNotificationServer';
 import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
 import { getTmuxSessionName } from '@/lib/terminal-session';
+import {
+  cleanupStaleNextDevLock,
+  clearTrackedSessionProcess,
+  getSessionRootPath,
+  getTrackedSessionProcess,
+  inferTrackedProcessPreviewUrl,
+  launchTrackedSessionProcess,
+  readTrackedDevServerState,
+  stopAllTrackedSessionProcesses,
+  stopTrackedSessionProcess,
+  terminateProcessGracefully,
+} from '@/lib/session-processes';
 import type {
   AgentProvider,
   HistoryEntry,
@@ -660,13 +672,6 @@ function buildSessionName(): string {
   return `${timestamp}-${nonce}`;
 }
 
-function slugifyProjectPath(projectPath: string): string {
-  const baseName = path.basename(projectPath).toLowerCase();
-  const safeBaseName = baseName.replace(/[^a-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  if (safeBaseName) return safeBaseName;
-  return createHash('sha1').update(projectPath).digest('hex').slice(0, 12);
-}
-
 function buildSessionBranchName(sessionName: string, repoPath: string): string {
   const repoHash = createHash('sha1').update(repoPath).digest('hex').slice(0, 8);
   return `palx/${sessionName}/${repoHash}`;
@@ -704,49 +709,6 @@ async function copyProjectWithoutGitRepos(
       return true;
     },
   });
-}
-
-function getSessionRootPath(projectPath: string, sessionName: string): string {
-  const projectSlug = slugifyProjectPath(projectPath);
-  return path.join(os.homedir(), '.viba', 'projects', projectSlug, sessionName);
-}
-
-function getSessionStartupProcessStatePath(projectPath: string, sessionName: string): string {
-  return path.join(getSessionRootPath(projectPath, sessionName), 'startup-process.json');
-}
-
-async function writeSessionStartupProcessState(
-  projectPath: string,
-  sessionName: string,
-  state: { pid: number; signature: string },
-): Promise<void> {
-  const statePath = getSessionStartupProcessStatePath(projectPath, sessionName);
-  await fs.mkdir(path.dirname(statePath), { recursive: true });
-  await fs.writeFile(statePath, JSON.stringify(state), 'utf-8');
-}
-
-async function clearSessionStartupProcessState(
-  projectPath: string,
-  sessionName: string,
-): Promise<void> {
-  const statePath = getSessionStartupProcessStatePath(projectPath, sessionName);
-  await fs.rm(statePath, { force: true });
-}
-
-async function readSessionStartupProcessState(
-  projectPath: string,
-  sessionName: string,
-): Promise<{ pid?: number; signature?: string }> {
-  try {
-    const raw = await fs.readFile(getSessionStartupProcessStatePath(projectPath, sessionName), 'utf-8');
-    const parsed = JSON.parse(raw) as { pid?: unknown; signature?: unknown };
-    return {
-      pid: typeof parsed.pid === 'number' && Number.isFinite(parsed.pid) && parsed.pid > 0 ? parsed.pid : undefined,
-      signature: normalizeOptionalText(typeof parsed.signature === 'string' ? parsed.signature : undefined),
-    };
-  } catch {
-    return {};
-  }
 }
 
 function normalizeGitContextInput(
@@ -996,21 +958,24 @@ async function terminateProvisionedStartupCommand(
 ): Promise<void> {
   if (provision.startupCommandMode === 'tmux') {
     await terminateSessionTerminalSessions(provision.sessionName);
-    await clearSessionStartupProcessState(provision.projectPath, provision.sessionName);
+    await clearTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
     return;
   }
 
-  const startupProcessPid = provision.startupCommandProcessPid
-    ?? (await readSessionStartupProcessState(provision.projectPath, provision.sessionName)).pid;
-  if (provision.startupCommandMode === 'shell' && startupProcessPid) {
-    try {
-      process.kill(startupProcessPid, 'SIGTERM');
-    } catch {
-      // Ignore missing or already-exited startup processes.
-    }
+  const trackedProcess = await getTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
+  if (trackedProcess) {
+    await stopTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
+    return;
   }
 
-  await clearSessionStartupProcessState(provision.projectPath, provision.sessionName);
+  if (provision.startupCommandMode === 'shell' && provision.startupCommandProcessPid) {
+    await terminateProcessGracefully({
+      pid: provision.startupCommandProcessPid,
+      processGroupId: provision.startupCommandProcessPid,
+    }).catch(() => {
+      // Ignore missing or already-exited startup processes.
+    });
+  }
 }
 
 async function launchStartupCommandForProvision(
@@ -1078,32 +1043,22 @@ async function launchStartupCommandForProvision(
     };
   }
 
-  const { spawn } = await import('child_process');
   const shellCommand = getStartupShellCommand();
-  const shellArgs = shellCommand.shellKind === 'powershell'
-    ? [...shellCommand.args, '-NoProfile', '-Command', startupScript]
-    : [...shellCommand.args, '-lc', startupScript];
-  const child = spawn(shellCommand.command, shellArgs, {
-    cwd: provision.workspacePath,
-    env: {
-      ...process.env,
-      ...Object.fromEntries(environments.map((entry) => [entry.name, entry.value])),
-    },
-    stdio: 'ignore',
-    detached: true,
+  const processRecord = await launchTrackedSessionProcess({
+    role: 'startup-script',
+    source: 'startup-script',
+    sessionName: provision.sessionName,
+    projectPath: provision.projectPath,
+    workspacePath: provision.workspacePath,
+    command: startupScript,
+    shellCommand,
+    env: Object.fromEntries(environments.map((entry) => [entry.name, entry.value])),
   });
-  child.unref();
-  if (child.pid) {
-    await writeSessionStartupProcessState(provision.projectPath, provision.sessionName, {
-      pid: child.pid,
-      signature,
-    });
-  }
 
   return {
     startupCommandSignature: signature,
     startupCommandMode: 'shell',
-    startupCommandProcessPid: child.pid ?? undefined,
+    startupCommandProcessPid: processRecord.pid,
   };
 }
 
@@ -2285,6 +2240,124 @@ async function cleanupSessionWorkspace(metadata: SessionMetadata): Promise<void>
   await cleanupWorkspaceRoot(metadata.workspacePath, metadata.workspaceMode);
 }
 
+export async function getSessionDevServerState(sessionName: string): Promise<{
+  success: boolean;
+  running?: boolean;
+  previewUrl?: string | null;
+  error?: string;
+}> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const state = await readTrackedDevServerState(metadata.projectPath, sessionName);
+    return {
+      success: true,
+      running: state.running,
+      previewUrl: state.previewUrl,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+export async function startSessionDevServer(sessionName: string): Promise<{
+  success: boolean;
+  started?: boolean;
+  alreadyRunning?: boolean;
+  previewUrl?: string | null;
+  removedStaleLock?: boolean;
+  error?: string;
+}> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const script = metadata.devServerScript?.trim();
+    if (!script) {
+      return { success: false, error: 'Dev server script is not configured for this session.' };
+    }
+
+    const currentState = await readTrackedDevServerState(metadata.projectPath, sessionName);
+    if (currentState.running) {
+      return {
+        success: true,
+        started: false,
+        alreadyRunning: true,
+        previewUrl: currentState.previewUrl,
+      };
+    }
+
+    const repoPaths = metadata.gitRepos.length > 0
+      ? metadata.gitRepos.map((repo) => repo.sourceRepoPath)
+      : [metadata.projectPath];
+    const environments = await getSessionTerminalEnvironments(repoPaths, metadata.agentProvider ?? metadata.agent).catch((error) => {
+      console.warn('Failed to resolve dev server terminal environment:', error);
+      return [];
+    });
+    const removedStaleLock = await cleanupStaleNextDevLock(metadata.workspacePath).catch((error) => {
+      console.warn('Failed to cleanup stale Next dev lock:', error);
+      return false;
+    });
+    const processRecord = await launchTrackedSessionProcess({
+      role: 'dev-server',
+      source: 'ui-dev-button',
+      sessionName,
+      projectPath: metadata.projectPath,
+      workspacePath: metadata.workspacePath,
+      command: script,
+      shellCommand: getStartupShellCommand(),
+      env: Object.fromEntries(environments.map((entry) => [entry.name, entry.value])),
+    });
+
+    return {
+      success: true,
+      started: true,
+      alreadyRunning: false,
+      previewUrl: await inferTrackedProcessPreviewUrl(processRecord),
+      removedStaleLock,
+    };
+  } catch (error) {
+    console.error('Failed to start session dev server:', error);
+    return {
+      success: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+export async function stopSessionDevServer(sessionName: string): Promise<{
+  success: boolean;
+  stopped?: boolean;
+  error?: string;
+}> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const result = await stopTrackedSessionProcess(metadata.projectPath, sessionName, 'dev-server');
+    return {
+      success: true,
+      stopped: result.stopped || !result.process,
+    };
+  } catch (error) {
+    console.error('Failed to stop session dev server:', error);
+    return {
+      success: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
 export async function deleteSession(sessionName: string): Promise<{ success: boolean; error?: string }> {
   try {
     const metadata = await getSessionMetadata(sessionName);
@@ -2292,19 +2365,20 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
       return { success: false, error: 'Session metadata not found' };
     }
 
-    if (metadata.workspaceMode === 'single_worktree' || metadata.workspaceMode === 'multi_repo_worktree') {
-      for (const gitRepo of metadata.gitRepos) {
-        await removeWorktree(gitRepo.sourceRepoPath, gitRepo.worktreePath, gitRepo.branchName);
-      }
-    }
-
-    await terminateSessionTerminalSessions(sessionName);
+    await stopAllTrackedSessionProcesses(metadata.projectPath, sessionName);
     await terminateProvisionedStartupCommand({
       projectPath: metadata.projectPath,
       sessionName,
       startupCommandMode: 'shell',
       startupCommandProcessPid: undefined,
     });
+    await terminateSessionTerminalSessions(sessionName);
+
+    if (metadata.workspaceMode === 'single_worktree' || metadata.workspaceMode === 'multi_repo_worktree') {
+      for (const gitRepo of metadata.gitRepos) {
+        await removeWorktree(gitRepo.sourceRepoPath, gitRepo.worktreePath, gitRepo.branchName);
+      }
+    }
     await cleanupSessionWorkspace(metadata);
 
     const db = getLocalDb();
@@ -2337,11 +2411,7 @@ export async function deleteSessionInBackground(sessionName: string): Promise<{ 
       return { success: false, error: 'Session metadata not found' };
     }
 
-    void deleteSession(sessionName).catch((error) => {
-      console.error(`Background cleanup of session ${sessionName} failed:`, error);
-    });
-
-    return { success: true };
+    return await deleteSession(sessionName);
   } catch (e: unknown) {
     console.error('Failed to schedule background session deletion:', e);
     return { success: false, error: getErrorMessage(e) };

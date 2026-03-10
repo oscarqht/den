@@ -429,7 +429,20 @@ class CodexAppServerConnection {
 
     this.closed = true;
     this.pending.clear();
-    this.child.kill();
+    if (this.child.exitCode !== null || this.child.killed) {
+      return;
+    }
+
+    this.child.kill('SIGTERM');
+    const killTimer = setTimeout(() => {
+      if (this.child.exitCode === null && !this.child.killed) {
+        this.child.kill('SIGKILL');
+      }
+    }, 2000);
+    killTimer.unref();
+    this.child.once('close', () => {
+      clearTimeout(killTimer);
+    });
   }
 
   getRuntimePid() {

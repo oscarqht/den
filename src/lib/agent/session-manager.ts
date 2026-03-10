@@ -31,6 +31,7 @@ import {
   publishSessionListUpdated,
   publishSessionNotification,
 } from '@/lib/sessionNotificationServer';
+import { terminateProcessGracefully } from '@/lib/session-processes';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -139,79 +140,6 @@ function createTurnDiagnostics(provider: AgentProvider, queuedAt: string): Sessi
   };
 }
 
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (
-      error
-      && typeof error === 'object'
-      && 'code' in error
-      && (error as { code?: string }).code === 'ESRCH'
-    ) {
-      return false;
-    }
-    return true;
-  }
-}
-
-async function waitForProcessExit(pid: number, timeoutMs = 1200): Promise<boolean> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (!isProcessAlive(pid)) {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return !isProcessAlive(pid);
-}
-
-async function terminateProcessGracefully(pid: number): Promise<boolean> {
-  if (!isProcessAlive(pid)) {
-    return true;
-  }
-
-  try {
-    if (process.platform === 'win32') {
-      process.kill(pid);
-      return await waitForProcessExit(pid, 2000);
-    }
-
-    process.kill(pid, 'SIGTERM');
-  } catch (error) {
-    if (
-      error
-      && typeof error === 'object'
-      && 'code' in error
-      && (error as { code?: string }).code === 'ESRCH'
-    ) {
-      return true;
-    }
-    throw error;
-  }
-
-  if (await waitForProcessExit(pid, 2000)) {
-    return true;
-  }
-
-  try {
-    process.kill(pid, 'SIGKILL');
-  } catch (error) {
-    if (
-      error
-      && typeof error === 'object'
-      && 'code' in error
-      && (error as { code?: string }).code === 'ESRCH'
-    ) {
-      return true;
-    }
-    throw error;
-  }
-
-  return await waitForProcessExit(pid, 1000);
-}
-
 async function readRuntimeProcessTable(): Promise<RuntimeProcessEntry[]> {
   if (process.platform === 'win32') {
     return [];
@@ -223,6 +151,26 @@ async function readRuntimeProcessTable(): Promise<RuntimeProcessEntry[]> {
   }
 
   return parsePsProcessTable(result.stdout);
+}
+
+async function terminateRuntimeDescendants(runtimePid: number | null): Promise<void> {
+  if (runtimePid === null || !Number.isInteger(runtimePid) || runtimePid <= 0) {
+    return;
+  }
+
+  try {
+    const processTable = await readRuntimeProcessTable();
+    const descendants = collectDescendantProcesses(processTable, runtimePid).sort((left, right) => right.pid - left.pid);
+    for (const entry of descendants) {
+      try {
+        await terminateProcessGracefully({ pid: entry.pid });
+      } catch (error) {
+        console.warn(`Failed to terminate lingering runtime subprocess ${entry.pid}:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to inspect lingering subprocesses for runtime ${runtimePid}:`, error);
+  }
 }
 
 function toRuntimeSubprocess(entry: RuntimeProcessEntry): SessionAgentRuntimeSubprocess {
@@ -821,7 +769,7 @@ export async function terminateSessionTurnSubprocess(
       };
     }
 
-    const terminated = await terminateProcessGracefully(pid);
+    const terminated = await terminateProcessGracefully({ pid });
     if (!terminated) {
       return {
         success: false,
@@ -981,6 +929,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
         await publishDerivedNotification(sessionId, failureEvent, projector.getLatestAssistantText());
       }
     } finally {
+      await terminateRuntimeDescendants(activeRun.runtimePid);
       state.runs.delete(sessionId);
       await publishSessionListUpdated();
     }

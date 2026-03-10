@@ -69,7 +69,7 @@ const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 1500;
 const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 6;
 
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
-const AGENT_RUNTIME_PRESETS_STORAGE_KEY_PREFIX = 'viba:agent-runtime-presets:';
+const AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX = 'viba:agent-provider-models:';
 const SESSION_TITLE_MAX_LENGTH = 120;
 const SUPPORTED_AGENT_PROVIDERS = ['codex', 'gemini', 'cursor'] as const;
 const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
@@ -94,9 +94,10 @@ type WorkspacePreparationState = {
   expiresAt: string;
 };
 
-type AgentRuntimePreset = {
-  provider: AgentProvider;
-  model: string;
+type AgentModelCatalogCacheEntry = {
+  models: ModelOption[];
+  defaultModel: string | null;
+  updatedAt: string;
 };
 
 type GitRepoSelectorProps = {
@@ -215,6 +216,88 @@ function normalizeProviderReasoningSelection(
   return normalizeProviderReasoningEffort(provider, normalizeReasoningSelection(value));
 }
 
+function normalizeModelOption(input: unknown): ModelOption | null {
+  if (!input || typeof input !== 'object') return null;
+
+  const candidate = input as {
+    id?: unknown;
+    label?: unknown;
+    description?: unknown;
+    reasoningEfforts?: unknown;
+  };
+  if (typeof candidate.id !== 'string') return null;
+
+  const id = candidate.id.trim();
+  if (!id) return null;
+
+  const label = typeof candidate.label === 'string' && candidate.label.trim()
+    ? candidate.label.trim()
+    : id;
+  const description = typeof candidate.description === 'string'
+    ? candidate.description
+    : null;
+  const reasoningEfforts = Array.isArray(candidate.reasoningEfforts)
+    ? candidate.reasoningEfforts.filter((value): value is ReasoningEffort => (
+      typeof value === 'string' && value.trim().length > 0
+    ))
+    : undefined;
+
+  return {
+    id,
+    label,
+    description,
+    reasoningEfforts,
+  };
+}
+
+function readAgentModelCatalogCache(provider: AgentProvider): AgentModelCatalogCacheEntry | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawValue = window.localStorage.getItem(`${AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX}${provider}`);
+    if (!rawValue) return null;
+
+    const parsed = JSON.parse(rawValue) as {
+      models?: unknown;
+      defaultModel?: unknown;
+      updatedAt?: unknown;
+    };
+    const models = Array.isArray(parsed.models)
+      ? parsed.models.map(normalizeModelOption).filter((entry): entry is ModelOption => Boolean(entry))
+      : [];
+    const defaultModel = typeof parsed.defaultModel === 'string' && parsed.defaultModel.trim()
+      ? parsed.defaultModel
+      : null;
+    const updatedAt = typeof parsed.updatedAt === 'string' && parsed.updatedAt.trim()
+      ? parsed.updatedAt
+      : new Date(0).toISOString();
+
+    return {
+      models,
+      defaultModel,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeAgentModelCatalogCache(
+  provider: AgentProvider,
+  entry: AgentModelCatalogCacheEntry,
+): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      `${AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX}${provider}`,
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Ignore localStorage errors.
+  }
+}
+
 export default function GitRepoSelector({
   mode = 'home',
   projectPath = null,
@@ -282,7 +365,7 @@ export default function GitRepoSelector({
   const [agentProviders, setAgentProviders] = useState<ProviderCatalogEntry[]>([]);
   const [selectedAgentProvider, setSelectedAgentProvider] = useState<AgentProvider>('codex');
   const [selectedAgentModel, setSelectedAgentModel] = useState('');
-  const [agentRuntimePresets, setAgentRuntimePresets] = useState<AgentRuntimePreset[]>([]);
+  const [cachedAgentModelCatalogs, setCachedAgentModelCatalogs] = useState<Record<string, AgentModelCatalogCacheEntry>>({});
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffort | ''>('');
   const [agentStatus, setAgentStatus] = useState<AppStatus | null>(null);
   const [isLoadingAgentStatus, setIsLoadingAgentStatus] = useState(false);
@@ -320,12 +403,8 @@ export default function GitRepoSelector({
   const ttydWarmupStartedRef = useRef(false);
   const latestStartupScriptRef = useRef('');
   const latestSelectedAgentProviderRef = useRef<AgentProvider>('codex');
-  const runtimePresetsStorageReadyKeyRef = useRef<string | null>(null);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
-  const runtimePresetsStorageKey = mode === 'new' && selectedRepo
-    ? `${AGENT_RUNTIME_PRESETS_STORAGE_KEY_PREFIX}${selectedRepo}`
-    : null;
 
   const notifySessionsChanged = useCallback(() => {
     notifySessionsUpdated();
@@ -601,54 +680,15 @@ export default function GitRepoSelector({
   }, [mode]);
 
   useEffect(() => {
-    if (!runtimePresetsStorageKey) {
-      runtimePresetsStorageReadyKeyRef.current = null;
-      setAgentRuntimePresets([]);
-      return;
-    }
+    const nextCatalogs = Object.fromEntries(
+      SUPPORTED_AGENT_PROVIDERS
+        .map((provider) => [provider, readAgentModelCatalogCache(provider)] as const)
+        .filter((entry): entry is [typeof SUPPORTED_AGENT_PROVIDERS[number], AgentModelCatalogCacheEntry] => Boolean(entry[1])),
+    );
 
-    try {
-      const rawValue = window.localStorage.getItem(runtimePresetsStorageKey);
-      if (!rawValue) {
-        setAgentRuntimePresets([]);
-      } else {
-        const parsed = JSON.parse(rawValue);
-        if (Array.isArray(parsed)) {
-          const normalized = parsed
-            .map((entry) => {
-              if (!entry || typeof entry !== 'object') return null;
-              const provider = normalizeAgentProvider(
-                'provider' in entry && typeof entry.provider === 'string' ? entry.provider : '',
-              );
-              const model = 'model' in entry && typeof entry.model === 'string'
-                ? entry.model.trim()
-                : '';
-              if (!model) return null;
-              return { provider, model } satisfies AgentRuntimePreset;
-            })
-            .filter((entry): entry is AgentRuntimePreset => Boolean(entry));
-          setAgentRuntimePresets(normalized);
-        } else {
-          setAgentRuntimePresets([]);
-        }
-      }
-    } catch {
-      setAgentRuntimePresets([]);
-    } finally {
-      runtimePresetsStorageReadyKeyRef.current = runtimePresetsStorageKey;
-    }
-  }, [runtimePresetsStorageKey]);
-
-  useEffect(() => {
-    if (!runtimePresetsStorageKey) return;
-    if (runtimePresetsStorageReadyKeyRef.current !== runtimePresetsStorageKey) return;
-
-    try {
-      window.localStorage.setItem(runtimePresetsStorageKey, JSON.stringify(agentRuntimePresets));
-    } catch {
-      // Ignore localStorage errors.
-    }
-  }, [agentRuntimePresets, runtimePresetsStorageKey]);
+    if (Object.keys(nextCatalogs).length === 0) return;
+    setCachedAgentModelCatalogs(nextCatalogs);
+  }, []);
 
   useEffect(() => {
     if (mode === 'new' && !selectedRepo) {
@@ -1337,40 +1377,6 @@ export default function GitRepoSelector({
     setSelectedAgentModel(event.target.value);
   };
 
-  const handleSaveAgentRuntimePreset = useCallback(() => {
-    const normalizedModel = selectedAgentModel.trim();
-    if (!normalizedModel) {
-      setAgentSetupMessage('Select a model before saving a preset.');
-      return;
-    }
-
-    setAgentRuntimePresets((previous) => {
-      const exists = previous.some((entry) => (
-        entry.provider === selectedAgentProvider && entry.model === normalizedModel
-      ));
-      if (exists) {
-        return previous;
-      }
-
-      return [...previous, { provider: selectedAgentProvider, model: normalizedModel }];
-    });
-    setAgentSetupMessage('Runtime preset saved.');
-  }, [selectedAgentModel, selectedAgentProvider]);
-
-  const handleApplyAgentRuntimePreset = useCallback((preset: AgentRuntimePreset) => {
-    setSelectedAgentProvider(preset.provider);
-    setSelectedAgentModel(preset.model);
-    setAgentSetupMessage(null);
-    setIsWaitingForLogin(false);
-    setWaitingForLoginProvider(null);
-  }, []);
-
-  const handleRemoveAgentRuntimePreset = useCallback((preset: AgentRuntimePreset) => {
-    setAgentRuntimePresets((previous) => previous.filter((entry) => (
-      !(entry.provider === preset.provider && entry.model === preset.model)
-    )));
-  }, []);
-
   const handleReasoningEffortChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedReasoningEffort(event.target.value as ReasoningEffort | '');
   };
@@ -1750,6 +1756,22 @@ export default function GitRepoSelector({
     provider: AgentProvider,
     options?: { silent?: boolean },
   ): Promise<AgentStatusResponse | null> => {
+    const cachedCatalog = readAgentModelCatalogCache(provider);
+    if (cachedCatalog) {
+      setCachedAgentModelCatalogs((previous) => {
+        const existing = previous[provider];
+        if (
+          existing
+          && existing.updatedAt === cachedCatalog.updatedAt
+          && existing.defaultModel === cachedCatalog.defaultModel
+          && JSON.stringify(existing.models) === JSON.stringify(cachedCatalog.models)
+        ) {
+          return previous;
+        }
+        return { ...previous, [provider]: cachedCatalog };
+      });
+    }
+
     if (!options?.silent) {
       setIsLoadingAgentStatus(true);
     }
@@ -1769,6 +1791,15 @@ export default function GitRepoSelector({
       ));
 
       setAgentProviders(supportedProviders);
+      if (payload.status) {
+        const nextCatalog: AgentModelCatalogCacheEntry = {
+          models: payload.status.models,
+          defaultModel: payload.status.defaultModel,
+          updatedAt: new Date().toISOString(),
+        };
+        setCachedAgentModelCatalogs((previous) => ({ ...previous, [provider]: nextCatalog }));
+        writeAgentModelCatalogCache(provider, nextCatalog);
+      }
       if (provider === selectedAgentProvider) {
         setAgentStatus(payload.status);
         if (payload.error) {
@@ -1780,7 +1811,6 @@ export default function GitRepoSelector({
     } catch (statusError) {
       const message = statusError instanceof Error ? statusError.message : 'Failed to load agent runtime status.';
       if (provider === selectedAgentProvider) {
-        setAgentStatus(null);
         setAgentSetupMessage(message);
       }
       return null;
@@ -1851,6 +1881,13 @@ export default function GitRepoSelector({
             if (provider === selectedAgentProvider) {
               setAgentStatus(event.status);
             }
+            const nextCatalog: AgentModelCatalogCacheEntry = {
+              models: event.status.models,
+              defaultModel: event.status.defaultModel,
+              updatedAt: new Date().toISOString(),
+            };
+            setCachedAgentModelCatalogs((previous) => ({ ...previous, [provider]: nextCatalog }));
+            writeAgentModelCatalogCache(provider, nextCatalog);
             setAgentSetupMessage(`${agentProviderLabel(provider, agentProviders)} installed.`);
             continue;
           }
@@ -1959,25 +1996,73 @@ export default function GitRepoSelector({
     void fetchAgentStatus(selectedAgentProvider);
   }, [fetchAgentStatus, mode, selectedAgentProvider]);
 
-  useEffect(() => {
+  const displayedAgentStatus = useMemo(() => {
     if (!agentStatus || agentStatus.provider !== selectedAgentProvider) {
+      return null;
+    }
+    return agentStatus;
+  }, [agentStatus, selectedAgentProvider]);
+
+  const activeAgentModelCatalog = useMemo(() => {
+    const cachedCatalog = cachedAgentModelCatalogs[selectedAgentProvider] ?? null;
+    return {
+      models: displayedAgentStatus?.models.length
+        ? displayedAgentStatus.models
+        : (cachedCatalog?.models ?? []),
+      defaultModel: displayedAgentStatus?.defaultModel ?? cachedCatalog?.defaultModel ?? null,
+      isFromCache: !displayedAgentStatus && Boolean(cachedCatalog),
+    };
+  }, [cachedAgentModelCatalogs, displayedAgentStatus, selectedAgentProvider]);
+
+  useEffect(() => {
+    const validModels = activeAgentModelCatalog.models;
+    if (activeAgentModelCatalog.isFromCache && selectedAgentModel.trim()) {
       return;
     }
 
-    const validModels = agentStatus.models;
     const nextModel = validModels.find((model) => model.id === selectedAgentModel)?.id
-      || agentStatus.defaultModel
+      || activeAgentModelCatalog.defaultModel
       || validModels[0]?.id
       || '';
 
     if (nextModel !== selectedAgentModel) {
       setSelectedAgentModel(nextModel);
     }
-  }, [agentStatus, selectedAgentModel, selectedAgentProvider]);
+  }, [activeAgentModelCatalog, selectedAgentModel, selectedAgentProvider]);
 
   const selectedModelOption = useMemo<ModelOption | null>(() => {
-    return agentStatus?.models.find((model) => model.id === selectedAgentModel) || null;
-  }, [agentStatus, selectedAgentModel]);
+    return activeAgentModelCatalog.models.find((model) => model.id === selectedAgentModel) || null;
+  }, [activeAgentModelCatalog.models, selectedAgentModel]);
+
+  const selectableModelOptions = useMemo<ModelOption[]>(() => {
+    if (activeAgentModelCatalog.models.length > 0) {
+      if (selectedAgentModel && !activeAgentModelCatalog.models.some((model) => model.id === selectedAgentModel)) {
+        return [
+          ...activeAgentModelCatalog.models,
+          {
+            id: selectedAgentModel,
+            label: selectedAgentModel,
+            description: null,
+          },
+        ];
+      }
+      return activeAgentModelCatalog.models;
+    }
+
+    if (selectedAgentModel) {
+      return [{
+        id: selectedAgentModel,
+        label: selectedAgentModel,
+        description: null,
+      }];
+    }
+
+    return [{
+      id: '',
+      label: 'Default model',
+      description: null,
+    }];
+  }, [activeAgentModelCatalog.models, selectedAgentModel]);
 
   const reasoningEffortOptions = useMemo(() => {
     if (selectedAgentProvider !== 'codex') return [];
@@ -2250,8 +2335,10 @@ export default function GitRepoSelector({
       const messageTitle = initialMessage.split('\n')[0].trim() || 'Untitled Draft';
       const resolvedProvider = normalizeAgentProvider(selectedAgentProvider);
       const resolvedModel = selectedAgentModel.trim()
-        || agentStatus?.defaultModel
-        || agentStatus?.models[0]?.id
+        || displayedAgentStatus?.defaultModel
+        || activeAgentModelCatalog.defaultModel
+        || displayedAgentStatus?.models[0]?.id
+        || activeAgentModelCatalog.models[0]?.id
         || '';
       const draftGitContexts = projectGitRepos.map((repoPath) => {
         const fallbackBranch = branchesByRepo[repoPath]?.find((branch) => branch.current)?.name
@@ -2919,39 +3006,6 @@ export default function GitRepoSelector({
 
                   {showSessionAdvanced && (
                     <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/55">
-                      <div className="space-y-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Presets</span>
-                        <div className="flex flex-wrap gap-2">
-                          {agentRuntimePresets.length > 0 ? agentRuntimePresets.map((preset) => (
-                            <span
-                              key={`${preset.provider}:${preset.model}`}
-                              className="inline-flex max-w-full items-center rounded-full border border-slate-300 bg-white text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                            >
-                              <button
-                                type="button"
-                                className="max-w-[260px] truncate px-3 py-1 text-left transition hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                onClick={() => handleApplyAgentRuntimePreset(preset)}
-                                title={`Use ${agentProviderLabel(preset.provider, agentProviders)} • ${preset.model}`}
-                                disabled={loading}
-                              >
-                                {agentProviderLabel(preset.provider, agentProviders)} • {preset.model}
-                              </button>
-                              <button
-                                type="button"
-                                className="px-2 text-slate-500 transition hover:text-red-500 disabled:opacity-60 dark:text-slate-400 dark:hover:text-red-400"
-                                onClick={() => handleRemoveAgentRuntimePreset(preset)}
-                                title="Remove preset"
-                                disabled={loading}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </span>
-                          )) : (
-                            <span className="text-xs text-slate-500 dark:text-slate-400">No presets saved.</span>
-                          )}
-                        </div>
-                      </div>
-
                       <label className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent Runtime</span>
                         <div className="relative">
@@ -2985,30 +3039,22 @@ export default function GitRepoSelector({
                             <div className="text-xs text-slate-500 dark:text-slate-400">
                               {isLoadingAgentStatus
                                 ? 'Checking runtime status...'
-                                : agentStatus
+                                : displayedAgentStatus
                                   ? [
-                                      agentStatus.installed ? 'Installed' : 'Not installed',
-                                      agentStatus.loggedIn ? 'Logged in' : 'Login required',
-                                      agentStatus.version ? `v${agentStatus.version}` : null,
+                                      displayedAgentStatus.installed ? 'Installed' : 'Not installed',
+                                      displayedAgentStatus.loggedIn ? 'Logged in' : 'Login required',
+                                      displayedAgentStatus.version ? `v${displayedAgentStatus.version}` : null,
                                     ].filter(Boolean).join(' • ')
                                   : 'Runtime status unavailable'}
                             </div>
-                            {agentStatus?.account?.email ? (
+                            {displayedAgentStatus?.account?.email ? (
                               <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {agentStatus.account.email}
-                                {agentStatus.account.planType ? ` • ${agentStatus.account.planType}` : ''}
+                                {displayedAgentStatus.account.email}
+                                {displayedAgentStatus.account.planType ? ` • ${displayedAgentStatus.account.planType}` : ''}
                               </div>
                             ) : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-                              onClick={handleSaveAgentRuntimePreset}
-                              disabled={loading || !selectedAgentModel.trim()}
-                            >
-                              Save Preset
-                            </button>
                             <button
                               type="button"
                               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
@@ -3017,7 +3063,7 @@ export default function GitRepoSelector({
                             >
                               Refresh
                             </button>
-                            {!agentStatus?.installed && (
+                            {!displayedAgentStatus?.installed && (
                               <button
                                 type="button"
                                 className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -3029,7 +3075,7 @@ export default function GitRepoSelector({
                                   : 'Install'}
                               </button>
                             )}
-                            {agentStatus?.installed && !agentStatus.loggedIn && (
+                            {displayedAgentStatus?.installed && !displayedAgentStatus.loggedIn && (
                               <button
                                 type="button"
                                 className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -3064,13 +3110,9 @@ export default function GitRepoSelector({
                             className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                             value={selectedAgentModel}
                             onChange={handleAgentModelChange}
-                            disabled={loading || isLoadingAgentStatus || (agentStatus?.models.length || 0) === 0}
+                            disabled={loading || (activeAgentModelCatalog.models.length === 0 && !selectedAgentModel.trim())}
                           >
-                            {(agentStatus?.models.length ? agentStatus.models : [{
-                              id: selectedAgentModel || '',
-                              label: selectedAgentModel || 'Default model',
-                              description: '',
-                            }]).map((model) => (
+                            {selectableModelOptions.map((model) => (
                               <option key={model.id || 'default-model'} value={model.id}>
                                 {model.label}
                               </option>

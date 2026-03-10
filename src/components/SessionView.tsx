@@ -5,10 +5,13 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import {
     createSessionBaseBranch,
     deleteSessionInBackground,
+    getSessionDevServerState,
     getSessionDivergence,
     listSessionBaseBranches,
     mergeSessionToBase,
     rebaseSessionOntoBase,
+    startSessionDevServer,
+    stopSessionDevServer,
     updateSessionBaseBranch,
 } from '@/app/actions/session';
 import {
@@ -56,6 +59,10 @@ let configuredIdePromise: Promise<string | null> | null = null;
 
 
 type CleanupPhase = 'idle' | 'error';
+type SessionDevServerState = {
+    running: boolean;
+    previewUrl: string | null;
+};
 
 type PreviewNavigationAction = 'back' | 'forward' | 'reload';
 type TerminalBootstrapSlot = string;
@@ -644,6 +651,9 @@ export function SessionView({
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
+    const [isStoppingDevServer, setIsStoppingDevServer] = useState(false);
+    const [isAwaitingDevServerPreview, setIsAwaitingDevServerPreview] = useState(false);
+    const [devServerState, setDevServerState] = useState<SessionDevServerState>({ running: false, previewUrl: null });
     const [isTerminalForegroundProcessRunning, setIsTerminalForegroundProcessRunning] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
     const [isRebasing, setIsRebasing] = useState(false);
@@ -678,6 +688,7 @@ export function SessionView({
     const [terminalTabIds, setTerminalTabIds] = useState<string[]>([MAIN_TERMINAL_TAB_ID]);
     const [activeTerminalTabId, setActiveTerminalTabId] = useState<string>(MAIN_TERMINAL_TAB_ID);
     const activeTerminalTabIdRef = useRef(activeTerminalTabId);
+    const pendingDevServerPreviewLoadRef = useRef(false);
     const floatingTerminalEnvironments = useMemo(
         () => parseTerminalSessionEnvironmentsFromSrc(floatingTerminalSrc),
         [floatingTerminalSrc],
@@ -1685,68 +1696,122 @@ export function SessionView({
         setFeedback(`Opened preview in new tab: ${normalizedTarget}`);
     }, [loadedPreviewTargetUrl, previewInputUrl, previewUrl]);
 
-    const handleStartDevServer = async () => {
-        const script = devServerScript?.trim();
-        if (!script || isTerminalForegroundProcessRunning) return;
+    const refreshDevServerState = useCallback(async (options?: { quiet?: boolean }) => {
+        const result = await getSessionDevServerState(sessionName);
+        if (!result.success) {
+            if (!options?.quiet) {
+                setFeedback(result.error || 'Failed to load dev server state');
+            }
+            return null;
+        }
 
-        const terminalReady = await ensureTerminalService();
-        if (!terminalReady) return;
+        const nextState = {
+            running: Boolean(result.running),
+            previewUrl: result.previewUrl || null,
+        };
+        setDevServerState(nextState);
 
-        const iframe = terminalFramesRef.current[activeTerminalTabId];
-        if (!iframe) {
-            setFeedback('Terminal is still starting');
+        if (pendingDevServerPreviewLoadRef.current && nextState.previewUrl) {
+            pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
+            void loadPreview(nextState.previewUrl, true);
+        }
+
+        return nextState;
+    }, [loadPreview, sessionName]);
+
+    useEffect(() => {
+        if (!devServerScript?.trim()) {
+            setDevServerState({ running: false, previewUrl: null });
+            pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
             return;
         }
 
-        // Auto-show terminal if minimized
-        setIsTerminalMinimized(false);
+        let cancelled = false;
+        const refresh = async (quiet = false) => {
+            if (cancelled) return;
+            await refreshDevServerState({ quiet });
+        };
+
+        void refresh(false);
+        const intervalId = window.setInterval(() => {
+            void refresh(true);
+        }, 3000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [devServerScript, refreshDevServerState, sessionName]);
+
+    const handleStartDevServer = async () => {
+        const script = devServerScript?.trim();
+        if (!script) return;
 
         setIsStartingDevServer(true);
+        pendingDevServerPreviewLoadRef.current = true;
+        setIsAwaitingDevServerPreview(true);
         setFeedback('Starting dev server...');
 
-        const checkAndInject = (attempts = 0) => {
-            if (attempts > 30) {
-                setFeedback('Failed to start dev server: terminal is not ready');
-                setIsStartingDevServer(false);
+        try {
+            const result = await startSessionDevServer(sessionName);
+            if (!result.success) {
+                pendingDevServerPreviewLoadRef.current = false;
+                setIsAwaitingDevServerPreview(false);
+                setFeedback(result.error || 'Failed to start dev server');
                 return;
             }
 
-            try {
-                const win = iframe.contentWindow as TerminalWindow | null;
-                if (win && win.term) {
-                    win.term.paste(script);
-
-                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                    if (textarea) {
-                        textarea.dispatchEvent(new KeyboardEvent('keypress', {
-                            bubbles: true,
-                            cancelable: true,
-                            charCode: 13,
-                            keyCode: 13,
-                            key: 'Enter',
-                            view: win
-                        }));
-                    } else {
-                        win.term.paste('\r');
-                    }
-
-                    win.focus();
-                    if (textarea) (textarea as HTMLElement).focus();
-
-                    setFeedback('Dev server start command sent');
-                    setIsStartingDevServer(false);
-                } else {
-                    setTimeout(() => checkAndInject(attempts + 1), 300);
-                }
-            } catch (e) {
-                console.error('Dev server injection error', e);
-                setFeedback('Failed to start dev server');
-                setIsStartingDevServer(false);
+            if (result.previewUrl) {
+                pendingDevServerPreviewLoadRef.current = false;
+                setIsAwaitingDevServerPreview(false);
+                await loadPreview(result.previewUrl, true);
+            } else {
+                await refreshDevServerState({ quiet: true });
             }
-        };
 
-        checkAndInject();
+            if (result.alreadyRunning) {
+                setFeedback('Dev server is already running');
+            } else if (result.removedStaleLock) {
+                setFeedback('Removed stale Next.js dev lock and started dev server');
+            } else {
+                setFeedback('Dev server started in background');
+            }
+        } catch (error) {
+            pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
+            console.error('Failed to start dev server:', error);
+            setFeedback(error instanceof Error ? error.message : 'Failed to start dev server');
+        } finally {
+            setIsStartingDevServer(false);
+        }
     };
+
+    const handleStopDevServer = useCallback(async () => {
+        if (!devServerScript?.trim()) return;
+
+        setIsStoppingDevServer(true);
+        pendingDevServerPreviewLoadRef.current = false;
+        setIsAwaitingDevServerPreview(false);
+        setFeedback('Stopping dev server...');
+
+        try {
+            const result = await stopSessionDevServer(sessionName);
+            if (!result.success) {
+                setFeedback(result.error || 'Failed to stop dev server');
+                return;
+            }
+
+            await refreshDevServerState({ quiet: true });
+            setFeedback('Dev server stopped');
+        } catch (error) {
+            console.error('Failed to stop dev server:', error);
+            setFeedback(error instanceof Error ? error.message : 'Failed to stop dev server');
+        } finally {
+            setIsStoppingDevServer(false);
+        }
+    }, [devServerScript, refreshDevServerState, sessionName]);
     const handleTerminalLoad = (iframeFromEvent?: HTMLIFrameElement | null, tabIdFromEvent?: string) => {
         const tabId = tabIdFromEvent || activeTerminalTabId;
         const iframe = iframeFromEvent
@@ -1910,12 +1975,15 @@ export function SessionView({
     const gitControlsDisabled = isFolderMode;
     const gitControlsDisabledReason = FOLDER_MODE_GIT_DISABLED_REASON;
     const hasDevServerScript = Boolean(devServerScript?.trim());
-    const isDevButtonDisabled = !hasDevServerScript || isStartingDevServer || isTerminalForegroundProcessRunning;
+    const isDevServerButtonLoading = isStartingDevServer || isStoppingDevServer || isAwaitingDevServerPreview;
+    const isDevButtonDisabled = !hasDevServerScript || isDevServerButtonLoading;
     const devButtonTitle = !hasDevServerScript
         ? 'Set a dev server script to enable this button'
-        : isTerminalForegroundProcessRunning
-            ? 'A process is already running in the terminal'
-            : 'Run dev server script in terminal';
+        : devServerState.running
+            ? 'Stop tracked dev server'
+            : isTerminalForegroundProcessRunning
+                ? 'Start tracked dev server (another foreground terminal process is visible)'
+                : 'Start tracked dev server';
     const isMobileRightPanelOverlay = isMobileViewport;
     const isMobileOverlayExpanded = isMobileRightPanelOverlay && !isRightPanelCollapsed;
     const isPreviewPanelActive = !isRightPanelCollapsed && !isRepoViewActive;
@@ -2385,7 +2453,9 @@ export function SessionView({
                                             />
                                         ) : (
                                             <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                                                Run the dev server, or enter a URL above to load a preview.
+                                                {devServerState.running
+                                                    ? 'Dev server is running. Waiting for its preview URL, or enter one above.'
+                                                    : 'Run the dev server, or enter a URL above to load a preview.'}
                                             </div>
                                         )}
                                     </div>
@@ -2479,13 +2549,21 @@ export function SessionView({
                                                 </button>
                                                 <button
                                                     className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 disabled:opacity-30 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                                    onClick={() => void handleStartDevServer()}
+                                                    onClick={() => {
+                                                        if (devServerState.running) {
+                                                            void handleStopDevServer();
+                                                            return;
+                                                        }
+                                                        void handleStartDevServer();
+                                                    }}
                                                     disabled={isDevButtonDisabled}
                                                     title={devButtonTitle}
                                                     type="button"
                                                 >
-                                                    {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
-                                                    <span className="hidden min-[1700px]:inline">Dev</span>
+                                                    {isDevServerButtonLoading
+                                                        ? <span className="loading loading-spinner loading-xs"></span>
+                                                        : (devServerState.running ? <X className="h-3 w-3" /> : <Play className="h-3 w-3" />)}
+                                                    <span className="hidden min-[1700px]:inline">{devServerState.running ? 'Stop' : 'Dev'}</span>
                                                 </button>
                                                 <button
                                                     className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"

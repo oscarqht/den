@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import DismissibleAuthWarning from '@/components/DismissibleAuthWarning';
-import GitRepoSelector from '@/components/GitRepoSelector';
+import HomeDashboardContainer from '@/components/HomeDashboardContainer';
 import { isAuth0Configured, missingAuth0EnvVars } from '@/lib/auth0';
 
 export default function Home() {
@@ -9,7 +9,7 @@ export default function Home() {
     : null;
 
   return (
-    <>
+    <div className="min-h-screen bg-[#f6f6f8] text-slate-950 transition-colors dark:bg-[#0d1117] dark:text-white">
       <a
         href="https://github.com/m0o0scar/palx"
         target="_blank"
@@ -31,12 +31,8 @@ export default function Home() {
       </a>
       <main className="relative z-10 flex min-h-screen flex-col items-center justify-start p-4 transition-colors md:p-6">
         <DismissibleAuthWarning warning={authWarning} />
-        <GitRepoSelector
-          mode="home"
-          showLogout
-          logoutEnabled={isAuth0Configured}
-        />
+        <HomeDashboardContainer showLogout logoutEnabled={isAuth0Configured} />
       </main>
-    </>
+    </div>
   );
 }

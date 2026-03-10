@@ -69,7 +69,6 @@ export const metadata: Metadata = {
 };
 
 import { Providers } from './providers';
-import SplatBackground from '@/components/SplatBackground';
 
 export default function RootLayout({
   children,
@@ -89,7 +88,6 @@ export default function RootLayout({
       <body
         className="antialiased"
       >
-        <SplatBackground />
         <Providers>{children}</Providers>
       </body>
     </html>

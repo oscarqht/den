@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import GitRepoSelector from '@/components/GitRepoSelector';
+import NewSessionComposer from '@/components/NewSessionComposer';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -148,8 +148,7 @@ export default async function NewSessionPage({
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-[#f6f6f8] p-4 md:p-8 dark:bg-[#0d1117]">
-      <GitRepoSelector
-        mode="new"
+      <NewSessionComposer
         projectPath={projectPath ?? null}
         fromRepoName={fromName ?? null}
         prefillFromSession={prefillFromSession ?? null}

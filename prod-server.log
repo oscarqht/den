@@ -1,0 +1,14 @@
+
+> vibe-pal@0.70.0 start
+> node ./bin/viba.mjs
+
+Starting Palx on http://localhost:3200
+▲ Next.js 16.1.6
+- Local:         http://localhost:3200
+- Network:       http://192.168.10.233:3200
+
+✓ Starting...
+Opened http://localhost:3200 in your default browser.
+✓ Ready in 242ms
+tmux is unavailable; falling back to non-persistent ttyd shell mode.
+^C^C

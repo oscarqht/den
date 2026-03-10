@@ -1,10 +1,18 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useGitLog, useGitBranches, useGitStatus, useGitAction, useCommitDiff, useCommitFileDiff, CommitFile, useRepository, useUpdateRepository, useSettings, useUpdateSettings } from '@/hooks/use-git';
 import { useQueryClient } from '@tanstack/react-query';
-import { Repository, BranchTrackingInfo } from '@/lib/types';
+import { Repository, Commit } from '@/lib/types';
 import { GitGraph, GitGraphHandle } from './git-graph';
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import {
+  useDeferredValue,
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useRef,
+} from 'react';
 import { useTheme } from 'next-themes';
 import { cn, sanitizeBranchName, isFileBinary, isImageFile, getChangedLineCountFromDiff } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem } from '@/components/context-menu';
@@ -13,7 +21,6 @@ import { ImageDiffView } from './image-diff-view';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import type { TerminalWindow } from '@/hooks/useTerminalLink';
 import { toast } from '@/hooks/use-toast';
-import { CommitChangesView } from './commit-changes-view';
 import { BranchTreeNode, VisibilityMap, buildBranchTree, buildRemoteBranchTree, getEffectiveVisibility, collectAllBranchRefs, collectVisibleBranchRefs } from './branch-tree-utils';
 import { GroupHeader } from './group-header';
 import { BranchMenuOptions, BranchOperation, buildBranchContextMenuItems } from './branch-context-menu';
@@ -32,6 +39,17 @@ import {
   TERMINAL_THEME_LIGHT,
 } from '@/lib/ttyd-theme';
 import { buildPullAllPlan, buildPullAllToastPayload, parseTrackingUpstream } from './pull-all-utils';
+
+const LazyCommitChangesView = dynamic(
+  () => import('./commit-changes-view').then((module) => module.CommitChangesView),
+  {
+    loading: () => (
+      <div className="flex h-full items-center justify-center">
+        <span className="loading loading-spinner loading-md opacity-50"></span>
+      </div>
+    ),
+  },
+);
 
 
 const MIN_HISTORY_PANEL_HEIGHT = 100;
@@ -152,6 +170,13 @@ function formatCommitMessageForDisplay(message: string): string {
     .replace(/\\r\\n/g, '\n')
     .replace(/\\n/g, '\n');
 }
+
+type SelectedCommitRange = {
+  latestHash: string;
+  oldestHash: string;
+  latestCommit: Commit;
+  oldestCommit: Commit;
+};
 
 function normalizeRemoteRepoPath(path: string): string {
   const trimmed = path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -1401,7 +1426,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     () => (selectedHash ? log?.all.find((commit) => commit.hash === selectedHash) : null),
     [log?.all, selectedHash]
   );
-  const selectedCommitRange = useMemo(() => {
+  const selectedCommitRange = useMemo<SelectedCommitRange | null>(() => {
     if (!log?.all || selectedCommitHashes.length < 2) return null;
 
     const commitMap = new Map(log.all.map((commit) => [commit.hash, commit]));
@@ -1421,7 +1446,36 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
     return { latestHash, oldestHash, latestCommit, oldestCommit };
   }, [filteredCommitHashes, log?.all, selectedCommitHashes]);
+  const deferredSelectedHash = useDeferredValue(selectedHash);
+  const deferredSelectedCommitHashes = useDeferredValue(selectedCommitHashes);
+  const deferredSelectedCommitRange = useMemo<SelectedCommitRange | null>(() => {
+    if (!log?.all || deferredSelectedCommitHashes.length < 2) return null;
+
+    const commitMap = new Map(log.all.map((commit) => [commit.hash, commit]));
+    const filteredOrderMap = new Map(filteredCommitHashes.map((hash, index) => [hash, index]));
+    const orderedSelection = Array.from(new Set(deferredSelectedCommitHashes))
+      .filter((hash) => filteredOrderMap.has(hash))
+      .sort((a, b) => (filteredOrderMap.get(a) ?? Number.MAX_SAFE_INTEGER) - (filteredOrderMap.get(b) ?? Number.MAX_SAFE_INTEGER));
+
+    if (orderedSelection.length < 2) return null;
+
+    const latestHash = orderedSelection[0];
+    const oldestHash = orderedSelection[orderedSelection.length - 1];
+    const latestCommit = commitMap.get(latestHash);
+    const oldestCommit = commitMap.get(oldestHash);
+
+    if (!latestCommit || !oldestCommit) return null;
+
+    return { latestHash, oldestHash, latestCommit, oldestCommit };
+  }, [deferredSelectedCommitHashes, filteredCommitHashes, log?.all]);
   const isCommitRangeSelection = !!selectedCommitRange;
+  const isCommitDetailsPending = useMemo(() => {
+    if (selectedHash !== deferredSelectedHash) return true;
+    if (selectedCommitHashes.length !== deferredSelectedCommitHashes.length) return true;
+    return selectedCommitHashes.some((hash, index) => hash !== deferredSelectedCommitHashes[index]);
+  }, [deferredSelectedCommitHashes, deferredSelectedHash, selectedCommitHashes, selectedHash]);
+  const activeCommitDetailsRange = deferredSelectedCommitRange ?? selectedCommitRange;
+  const activeCommitDetailsHash = activeCommitDetailsRange ? null : deferredSelectedHash;
 
   useEffect(() => {
     if (filteredCommitHashes.length === 0) {
@@ -4870,6 +4924,9 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                     </span>
                   </>
                 )}
+                {isCommitDetailsPending && (
+                  <span className="loading loading-spinner loading-xs opacity-50 shrink-0"></span>
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
@@ -4882,16 +4939,16 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               </div>
             </div>
 
-            {isCommitRangeSelection && selectedCommitRange ? (
+            {activeCommitDetailsRange ? (
               <div className="flex-1 overflow-hidden min-h-0 flex flex-col bg-white dark:bg-[#161b22]">
                 <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/70 dark:bg-[#161b22] shrink-0">
                   Changes
                 </div>
                 <div className="flex-1 min-h-0">
-                  <CommitChangesView
+                  <LazyCommitChangesView
                     repoPath={repoPath}
-                    fromCommitHash={selectedCommitRange.oldestHash}
-                    toCommitHash={selectedCommitRange.latestHash}
+                    fromCommitHash={activeCommitDetailsRange.oldestHash}
+                    toCommitHash={activeCommitDetailsRange.latestHash}
                   />
                 </div>
               </div>
@@ -4934,7 +4991,13 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                     Changes
                   </div>
                   <div className="flex-1 min-h-0">
-                    <CommitChangesView repoPath={repoPath} commitHash={selectedHash} />
+                    {activeCommitDetailsHash ? (
+                      <LazyCommitChangesView repoPath={repoPath} commitHash={activeCommitDetailsHash} />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <span className="loading loading-spinner loading-md opacity-50"></span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -144,7 +144,10 @@ describe('buildAgentStartupPrompt', () => {
     });
 
     assert.ok(prompt);
-    assert.match(prompt!, /Plan mode: inspect the relevant code first/);
+    assert.match(prompt!, /Plan mode: in your first response of this session/);
+    assert.match(prompt!, /After the user approves that initial plan/);
+    assert.match(prompt!, /small or trivial follow-up changes directly without re-requesting approval/);
+    assert.match(prompt!, /Request approval again only when a proposed change is substantial/);
     assert.match(prompt!, /Attachments:\n- \/tmp\/spec\.md/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
   });

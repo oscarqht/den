@@ -1,7 +1,7 @@
 import type { SessionGitRepoContext, SessionWorkspaceMode } from './types.ts';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
-  'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
+  'Plan mode: in your first response of this session, inspect the relevant code, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands. After the user approves that initial plan, execute small or trivial follow-up changes directly without re-requesting approval. Request approval again only when a proposed change is substantial (for example meaningfully expands scope, changes approach, or introduces material risk).';
 const AUTO_COMMIT_INSTRUCTION =
   'If you changed files inside a Git repository and the work for that repository is complete, commit that repository without confirmation. Use a commit message with a clear title and a detailed body explaining what changed and why. If multiple repositories changed, handle each repository separately. If no repository applies, skip Git-only steps. If GITHUB_TOKEN or GITLAB_TOKEN is set, push each changed repository after committed rounds and create or update a pull or merge request for each changed repository; include the repository path and link in the first push reply. Prefer provider-native CLIs when available: for GitHub, `gh auth setup-git` can wire `GITHUB_TOKEN` into `git push`; for GitLab, use `glab` with `GITLAB_TOKEN` and honor `GITLAB_HOST` for self-hosted instances.';
 const AGENT_BROWSER_SKILL_INSTRUCTION =

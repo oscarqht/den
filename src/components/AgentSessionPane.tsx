@@ -11,6 +11,8 @@ import React, {
 } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, Clock3, Loader2, Paperclip, PlayCircle, Send, Square, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import { listRepoFiles, saveAttachments } from '@/app/actions/git';
 import { getBaseName } from '@/lib/path';
@@ -214,6 +216,20 @@ function firstLinePreview(value: string | null | undefined) {
   return firstLine || '';
 }
 
+function formatToolDisplayName(value: string | null | undefined) {
+  const text = trimEmpty(value);
+  if (!text) return 'unknown';
+  const normalized = text.replace(/\s*\{\s*$/, '').trim();
+  return normalized || text;
+}
+
+function formatToolPreview(value: string | null | undefined) {
+  const preview = firstLinePreview(value);
+  if (!preview) return '';
+  const normalized = preview.replace(/\s*\{\s*$/, '').trim();
+  return normalized;
+}
+
 function stripMarkdownSyntax(value: string) {
   return value
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
@@ -304,12 +320,25 @@ function MarkdownMessage({ value }: { value: string | null | undefined }) {
           code: ({ className, children }) => {
             const textContent = String(children).replace(/\n$/, '');
             const isBlock = Boolean(className) || textContent.includes('\n');
+            const language = /language-([\w-]+)/.exec(className || '')?.[1];
 
             if (isBlock) {
               return (
-                <code className="block overflow-x-auto whitespace-pre rounded-lg bg-slate-950/95 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-100 dark:bg-black">
+                <SyntaxHighlighter
+                  language={language}
+                  style={oneDark}
+                  PreTag="div"
+                  customStyle={{
+                    margin: 0,
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 0.75rem',
+                    background: 'rgba(2, 6, 23, 0.95)',
+                    fontSize: '11px',
+                    lineHeight: 1.6,
+                  }}
+                >
                   {textContent}
-                </code>
+                </SyntaxHighlighter>
               );
             }
 
@@ -453,10 +482,16 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
           </>
         ),
       });
-    case 'tool':
+    case 'tool': {
+      const toolName = formatToolDisplayName(item.tool);
+      const toolTitle = formatToolPreview(item.message)
+        || formatToolPreview(item.input)
+        || formatToolPreview(item.result)
+        || undefined;
+
       return renderCollapsibleHistoryItem({
-        label: `Tool: ${item.tool}`,
-        title: firstLinePreview(item.message) || firstLinePreview(item.input) || firstLinePreview(item.result) || undefined,
+        label: `Tool: ${toolName}`,
+        title: toolTitle,
         className: 'rounded-xl border border-slate-200/80 bg-slate-50/65 px-3 py-2 text-sm dark:border-[#30363d] dark:bg-[#0d1117]/75',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
         labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300',
@@ -481,6 +516,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
           </>
         ),
       });
+    }
     case 'fileChange':
       return renderCollapsibleHistoryItem({
         label: 'File Changes',

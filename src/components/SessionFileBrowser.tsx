@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List, Pin, PinOff } from 'lucide-react';
-import { getDirName } from '@/lib/path';
+import { getBaseName, getDirName } from '@/lib/path';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 const DEFAULT_VIEW_MODE_STORAGE_KEY = 'viba:session-file-browser:view-mode';
@@ -488,7 +488,7 @@ export default function SessionFileBrowser({
             onClick={handleGoUp}
             className="btn btn-sm btn-square btn-ghost"
             title="Go Up"
-            disabled={currentPath === '/' || !currentPath}
+            disabled={!currentPath || getDirName(currentPath) === currentPath}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -551,7 +551,7 @@ export default function SessionFileBrowser({
             <div className="flex items-center gap-2 overflow-x-auto">
               {pinnedFolderShortcuts.map((folderPath) => {
                 const isCurrent = folderPath === currentPath;
-                const label = folderPath.split('/').filter(Boolean).pop() || folderPath;
+                const label = getBaseName(folderPath) || folderPath;
                 return (
                   <div key={folderPath} className="join shrink-0">
                     <button

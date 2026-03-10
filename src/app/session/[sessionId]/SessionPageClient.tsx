@@ -133,6 +133,7 @@ export default function SessionPage() {
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
     const [terminalPersistenceMode, setTerminalPersistenceMode] = useState<'tmux' | 'shell'>('shell');
+    const [terminalShellKind, setTerminalShellKind] = useState<'posix' | 'powershell'>('posix');
     const [repoDisplayName, setRepoDisplayName] = useState<string | undefined>(undefined);
     const [sessionFaviconHref, setSessionFaviconHref] = useState<string>(SESSION_FALLBACK_FAVICON_PATH);
     const isFreshNavigation = searchParams.get('fresh') === '1';
@@ -313,6 +314,7 @@ export default function SessionPage() {
                 }
 
                 setTerminalPersistenceMode(bootstrap.terminalPersistenceMode);
+                setTerminalShellKind(bootstrap.terminalShellKind);
                 setMetadata(bootstrap.metadata);
                 setRepoDisplayName(bootstrap.repoDisplayName || undefined);
                 setTerminalSources(bootstrap.terminalSources);
@@ -418,6 +420,7 @@ export default function SessionPage() {
             onExit={handleExit}
             isResume={isResume}
             terminalPersistenceMode={terminalPersistenceMode}
+            terminalShellKind={terminalShellKind}
             agentTerminalSrc={terminalSources.agentTerminalSrc}
             floatingTerminalSrc={terminalSources.floatingTerminalSrc}
         />

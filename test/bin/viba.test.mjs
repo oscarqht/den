@@ -57,6 +57,17 @@ describe('getInstallStrategies', () => {
     assert.ok(labels.includes('sudo zypper'));
   });
 
+  it('returns Windows strategies on Windows', () => {
+    Object.defineProperty(process, 'platform', {
+      value: 'win32'
+    });
+
+    const strategies = getInstallStrategies('ttyd');
+    assert.strictEqual(strategies.length, 2);
+    assert.strictEqual(strategies[0].label, 'winget');
+    assert.strictEqual(strategies[1].label, 'scoop');
+  });
+
   it('returns empty array on unknown platform', () => {
     Object.defineProperty(process, 'platform', {
       value: 'aix' // AIX is a valid platform string but not handled
@@ -74,7 +85,14 @@ describe('getInstallStrategies', () => {
     const symlinkBin = path.join(tempDir, 'vibe-pal');
 
     try {
-      fs.symlinkSync(sourceBin, symlinkBin);
+      try {
+        fs.symlinkSync(sourceBin, symlinkBin);
+      } catch (error) {
+        if (originalPlatform === 'win32' && error && error.code === 'EPERM') {
+          return;
+        }
+        throw error;
+      }
       const result = spawnSync(process.execPath, [symlinkBin, '--help'], {
         encoding: 'utf8',
       });
@@ -99,6 +117,13 @@ describe('getBrowserOpenCommand', () => {
     assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'linux'), {
       command: 'xdg-open',
       args: ['http://localhost:3200'],
+    });
+  });
+
+  it('returns Windows start command', () => {
+    assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'win32'), {
+      command: 'cmd.exe',
+      args: ['/c', 'start', '', 'http://localhost:3200'],
     });
   });
 

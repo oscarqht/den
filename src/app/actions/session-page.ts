@@ -20,6 +20,7 @@ export type SessionPageBootstrapResult =
         success: true;
         metadata: SessionMetadata;
         terminalPersistenceMode: 'tmux' | 'shell';
+        terminalShellKind: 'posix' | 'powershell';
         terminalSources: {
             agentTerminalSrc: string;
             floatingTerminalSrc: string;
@@ -99,8 +100,12 @@ export async function getSessionPageBootstrap(sessionId: string): Promise<Sessio
     return {
         success: true,
         metadata,
-        terminalPersistenceMode: 'shell',
-        terminalSources,
+        terminalPersistenceMode: terminalSources.persistenceMode,
+        terminalShellKind: terminalSources.shellKind,
+        terminalSources: {
+            agentTerminalSrc: terminalSources.agentTerminalSrc,
+            floatingTerminalSrc: terminalSources.floatingTerminalSrc,
+        },
         repoDisplayName,
         sessionIconPath: iconResult.success ? (iconResult.iconPath || null) : null,
         isResume: !isFirstOpen,

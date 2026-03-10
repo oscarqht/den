@@ -1,5 +1,6 @@
 'use server';
 
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -9,7 +10,9 @@ import {
   buildTtydTerminalSrc,
   getTmuxSessionName,
   TerminalSessionEnvironment,
+  TerminalPersistenceMode,
   TerminalSessionRole,
+  TerminalShellKind,
 } from '@/lib/terminal-session';
 import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import { listRepoEntries } from '@/lib/repo-entry-list';
@@ -31,7 +34,7 @@ export type SupportedAgentCli = 'codex';
 
 type AgentCliConfig = {
   executable: string;
-  installCommand: string;
+  getInstallCommand: () => { command: string; args: string[] };
 };
 
 type ResolveRepoCardIconResult = {
@@ -43,7 +46,10 @@ type ResolveRepoCardIconResult = {
 const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
   codex: {
     executable: 'codex',
-    installCommand: 'npm i -g openai/codex',
+    getInstallCommand: () => ({
+      command: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      args: ['i', '-g', 'openai/codex'],
+    }),
   },
 };
 const CODEX_SKILL_TARGET_AGENTS = ['codex'] as const;
@@ -376,6 +382,76 @@ type ProcessResult = {
   output: string;
 };
 
+function getWindowsExecutableNames(command: string): string[] {
+  if (process.platform !== 'win32') {
+    return [command];
+  }
+
+  const pathExtEntries = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const lowerCommand = command.toLowerCase();
+  if (pathExtEntries.some((entry) => lowerCommand.endsWith(entry.toLowerCase()))) {
+    return [command];
+  }
+
+  return [command, ...pathExtEntries.map((entry) => `${command}${entry}`)];
+}
+
+function resolveCommandPath(command: string): string | null {
+  const pathEntries = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  for (const candidateName of getWindowsExecutableNames(command)) {
+    if (!candidateName) continue;
+
+    if (candidateName.includes(path.sep) && fsSync.existsSync(candidateName)) {
+      return candidateName;
+    }
+
+    for (const directory of pathEntries) {
+      const candidatePath = path.join(directory, candidateName);
+      if (fsSync.existsSync(candidatePath)) {
+        return candidatePath;
+      }
+    }
+  }
+
+  return null;
+}
+
+function isCommandAvailable(command: string): boolean {
+  return Boolean(resolveCommandPath(command));
+}
+
+function getTerminalShellKind(): TerminalShellKind {
+  return process.platform === 'win32' ? 'powershell' : 'posix';
+}
+
+function getShellCommandForTtyd(): { command: string; args: string[]; shellKind: TerminalShellKind } {
+  if (process.platform === 'win32') {
+    const powershellCommand = isCommandAvailable('pwsh.exe') ? 'pwsh.exe' : 'powershell.exe';
+    return {
+      command: powershellCommand,
+      args: ['-NoLogo'],
+      shellKind: 'powershell',
+    };
+  }
+
+  return {
+    command: 'bash',
+    args: [],
+    shellKind: 'posix',
+  };
+}
+
+function resolveTerminalPersistenceMode(): TerminalPersistenceMode {
+  if (process.platform === 'win32') {
+    return 'shell';
+  }
+
+  return isCommandAvailable('tmux') ? 'tmux' : 'shell';
+}
+
 async function runProcess(
   command: string,
   args: string[],
@@ -383,8 +459,9 @@ async function runProcess(
 ): Promise<ProcessResult> {
   const { spawn } = await import('child_process');
   return new Promise<ProcessResult>((resolve) => {
+    const resolvedCommand = resolveCommandPath(command) || command;
     const outputChunks: string[] = [];
-    const child = spawn(command, args, {
+    const child = spawn(resolvedCommand, args, {
       cwd: options?.cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -452,14 +529,15 @@ async function ensureCodexSkillsInstalledForCodex(): Promise<void> {
     return;
   }
 
-  const npxVersionResult = await runProcess('npx', ['--version']);
+  const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const npxVersionResult = await runProcess(npxCommand, ['--version']);
   if (npxVersionResult.exitCode !== 0) {
     console.warn('Skipping Codex skill installation: npx is not available.');
     return;
   }
 
   for (const skillDefinition of missingSkills) {
-    const addResult = await runProcess('npx', [
+    const addResult = await runProcess(npxCommand, [
       'skills',
       'add',
       skillDefinition.repoUrl,
@@ -590,16 +668,8 @@ export async function checkAgentCliInstalled(
   }
 
   try {
-    const { spawn } = await import('child_process');
     const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
-
-    const exitCode = await new Promise<number>((resolve) => {
-      const child = spawn('bash', ['-lc', `command -v ${cliConfig.executable}`], { stdio: 'ignore' });
-      child.on('close', (code) => resolve(code ?? 1));
-      child.on('error', () => resolve(1));
-    });
-
-    return { success: true, installed: exitCode === 0 };
+    return { success: true, installed: isCommandAvailable(cliConfig.executable) };
   } catch (error) {
     console.error('Failed to detect coding agent CLI:', error);
     return { success: false, installed: false, error: 'Failed to detect coding agent CLI installation status.' };
@@ -613,40 +683,19 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
   }
 
   try {
-    const { spawn } = await import('child_process');
     const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
+    const installCommand = cliConfig.getInstallCommand();
+    const result = await runProcess(installCommand.command, installCommand.args, { cwd: os.homedir() });
 
-    const outputChunks: string[] = [];
-    const exitCode = await new Promise<number>((resolve) => {
-      const child = spawn('bash', ['-lc', cliConfig.installCommand], {
-        cwd: os.homedir(),
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        outputChunks.push(chunk.toString());
-      });
-
-      child.stderr.on('data', (chunk: Buffer) => {
-        outputChunks.push(chunk.toString());
-      });
-
-      child.on('close', (code) => resolve(code ?? 1));
-      child.on('error', () => resolve(1));
-    });
-
-    if (exitCode === 0) {
+    if (result.exitCode === 0) {
       if (normalizedCli === 'codex') {
         await ensureCodexSkillsInstalledForCodex();
       }
       return { success: true };
     }
-
-    const detail = outputChunks.join('').trim();
     return {
       success: false,
-      error: detail || `Failed to install ${normalizedCli} CLI.`,
+      error: result.output || `Failed to install ${normalizedCli} CLI.`,
     };
   } catch (error) {
     console.error('Failed to install coding agent CLI:', error);
@@ -658,11 +707,14 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
 declare global {
   var ttydProcess: ReturnType<typeof import('child_process').spawn> | undefined;
   var ttydPersistenceMode: 'tmux' | 'shell' | undefined;
+  var ttydShellKind: TerminalShellKind | undefined;
 }
 
 type TerminalSessionSources = {
   agentTerminalSrc: string;
   floatingTerminalSrc: string;
+  persistenceMode: TerminalPersistenceMode;
+  shellKind: TerminalShellKind;
 };
 
 function resolveAgentCliFromSession(agentCli: string | undefined): SupportedAgentCli | null {
@@ -708,9 +760,19 @@ export async function getSessionTerminalSources(
   repoPaths: string[],
   agentCli?: string,
 ): Promise<TerminalSessionSources> {
+  const persistenceMode = resolveTerminalPersistenceMode();
+  const shellKind = getTerminalShellKind();
   const fallback: TerminalSessionSources = {
-    agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent'),
-    floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal'),
+    agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', undefined, {
+      persistenceMode,
+      shellKind,
+    }),
+    floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', undefined, {
+      persistenceMode,
+      shellKind,
+    }),
+    persistenceMode,
+    shellKind,
   };
 
   try {
@@ -721,8 +783,16 @@ export async function getSessionTerminalSources(
     const environments = [...gitEnvironments, ...agentEnvironments];
 
     return {
-      agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environments),
-      floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', environments),
+      agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environments, {
+        persistenceMode,
+        shellKind,
+      }),
+      floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', environments, {
+        persistenceMode,
+        shellKind,
+      }),
+      persistenceMode,
+      shellKind,
     };
   } catch (error) {
     console.error('Failed to resolve terminal session environment:', error);
@@ -730,7 +800,12 @@ export async function getSessionTerminalSources(
   }
 }
 
-export async function startTtydProcess(): Promise<{ success: boolean; persistenceMode?: 'tmux' | 'shell'; error?: string }> {
+export async function startTtydProcess(): Promise<{
+  success: boolean;
+  persistenceMode?: 'tmux' | 'shell';
+  shellKind?: TerminalShellKind;
+  error?: string;
+}> {
   if (global.ttydProcess) {
     if (global.ttydPersistenceMode === 'tmux') {
       try {
@@ -743,7 +818,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
         console.error('Failed to apply tmux mouse option:', error);
       }
     }
-    return { success: true, persistenceMode: global.ttydPersistenceMode || 'shell' };
+    return {
+      success: true,
+      persistenceMode: global.ttydPersistenceMode || 'shell',
+      shellKind: global.ttydShellKind || getTerminalShellKind(),
+    };
   }
 
   try {
@@ -762,11 +841,8 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
     } = process.env;
 
     const workingDir = os.homedir();
-    const hasTmux =
-      spawnSync('which', ['tmux'], {
-        stdio: 'ignore',
-        env: process.env,
-      }).status === 0;
+    const hasTmux = resolveTerminalPersistenceMode() === 'tmux';
+    const shellCommand = getShellCommandForTtyd();
 
     const ttydArgs = [
       '-p', '7681',
@@ -800,7 +876,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       persistenceMode = 'tmux';
     } else {
       console.warn('tmux is unavailable; falling back to non-persistent ttyd shell mode.');
-      ttydArgs.push('bash');
+      ttydArgs.push(shellCommand.command, ...shellCommand.args);
     }
 
     const child = spawn('ttyd', ttydArgs, {
@@ -822,19 +898,22 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       console.error('Failed to start ttyd:', err);
       global.ttydProcess = undefined;
       global.ttydPersistenceMode = undefined;
+      global.ttydShellKind = undefined;
     });
 
     child.on('exit', () => {
       global.ttydProcess = undefined;
       global.ttydPersistenceMode = undefined;
+      global.ttydShellKind = undefined;
     });
 
     global.ttydProcess = child;
     global.ttydPersistenceMode = persistenceMode;
+    global.ttydShellKind = shellCommand.shellKind;
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    return { success: true, persistenceMode };
+    return { success: true, persistenceMode, shellKind: shellCommand.shellKind };
   } catch (error) {
     console.error('Error starting ttyd:', error);
     return { success: false, error: 'Failed to start ttyd. Make sure ttyd is installed and in your PATH.' };
@@ -846,6 +925,10 @@ export async function setTmuxSessionMouseMode(
   role: TerminalSessionRole,
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  if (process.platform === 'win32' || !isCommandAvailable('tmux')) {
+    return { success: true };
+  }
+
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
@@ -881,6 +964,10 @@ export async function setTmuxSessionStatusVisibility(
   role: TerminalSessionRole,
   visible: boolean
 ): Promise<{ success: boolean; applied: boolean; error?: string }> {
+  if (process.platform === 'win32' || !isCommandAvailable('tmux')) {
+    return { success: true, applied: false };
+  }
+
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
@@ -915,16 +1002,12 @@ export async function terminateTmuxSessionRole(
   sessionName: string,
   role: TerminalSessionRole,
 ): Promise<{ success: boolean; removed: boolean; error?: string }> {
+  if (process.platform === 'win32' || !isCommandAvailable('tmux')) {
+    return { success: true, removed: false };
+  }
+
   try {
     const { spawnSync } = await import('child_process');
-    const tmuxExists =
-      spawnSync('which', ['tmux'], {
-        stdio: 'ignore',
-        env: process.env,
-      }).status === 0;
-
-    if (!tmuxExists) return { success: true, removed: false };
-
     const tmuxSession = getTmuxSessionName(sessionName, role);
     const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
       stdio: 'ignore',
@@ -952,15 +1035,12 @@ export async function terminateTmuxSessionRole(
 }
 
 export async function terminateSessionTerminalSessions(sessionName: string): Promise<void> {
+  if (process.platform === 'win32' || !isCommandAvailable('tmux')) {
+    return;
+  }
+
   try {
     const { spawnSync } = await import('child_process');
-    const tmuxExists =
-      spawnSync('which', ['tmux'], {
-        stdio: 'ignore',
-        env: process.env,
-      }).status === 0;
-
-    if (!tmuxExists) return;
 
     const prefixRole = '__viba_session_role__';
     const prefix = getTmuxSessionName(sessionName, prefixRole).replace(prefixRole, '');

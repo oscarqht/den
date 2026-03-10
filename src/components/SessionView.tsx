@@ -24,11 +24,17 @@ import SessionFileBrowser from './SessionFileBrowser';
 import { SessionRepoViewer, type SessionRepoViewerOption } from './SessionRepoViewer';
 import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
-import { buildTtydTerminalSrc, parseTerminalSessionEnvironmentsFromSrc, type TerminalSessionEnvironment } from '@/lib/terminal-session';
+import {
+    buildTtydTerminalSrc,
+    parseTerminalSessionEnvironmentsFromSrc,
+    parseTerminalWorkingDirectoryFromSrc,
+    type TerminalSessionEnvironment,
+    type TerminalShellKind,
+} from '@/lib/terminal-session';
 import { normalizePreviewUrl } from '@/lib/url';
 import { sanitizeBranchName } from '@/lib/utils';
 import { useTerminalLink, type TerminalWindow } from '@/hooks/useTerminalLink';
-import { quoteShellArg } from '@/lib/shell';
+import { buildShellExportEnvironmentCommand, buildShellSetDirectoryCommand } from '@/lib/shell';
 import {
     applyThemeToTerminalIframe,
     applyThemeToTerminalWindow,
@@ -114,10 +120,12 @@ const agentRunStateTone = (runState: SessionAgentRunState | 'idle' | null | unde
     }
 };
 
-const buildExportEnvironmentCommand = (environments: TerminalSessionEnvironment[]): string => {
+const buildExportEnvironmentCommand = (
+    environments: TerminalSessionEnvironment[],
+    shellKind: TerminalShellKind,
+): string => {
     if (environments.length === 0) return '';
-    const assignments = environments.map((env) => `${env.name}=${quoteShellArg(env.value)}`);
-    return `export ${assignments.join(' ')}`;
+    return buildShellExportEnvironmentCommand(environments, shellKind);
 };
 
 const loadConfiguredIde = async (): Promise<string | null> => {
@@ -163,6 +171,7 @@ export interface SessionViewProps {
     onExit: (force?: boolean) => void;
     isResume?: boolean;
     terminalPersistenceMode?: 'tmux' | 'shell';
+    terminalShellKind?: TerminalShellKind;
     agentTerminalSrc?: string;
     floatingTerminalSrc?: string;
 }
@@ -182,6 +191,7 @@ export function SessionView({
     onExit,
     isResume,
     terminalPersistenceMode: initialTerminalPersistenceMode = 'shell',
+    terminalShellKind: initialTerminalShellKind = 'posix',
     floatingTerminalSrc: floatingTerminalSrcOverride,
 }: SessionViewProps) {
     const headerButtonLabelClass = 'hidden min-[1900px]:inline';
@@ -257,19 +267,29 @@ export function SessionView({
     const iframeBeforeUnloadCleanupRef = useRef<Record<string, (() => void) | null>>({});
     const terminalStartupScriptStateRef = useRef<Record<string, TerminalStartupScriptState>>({});
     const [terminalPersistenceMode, setTerminalPersistenceMode] = useState<'tmux' | 'shell'>(initialTerminalPersistenceMode);
+    const [terminalShellKind, setTerminalShellKind] = useState<TerminalShellKind>(initialTerminalShellKind);
     const [isTerminalServiceReady, setIsTerminalServiceReady] = useState(false);
     const [isTerminalServiceStarting, setIsTerminalServiceStarting] = useState(false);
     const floatingTerminalSrc = useMemo(
         () => floatingTerminalSrcOverride || buildTtydTerminalSrc(sessionName, MAIN_TERMINAL_TAB_ID, null, {
+            persistenceMode: terminalPersistenceMode,
+            shellKind: terminalShellKind,
             workingDirectory: sessionWorkspaceRootPath,
         }),
-        [floatingTerminalSrcOverride, sessionName, sessionWorkspaceRootPath],
+        [floatingTerminalSrcOverride, sessionName, sessionWorkspaceRootPath, terminalPersistenceMode, terminalShellKind],
     );
     const shellBootstrapEnvironmentCommand = useMemo(() => {
         if (terminalPersistenceMode !== 'shell') return '';
         const environments = parseTerminalSessionEnvironmentsFromSrc(floatingTerminalSrc);
-        return buildExportEnvironmentCommand(environments);
-    }, [floatingTerminalSrc, terminalPersistenceMode]);
+        const workingDirectory = parseTerminalWorkingDirectoryFromSrc(floatingTerminalSrc);
+        const exportCommand = buildExportEnvironmentCommand(environments, terminalShellKind);
+        const directoryCommand = workingDirectory
+            ? buildShellSetDirectoryCommand(workingDirectory, terminalShellKind)
+            : '';
+        return [exportCommand, directoryCommand]
+            .filter(Boolean)
+            .join(terminalShellKind === 'powershell' ? '; ' : ' && ');
+    }, [floatingTerminalSrc, terminalPersistenceMode, terminalShellKind]);
 
     const terminalBootstrapStateRef = useRef<Record<string, TerminalBootstrapState>>({
         agent: 'idle',
@@ -517,6 +537,9 @@ export function SessionView({
     }, [getRuntimeBootstrapKey, getRuntimeBootstrapRegistry, getTerminalBootstrapKey]);
 
     const hasTerminalBootstrapped = useCallback((slot: TerminalBootstrapSlot): boolean => {
+        if (terminalPersistenceMode !== 'tmux') {
+            return false;
+        }
         if (terminalBootstrapStateRef.current[slot] === 'done') {
             return true;
         }
@@ -528,10 +551,17 @@ export function SessionView({
         } catch {
             return false;
         }
-    }, [getRuntimeBootstrapState, getTerminalBootstrapKey]);
+    }, [getRuntimeBootstrapState, getTerminalBootstrapKey, terminalPersistenceMode]);
 
     const beginTerminalBootstrap = useCallback((slot: TerminalBootstrapSlot): boolean => {
         const current = terminalBootstrapStateRef.current[slot] || 'idle';
+        if (terminalPersistenceMode !== 'tmux') {
+            if (current === 'in_progress') {
+                return false;
+            }
+            terminalBootstrapStateRef.current[slot] = 'in_progress';
+            return true;
+        }
         const runtimeState = getRuntimeBootstrapState(slot);
         if (current === 'done' || current === 'in_progress' || runtimeState === 'done' || runtimeState === 'in_progress') {
             return false;
@@ -539,7 +569,7 @@ export function SessionView({
         terminalBootstrapStateRef.current[slot] = 'in_progress';
         setRuntimeBootstrapState(slot, 'in_progress');
         return true;
-    }, [getRuntimeBootstrapState, setRuntimeBootstrapState]);
+    }, [getRuntimeBootstrapState, setRuntimeBootstrapState, terminalPersistenceMode]);
 
     const resetTerminalBootstrap = useCallback((slot: TerminalBootstrapSlot): void => {
         if (terminalBootstrapStateRef.current[slot] !== 'done') {
@@ -552,13 +582,16 @@ export function SessionView({
 
     const markTerminalBootstrapped = useCallback((slot: TerminalBootstrapSlot): void => {
         terminalBootstrapStateRef.current[slot] = 'done';
+        if (terminalPersistenceMode !== 'tmux') {
+            return;
+        }
         setRuntimeBootstrapState(slot, 'done');
         try {
             window.sessionStorage.setItem(getTerminalBootstrapKey(slot), '1');
         } catch {
             // Ignore storage failures (private mode / disabled storage).
         }
-    }, [getTerminalBootstrapKey, setRuntimeBootstrapState]);
+    }, [getTerminalBootstrapKey, setRuntimeBootstrapState, terminalPersistenceMode]);
 
     const isShellPromptReady = useCallback((term: TerminalWindow['term']): boolean => {
         const activeBuffer = term?.buffer?.active;
@@ -736,11 +769,13 @@ export function SessionView({
         const nextSources: Record<string, string> = {};
         for (const tabId of terminalTabIds) {
             nextSources[tabId] = buildTtydTerminalSrc(sessionName, tabId, floatingTerminalEnvironments, {
+                persistenceMode: terminalPersistenceMode,
+                shellKind: terminalShellKind,
                 workingDirectory: sessionWorkspaceRootPath,
             });
         }
         return nextSources;
-    }, [floatingTerminalEnvironments, sessionName, sessionWorkspaceRootPath, terminalTabIds]);
+    }, [floatingTerminalEnvironments, sessionName, sessionWorkspaceRootPath, terminalPersistenceMode, terminalShellKind, terminalTabIds]);
     const activeFloatingTerminalBootstrapSlot = useMemo(
         () => getFloatingTerminalBootstrapSlot(activeTerminalTabId),
         [activeTerminalTabId],
@@ -763,8 +798,9 @@ export function SessionView({
         setIsTerminalServiceReady(false);
         setIsTerminalServiceStarting(false);
         setTerminalPersistenceMode(initialTerminalPersistenceMode);
+        setTerminalShellKind(initialTerminalShellKind);
         terminalFramesRef.current = {};
-    }, [initialTerminalPersistenceMode, sessionName]);
+    }, [initialTerminalPersistenceMode, initialTerminalShellKind, sessionName]);
 
     useEffect(() => {
         activeTerminalTabIdRef.current = activeTerminalTabId;
@@ -787,6 +823,7 @@ export function SessionView({
             }
 
             setTerminalPersistenceMode(result.persistenceMode === 'tmux' ? 'tmux' : 'shell');
+            setTerminalShellKind(result.shellKind === 'powershell' ? 'powershell' : 'posix');
             setIsTerminalServiceReady(true);
             return true;
         } catch (error) {
@@ -1784,6 +1821,7 @@ export function SessionView({
         const iframe = iframeFromEvent
             || terminalFramesRef.current[tabId];
         if (!iframe) return;
+        const tabSrc = terminalTabSources[tabId] || floatingTerminalSrc;
         const isActiveTerminalFrame = (): boolean => (
             tabId === activeTerminalTabIdRef.current && iframe === terminalFramesRef.current[tabId]
         );
@@ -1889,9 +1927,9 @@ export function SessionView({
                     if (tabId === MAIN_TERMINAL_TAB_ID) {
                         injectTerminalStartupScript(bootstrapSlot, iframe, win, term);
                     } else {
-                        const targetPath = sessionWorkspaceRootPath || worktree || repo;
-                        if (targetPath) {
-                            term.paste(`cd ${quoteShellArg(targetPath)}`);
+                        const targetPath = parseTerminalWorkingDirectoryFromSrc(tabSrc) || sessionWorkspaceRootPath || worktree || repo;
+                        if (targetPath && !shellBootstrapEnvironmentCommand) {
+                            term.paste(buildShellSetDirectoryCommand(targetPath, terminalShellKind));
                             pressEnter();
                         }
                     }

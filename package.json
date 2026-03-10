@@ -23,9 +23,9 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "node ./bin/viba.mjs --dev --port \"$(npx gfport 3200)\"",
+    "dev": "node ./bin/viba.mjs --dev",
     "build": "next build --webpack",
-    "prepack": "rm -rf .next && npm run build",
+    "prepack": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && npm run build",
     "start": "node ./bin/viba.mjs",
     "lint": "eslint",
     "test": "node --experimental-strip-types --test src/**/*.test.ts test/**/*.test.mjs",

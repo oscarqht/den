@@ -83,22 +83,45 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 export function resolveExecutable(binaryNames: string[], env: NodeJS.ProcessEnv): string {
   const pathValue = env.PATH ?? "";
   const directories = pathValue.split(path.delimiter).filter(Boolean);
+  const windowsPathExts = process.platform === "win32"
+    ? (env.PATHEXT ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+      .split(";")
+      .map((extension) => extension.trim())
+      .filter(Boolean)
+    : [];
 
   for (const binaryName of binaryNames) {
-    if (binaryName.includes(path.sep) && existsSync(binaryName)) {
-      return binaryName;
+    const resolveCandidate = (candidate: string) => {
+      if (process.platform !== "win32") {
+        return existsSync(candidate) ? candidate : null;
+      }
+
+      if (path.extname(candidate)) {
+        return existsSync(candidate) ? candidate : null;
+      }
+
+      for (const extension of windowsPathExts) {
+        const windowsCandidate = `${candidate}${extension}`;
+        if (existsSync(windowsCandidate)) {
+          return windowsCandidate;
+        }
+      }
+
+      return existsSync(candidate) ? candidate : null;
+    };
+
+    if (binaryName.includes(path.sep)) {
+      const directCandidate = resolveCandidate(binaryName);
+      if (directCandidate) {
+        return directCandidate;
+      }
     }
 
     for (const directory of directories) {
       const candidate = path.join(directory, binaryName);
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-      if (process.platform === "win32") {
-        const windowsCandidate = `${candidate}.cmd`;
-        if (existsSync(windowsCandidate)) {
-          return windowsCandidate;
-        }
+      const resolvedCandidate = resolveCandidate(candidate);
+      if (resolvedCandidate) {
+        return resolvedCandidate;
       }
     }
   }

@@ -21,6 +21,7 @@ import {
   defaultSpawnEnv,
   normalizeText,
   readCommandOutput,
+  resolveExecutable,
   stringifyCompact,
 } from "@/lib/agent/common";
 import { buildCodexAppServerEnv } from "@/lib/agent/spawn-env";
@@ -218,6 +219,10 @@ function installCommandParts() {
   return [npmCommand, ["install", "-g", "@openai/codex@latest"]] as const;
 }
 
+function resolveCodexExecutable(env: NodeJS.ProcessEnv) {
+  return resolveExecutable(["codex", "codex.cmd"], env);
+}
+
 export function getInstallCommandString() {
   const [command, args] = installCommandParts();
   return [command, ...args].join(" ");
@@ -340,6 +345,7 @@ class CodexAppServerConnection {
     } = {},
   ) {
     const env = buildCodexAppServerEnv(options.extraEnv);
+    const codexExecutable = resolveCodexExecutable(env);
     const effectiveReasoningEffort = normalizeProviderReasoningEffort(
       "codex",
       options.reasoningEffort,
@@ -362,7 +368,7 @@ class CodexAppServerConnection {
     }
     args.push("app-server");
 
-    this.child = spawn("codex", args, {
+    this.child = spawn(codexExecutable, args, {
       env,
       stdio: ["pipe", "pipe", "pipe"],
       cwd: this.workspacePath,
@@ -606,8 +612,9 @@ async function readAccount() {
 
 export async function isCodexInstalled() {
   const env = defaultSpawnEnv();
+  const codexExecutable = resolveCodexExecutable(env);
   try {
-    const result = await readCommandOutput("codex", ["--version"], env);
+    const result = await readCommandOutput(codexExecutable, ["--version"], env);
     if (result.exitCode !== 0) {
       return { installed: false, version: null };
     }
@@ -654,7 +661,8 @@ export async function getAppStatus(): Promise<AppStatus> {
       defaultModel,
     };
   } catch {
-    const loginStatus = await readCommandOutput("codex", ["login", "status"], defaultSpawnEnv());
+    const env = defaultSpawnEnv();
+    const loginStatus = await readCommandOutput(resolveCodexExecutable(env), ["login", "status"], env);
     return {
       provider: "codex",
       installed: true,

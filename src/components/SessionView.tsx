@@ -78,6 +78,7 @@ type CleanupRef = { current: (() => void) | null };
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'viba-right-panel-collapsed';
+const PREVIEW_TARGET_STORAGE_KEY_PREFIX = 'viba-session-preview-target-url:';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
 const MOBILE_VIEWPORT_QUERY = '(max-width: 767px)';
 const TERMINAL_HEADER_HEIGHT = 36;
@@ -101,6 +102,10 @@ const getFloatingTerminalTabIdFromSlot = (slot: TerminalBootstrapSlot): string |
 };
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
+
+const getPreviewTargetStorageKey = (sessionName: string): string => (
+    `${PREVIEW_TARGET_STORAGE_KEY_PREFIX}${sessionName}`
+);
 
 const formatAgentRunState = (runState: SessionAgentRunState | 'idle' | null | undefined): string => {
     if (!runState) return 'idle';
@@ -260,6 +265,7 @@ export function SessionView({
 
     const agentPaneRef = useRef<AgentSessionPaneHandle>(null);
     const terminalFramesRef = useRef<Record<string, HTMLIFrameElement | null>>({});
+    const previewIframeRef = useRef<HTMLIFrameElement>(null);
     const previewAddressInputRef = useRef<HTMLInputElement>(null);
     const splitContainerRef = useRef<HTMLDivElement>(null);
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
@@ -689,6 +695,7 @@ export function SessionView({
     const [activeTerminalTabId, setActiveTerminalTabId] = useState<string>(MAIN_TERMINAL_TAB_ID);
     const activeTerminalTabIdRef = useRef(activeTerminalTabId);
     const pendingDevServerPreviewLoadRef = useRef(false);
+    const attemptedPreviewRestoreRef = useRef(false);
     const floatingTerminalEnvironments = useMemo(
         () => parseTerminalSessionEnvironmentsFromSrc(floatingTerminalSrc),
         [floatingTerminalSrc],
@@ -729,6 +736,10 @@ export function SessionView({
         setTerminalShellKind(initialTerminalShellKind);
         terminalFramesRef.current = {};
     }, [initialTerminalPersistenceMode, initialTerminalShellKind, sessionName]);
+
+    useEffect(() => {
+        attemptedPreviewRestoreRef.current = false;
+    }, [sessionName]);
 
     useEffect(() => {
         activeTerminalTabIdRef.current = activeTerminalTabId;
@@ -1030,6 +1041,12 @@ export function SessionView({
         if (!isRightPanelCollapsed) return;
         setIsSplitResizing(false);
     }, [isRightPanelCollapsed]);
+
+    useEffect(() => {
+        if (isRightPanelCollapsed || isRepoViewActive) {
+            attemptedPreviewRestoreRef.current = false;
+        }
+    }, [isRepoViewActive, isRightPanelCollapsed]);
 
     useEffect(() => {
         const mediaQuery = window.matchMedia(MOBILE_VIEWPORT_QUERY);
@@ -1604,6 +1621,14 @@ export function SessionView({
         }
     }, [handleRebaseSelect, newBaseBranchFrom, newBaseBranchName, repo, sessionName]);
 
+    const persistPreviewTargetUrl = useCallback((targetUrl: string) => {
+        try {
+            window.localStorage.setItem(getPreviewTargetStorageKey(sessionName), targetUrl);
+        } catch (error) {
+            console.warn('Failed to persist preview target URL:', error);
+        }
+    }, [sessionName]);
+
     const loadPreview = useCallback(async (rawUrl: string, openPreview: boolean): Promise<boolean> => {
         const normalized = normalizePreviewUrl(rawUrl);
         if (!normalized) {
@@ -1615,8 +1640,22 @@ export function SessionView({
         setFeedback(`Loading preview: ${normalized}`);
 
         try {
-            setPreviewUrl(normalized);
+            const response = await fetch('/api/preview-proxy/start', {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({ target: normalized }),
+            });
+
+            const payload = await response.json().catch(() => null) as { error?: string; proxyUrl?: string } | null;
+            if (!response.ok || !payload?.proxyUrl) {
+                throw new Error(payload?.error || 'Failed to start preview proxy');
+            }
+
+            setPreviewUrl(payload.proxyUrl);
             setLoadedPreviewTargetUrl(normalized);
+            persistPreviewTargetUrl(normalized);
             if (openPreview) {
                 setIsPreviewVisible(true);
             }
@@ -1628,6 +1667,17 @@ export function SessionView({
             setFeedback(`Failed to load preview: ${message}`);
             return false;
         }
+    }, [persistPreviewTargetUrl]);
+
+    const postPreviewControlMessage = useCallback((payload: { action?: PreviewNavigationAction; type: string }) => {
+        const previewWindow = previewIframeRef.current?.contentWindow;
+        if (!previewWindow) {
+            setFeedback('Preview is not ready yet');
+            return false;
+        }
+
+        previewWindow.postMessage(payload, '*');
+        return true;
     }, []);
 
     const handlePreviewNavigate = useCallback((action: PreviewNavigationAction) => {
@@ -1636,19 +1686,14 @@ export function SessionView({
             return;
         }
 
-        if (action !== 'reload') {
-            setFeedback('Back/forward preview controls were removed with the preview proxy');
+        if (!postPreviewControlMessage({ type: 'viba:preview-navigation', action })) {
             return;
         }
 
-        const normalizedTarget = normalizePreviewUrl(loadedPreviewTargetUrl || previewInputUrl || previewUrl);
-        if (!normalizedTarget) {
-            setFeedback('Preview target URL is unavailable');
-            return;
+        if (action === 'reload') {
+            setFeedback('Reloading preview...');
         }
-        setPreviewUrl(normalizedTarget);
-        setFeedback('Reloading preview...');
-    }, [loadedPreviewTargetUrl, previewInputUrl, previewUrl]);
+    }, [postPreviewControlMessage, previewUrl]);
 
     const handleUnloadPreview = useCallback(() => {
         if (!previewUrl) {
@@ -1657,7 +1702,6 @@ export function SessionView({
         }
 
         setPreviewUrl('');
-        setLoadedPreviewTargetUrl('');
         setFeedback('Preview unloaded');
     }, [previewUrl]);
 
@@ -1678,13 +1722,77 @@ export function SessionView({
         };
     }, [isPreviewVisible, previewInputUrl]);
 
+    useEffect(() => {
+        const handlePreviewMessage = (event: MessageEvent) => {
+            if (!previewIframeRef.current || event.source !== previewIframeRef.current.contentWindow) return;
+
+            const payload = event.data as {
+                type?: string;
+                url?: unknown;
+            } | null;
+            if (!payload || typeof payload !== 'object') return;
+
+            if (payload.type === 'viba:preview-ready') {
+                const previewWindow = previewIframeRef.current?.contentWindow;
+                if (previewWindow) {
+                    previewWindow.postMessage({ type: 'viba:preview-location-request' }, '*');
+                }
+                return;
+            }
+
+            if (payload.type === 'viba:preview-location-change') {
+                if (typeof payload.url === 'string' && payload.url.trim().length > 0) {
+                    const normalized = normalizePreviewUrl(payload.url);
+                    if (!normalized) return;
+                    setPreviewInputUrl(normalized);
+                    setLoadedPreviewTargetUrl(normalized);
+                    persistPreviewTargetUrl(normalized);
+                }
+            }
+        };
+
+        window.addEventListener('message', handlePreviewMessage);
+        return () => {
+            window.removeEventListener('message', handlePreviewMessage);
+        };
+    }, [persistPreviewTargetUrl]);
+
+    useEffect(() => {
+        if (isRightPanelCollapsed || isRepoViewActive || !isPreviewVisible || previewUrl) {
+            return;
+        }
+        if (attemptedPreviewRestoreRef.current) {
+            return;
+        }
+
+        const storedPreviewTarget = (() => {
+            try {
+                return window.localStorage.getItem(getPreviewTargetStorageKey(sessionName))?.trim() || '';
+            } catch {
+                return '';
+            }
+        })();
+
+        const fallbackTarget = storedPreviewTarget || devServerState.previewUrl || '';
+        if (!fallbackTarget) {
+            return;
+        }
+
+        attemptedPreviewRestoreRef.current = true;
+        void loadPreview(fallbackTarget, false);
+    }, [devServerState.previewUrl, isPreviewVisible, isRepoViewActive, isRightPanelCollapsed, loadPreview, previewUrl, sessionName]);
+
     const handlePreviewSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         void loadPreview(previewInputUrl, true);
     };
 
+    const handlePreviewIframeLoad = useCallback(() => {
+        postPreviewControlMessage({ type: 'viba:preview-location-request' });
+    }, [postPreviewControlMessage]);
+
     const handleOpenPreviewInNewTab = useCallback(() => {
-        const preferredTarget = loadedPreviewTargetUrl.trim() || previewInputUrl.trim() || previewUrl;
+        const preferredTarget = loadedPreviewTargetUrl.trim() || previewInputUrl.trim();
         const normalizedTarget = normalizePreviewUrl(preferredTarget);
 
         if (!normalizedTarget) {
@@ -1694,7 +1802,7 @@ export function SessionView({
 
         window.open(normalizedTarget, '_blank', 'noopener,noreferrer');
         setFeedback(`Opened preview in new tab: ${normalizedTarget}`);
-    }, [loadedPreviewTargetUrl, previewInputUrl, previewUrl]);
+    }, [loadedPreviewTargetUrl, previewInputUrl]);
 
     const refreshDevServerState = useCallback(async (options?: { quiet?: boolean }) => {
         const result = await getSessionDevServerState(sessionName);
@@ -2446,9 +2554,11 @@ export function SessionView({
                                             </div>
                                         ) : previewUrl ? (
                                             <iframe
+                                                ref={previewIframeRef}
                                                 src={previewUrl}
                                                 className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                                                 title="Dev server preview"
+                                                onLoad={handlePreviewIframeLoad}
                                                 sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
                                             />
                                         ) : (

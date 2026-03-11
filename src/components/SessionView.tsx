@@ -867,17 +867,49 @@ export function SessionView({
     }, []);
 
     const sendTerminalInput = useCallback((term: NonNullable<TerminalWindow['term']>, text: string): boolean => {
+        if (typeof term.paste === 'function') {
+            term.paste(text);
+            return true;
+        }
+
         const triggerDataEvent = term._core?.coreService?.triggerDataEvent;
         if (typeof triggerDataEvent === 'function') {
             triggerDataEvent(text, true);
             return true;
         }
-        if (typeof term.paste === 'function') {
-            term.paste(text);
-            return true;
-        }
+
         return false;
     }, []);
+
+    const sendFloatingTerminalEnter = useCallback((tabId = MAIN_TERMINAL_TAB_ID): boolean => {
+        const terminalSession = getFloatingTerminalSession(tabId);
+        if (!terminalSession) return false;
+
+        try {
+            const textarea = terminalSession.iframe.contentDocument?.querySelector('textarea.xterm-helper-textarea');
+            const TerminalKeyboardEvent = terminalSession.win.KeyboardEvent || KeyboardEvent;
+            if (textarea && typeof textarea.dispatchEvent === 'function') {
+                const eventInit = {
+                    bubbles: true,
+                    cancelable: true,
+                    code: 'Enter',
+                    charCode: 13,
+                    keyCode: 13,
+                    key: 'Enter',
+                    which: 13,
+                    view: terminalSession.win,
+                };
+                textarea.dispatchEvent(new TerminalKeyboardEvent('keydown', eventInit));
+                textarea.dispatchEvent(new TerminalKeyboardEvent('keypress', eventInit));
+                textarea.dispatchEvent(new TerminalKeyboardEvent('keyup', eventInit));
+                return true;
+            }
+        } catch {
+            // Fall back to direct terminal input when the helper textarea is unavailable.
+        }
+
+        return sendTerminalInput(terminalSession.term, '\r');
+    }, [getFloatingTerminalSession, sendTerminalInput]);
 
     const waitForFloatingTerminalSession = useCallback(async (
         tabId = MAIN_TERMINAL_TAB_ID,
@@ -2038,8 +2070,9 @@ export function SessionView({
                 return;
             }
 
+            focusFloatingTerminalSession(MAIN_TERMINAL_TAB_ID);
             const commandSent = sendTerminalInput(terminalSession.term, script);
-            const enterSent = commandSent && sendTerminalInput(terminalSession.term, '\r');
+            const enterSent = commandSent && sendFloatingTerminalEnter(MAIN_TERMINAL_TAB_ID);
             if (!enterSent) {
                 pendingDevServerPreviewLoadRef.current = false;
                 setIsAwaitingDevServerPreview(false);
@@ -2084,6 +2117,7 @@ export function SessionView({
                 return;
             }
 
+            focusFloatingTerminalSession(MAIN_TERMINAL_TAB_ID);
             const interruptSent = sendTerminalInput(terminalSession.term, '\u0003');
             if (!interruptSent) {
                 setFeedback('Failed to send interrupt to terminal');

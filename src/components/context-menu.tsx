@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 
 export interface ContextMenuItem {
@@ -191,7 +192,7 @@ export function ContextMenu({
     return (
         <div ref={containerRef} className={containerClassName} onContextMenu={handleContextMenu}>
             {children}
-            {isOpen && (
+            {isOpen && typeof document !== 'undefined' && createPortal(
                 <ul
                     ref={menuRef}
                     className="fixed z-[9999] menu p-2 shadow-lg bg-base-100 rounded-box border border-base-200"
@@ -201,7 +202,8 @@ export function ContextMenu({
                     }}
                 >
                     {items.map((item, idx) => renderMenuItem(item, `menu-${idx}`))}
-                </ul>
+                </ul>,
+                document.body
             )}
         </div>
     );

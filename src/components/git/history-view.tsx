@@ -4207,10 +4207,12 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                   Resolve conflicts with agent
                 </button>
               )}
-              <button className="btn btn-primary" onClick={handleRebase} disabled={isRebasing}>
-                {isRebasing && <span className="loading loading-spinner loading-xs"></span>}
-                Confirm
-              </button>
+              {rebaseConflictStatus !== 'has-conflicts' && (
+                <button className="btn btn-primary" onClick={handleRebase} disabled={isRebasing}>
+                  {isRebasing && <span className="loading loading-spinner loading-xs"></span>}
+                  Confirm
+                </button>
+              )}
             </div>
           </div>
           <form method="dialog" className="modal-backdrop">
@@ -4282,10 +4284,12 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                   Resolve conflicts with agent
                 </button>
               )}
-              <button className="btn btn-primary" onClick={handleMerge} disabled={isMerging}>
-                {isMerging && <span className="loading loading-spinner loading-xs"></span>}
-                Confirm
-              </button>
+              {mergeConflictStatus !== 'has-conflicts' && (
+                <button className="btn btn-primary" onClick={handleMerge} disabled={isMerging}>
+                  {isMerging && <span className="loading loading-spinner loading-xs"></span>}
+                  Confirm
+                </button>
+              )}
             </div>
           </div>
           <form method="dialog" className="modal-backdrop">

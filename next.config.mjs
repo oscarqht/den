@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: __dirname,
-  allowedDevOrigins: ["localhost", "*.localhost", "127.0.0.1"],
+  allowedDevOrigins: ["localhost", "*.localhost", "127.0.0.1", "*.nport.link"],
   serverExternalPackages: ["keytar"],
   devIndicators: {
     position: "top-right",

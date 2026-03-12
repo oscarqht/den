@@ -39,4 +39,20 @@ describe('buildRepoMentionSuggestions', () => {
       'src/components/Button.tsx',
     ]);
   });
+
+  it('keeps attachment-first ordering when the generic mention flow passes an empty query', () => {
+    const suggestions = buildRepoMentionSuggestions({
+      query: '',
+      currentAttachments: ['docs/spec.md'],
+      carriedAttachments: ['README.md'],
+      repoEntries: ['src/components', 'src/components/Button.tsx'],
+    });
+
+    assert.deepStrictEqual(suggestions, [
+      'docs/spec.md',
+      'README.md',
+      'src/components',
+      'src/components/Button.tsx',
+    ]);
+  });
 });

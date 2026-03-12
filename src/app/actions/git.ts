@@ -17,7 +17,14 @@ import {
 import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
 import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import { listRepoEntries } from '@/lib/repo-entry-list';
+import {
+  getCodexSkillsDirectory,
+  getGlobalAgentsSkillsDirectory,
+  isSkillInstalled,
+  listInstalledSkillsForProvider,
+} from '@/lib/agent-skills';
 import { getProjects } from '@/lib/store';
+import type { AgentProvider } from '@/lib/types';
 
 export type FileSystemItem = {
   name: string;
@@ -490,32 +497,6 @@ async function runProcess(
       });
     });
   });
-}
-
-function getCodexSkillsDirectory(): string {
-  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), '.codex');
-  return path.join(codexHome, 'skills');
-}
-
-function getGlobalAgentsSkillsDirectory(): string {
-  return path.join(os.homedir(), '.agents', 'skills');
-}
-
-async function isSkillInstalled(skillName: string): Promise<boolean> {
-  const targetSkillManifests = [
-    path.join(getGlobalAgentsSkillsDirectory(), skillName, 'SKILL.md'),
-    path.join(getCodexSkillsDirectory(), skillName, 'SKILL.md'),
-  ];
-
-  try {
-    await Promise.any(targetSkillManifests.map(async (manifestPath) => {
-      await fs.access(manifestPath);
-      return manifestPath;
-    }));
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function ensureCodexSkillsInstalledForCodex(): Promise<void> {
@@ -1194,6 +1175,15 @@ export async function listRepoFiles(repoPath: string, query: string = ''): Promi
     return await listRepoEntries(repoPath, query);
   } catch (error) {
     console.error('Failed to list project files and folders:', error);
+    return [];
+  }
+}
+
+export async function listInstalledAgentSkills(provider: AgentProvider): Promise<string[]> {
+  try {
+    return await listInstalledSkillsForProvider(provider);
+  } catch (error) {
+    console.error('Failed to list installed agent skills:', error);
     return [];
   }
 }

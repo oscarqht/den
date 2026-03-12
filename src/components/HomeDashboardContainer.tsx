@@ -42,11 +42,16 @@ type ThemeMode = 'auto' | 'light' | 'dark';
 const DEFAULT_PROJECT_STARTUP_COMMAND = '';
 const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
-const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 1500;
-const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 6;
+const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
+const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
 
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
+
+function readIsDocumentForegrounded(): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.visibilityState === 'visible' && document.hasFocus();
+}
 
 function arePathListsEqual(left: string[], right: string[]): boolean {
   if (left.length !== right.length) return false;
@@ -71,6 +76,7 @@ export default function HomeDashboardContainer({
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [themeMode, setThemeMode] = useState<ThemeMode>('auto');
   const [isDarkThemeActive, setIsDarkThemeActive] = useState(false);
+  const [isHomePageForegrounded, setIsHomePageForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
 
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
@@ -141,6 +147,23 @@ export default function HomeDashboardContainer({
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncForegroundState = () => {
+      setIsHomePageForegrounded(readIsDocumentForegrounded());
+    };
+
+    syncForegroundState();
+    document.addEventListener('visibilitychange', syncForegroundState);
+    window.addEventListener('focus', syncForegroundState);
+    window.addEventListener('blur', syncForegroundState);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncForegroundState);
+      window.removeEventListener('focus', syncForegroundState);
+      window.removeEventListener('blur', syncForegroundState);
     };
   }, []);
 
@@ -547,7 +570,7 @@ export default function HomeDashboardContainer({
 
   useEffect(() => {
     const recentProjects = config?.recentProjects ?? [];
-    if (recentProjects.length === 0) return;
+    if (!isHomePageForegrounded || recentProjects.length === 0) return;
 
     const runtimeWindow = window as Window & {
       requestIdleCallback?: (
@@ -607,7 +630,7 @@ export default function HomeDashboardContainer({
       cancelled = true;
       clearScheduledWork();
     };
-  }, [config?.recentProjects, discoverHomeProjectRepos, projectGitReposByPath]);
+  }, [config?.recentProjects, discoverHomeProjectRepos, isHomePageForegrounded, projectGitReposByPath]);
 
   useEffect(() => {
     const recentProjects = config?.recentProjects ?? [];

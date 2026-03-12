@@ -22,9 +22,14 @@ const MAX_SESSION_BOOTSTRAP_CACHE_SIZE = 20;
 const sessionBootstrapResultCache = new Map<string, Extract<SessionPageBootstrapResult, { success: true }>>();
 const sessionBootstrapPromiseCache = new Map<string, Promise<SessionPageBootstrapResult>>();
 
+function readIsDocumentForegrounded(): boolean {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible' && document.hasFocus();
+}
+
 function withFaviconCacheBuster(href: string, key: string): string {
     const separator = href.includes('?') ? '&' : '?';
-    return `${href}${separator}${key}=${Date.now()}`;
+    return `${href}${separator}${key}=${encodeURIComponent(href)}`;
 }
 
 function upsertManagedFaviconLink(rel: 'icon' | 'shortcut icon', href: string): void {
@@ -135,6 +140,7 @@ export default function SessionPage() {
     const [terminalShellKind, setTerminalShellKind] = useState<'posix' | 'powershell'>('posix');
     const [repoDisplayName, setRepoDisplayName] = useState<string | undefined>(undefined);
     const [sessionFaviconHref, setSessionFaviconHref] = useState<string>(SESSION_FALLBACK_FAVICON_PATH);
+    const [isSessionTabForegrounded, setIsSessionTabForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
     const isFreshNavigation = searchParams.get('fresh') === '1';
 
     const handleOpenSessionNotification = useCallback(() => {
@@ -151,6 +157,23 @@ export default function SessionPage() {
         document.documentElement.classList.add('session-page');
         return () => {
             document.documentElement.classList.remove('session-page');
+        };
+    }, []);
+
+    useEffect(() => {
+        const syncForegroundState = () => {
+            setIsSessionTabForegrounded(readIsDocumentForegrounded());
+        };
+
+        syncForegroundState();
+        document.addEventListener('visibilitychange', syncForegroundState);
+        window.addEventListener('focus', syncForegroundState);
+        window.addEventListener('blur', syncForegroundState);
+
+        return () => {
+            document.removeEventListener('visibilitychange', syncForegroundState);
+            window.removeEventListener('focus', syncForegroundState);
+            window.removeEventListener('blur', syncForegroundState);
         };
     }, []);
 
@@ -178,13 +201,24 @@ export default function SessionPage() {
     }, [isFreshNavigation, sessionId]);
 
     useEffect(() => {
-        if (!sessionId) return;
+        if (!sessionId || isSessionTabForegrounded) return;
 
         let cancelled = false;
         let socket: WebSocket | null = null;
         let reconnectTimer: number | null = null;
         let reconnectAttempt = 0;
         let browserNotification: Notification | null = null;
+
+        const closeSocket = () => {
+            if (!socket) return;
+
+            socket.onopen = null;
+            socket.onerror = null;
+            socket.onclose = null;
+            socket.onmessage = null;
+            socket.close();
+            socket = null;
+        };
 
         const clearReconnectTimer = () => {
             if (reconnectTimer === null) return;
@@ -203,7 +237,7 @@ export default function SessionPage() {
         };
 
         const showBrowserNotification = async (payload: SessionNotificationPayload) => {
-            if (!('Notification' in window)) return;
+            if (!('Notification' in window) || readIsDocumentForegrounded()) return;
 
             let permission = Notification.permission;
             if (permission === 'default') {
@@ -245,21 +279,27 @@ export default function SessionPage() {
                     throw new Error('Notification socket URL missing');
                 }
 
-                if (cancelled) return;
+                if (cancelled || readIsDocumentForegrounded()) return;
 
-                socket = new WebSocket(data.wsUrl);
-                socket.onopen = () => {
+                closeSocket();
+
+                const nextSocket = new WebSocket(data.wsUrl);
+                socket = nextSocket;
+                nextSocket.onopen = () => {
                     reconnectAttempt = 0;
                     clearReconnectTimer();
                 };
-                socket.onerror = () => {
-                    socket?.close();
+                nextSocket.onerror = () => {
+                    nextSocket.close();
                 };
-                socket.onclose = () => {
+                nextSocket.onclose = () => {
+                    if (socket === nextSocket) {
+                        socket = null;
+                    }
                     if (cancelled) return;
                     scheduleReconnect();
                 };
-                socket.onmessage = (event) => {
+                nextSocket.onmessage = (event) => {
                     try {
                         const payload = JSON.parse(event.data as string) as Partial<SessionNotificationPayload>;
                         if (
@@ -289,10 +329,10 @@ export default function SessionPage() {
         return () => {
             cancelled = true;
             clearReconnectTimer();
-            socket?.close();
+            closeSocket();
             browserNotification?.close();
         };
-    }, [handleOpenSessionNotification, sessionId]);
+    }, [handleOpenSessionNotification, isSessionTabForegrounded, sessionId]);
 
     useEffect(() => {
         if (!sessionId) return;

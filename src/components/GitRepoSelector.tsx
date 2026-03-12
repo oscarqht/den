@@ -5,6 +5,7 @@ import { FolderGit2, Plus, X, ChevronRight, ChevronDown, Bot, Trash2, ExternalLi
 import FileBrowser from './FileBrowser';
 import {
   GitBranch,
+  listInstalledAgentSkills,
   listRepoFiles,
   resolveRepoCardIcon,
   saveAttachments,
@@ -39,6 +40,11 @@ import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
+import {
+  type ActiveMention,
+  findActiveMention,
+  replaceActiveMention,
+} from '@/lib/task-description-mentions';
 import { buildAgentStartupPrompt, hasStartupTaskDescription } from '@/lib/agent-startup-prompt';
 import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import {
@@ -65,8 +71,8 @@ type ThemeMode = 'auto' | 'light' | 'dark';
 const DEFAULT_PROJECT_STARTUP_COMMAND = '';
 const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
-const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 1500;
-const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 6;
+const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
+const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
 
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
 const AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX = 'viba:agent-provider-models:';
@@ -77,8 +83,14 @@ const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   gemini: 'Gemini CLI',
   cursor: 'Cursor Agent CLI',
 };
+const SKILL_MENTION_SUGGESTION_LIMIT = 20;
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
+
+function readIsDocumentForegrounded(): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.visibilityState === 'visible' && document.hasFocus();
+}
 
 type PredefinedPrompt = {
   id: string;
@@ -250,6 +262,21 @@ function normalizeModelOption(input: unknown): ModelOption | null {
   };
 }
 
+function areMentionsEqual(left: ActiveMention | null, right: ActiveMention | null): boolean {
+  if (!left || !right) return left === right;
+  return left.trigger === right.trigger
+    && left.start === right.start
+    && left.end === right.end
+    && left.query === right.query;
+}
+
+function buildSkillMentionSuggestions(query: string, installedSkills: string[]): string[] {
+  const lowerQuery = query.toLowerCase();
+  return installedSkills
+    .filter((skillName) => skillName.toLowerCase().includes(lowerQuery))
+    .slice(0, SKILL_MENTION_SUGGESTION_LIMIT);
+}
+
 function readAgentModelCatalogCache(provider: AgentProvider): AgentModelCatalogCacheEntry | null {
   if (typeof window === 'undefined') return null;
 
@@ -320,6 +347,7 @@ export default function GitRepoSelector({
   const [isLoadingCloneCredentialOptions, setIsLoadingCloneCredentialOptions] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>('auto');
   const [isDarkThemeActive, setIsDarkThemeActive] = useState(false);
+  const [isPageForegrounded, setIsPageForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
 
   const [config, setConfig] = useState<Config | null>(null);
 
@@ -403,6 +431,9 @@ export default function GitRepoSelector({
   const ttydWarmupStartedRef = useRef(false);
   const latestStartupScriptRef = useRef('');
   const latestSelectedAgentProviderRef = useRef<AgentProvider>('codex');
+  const latestSelectedRepoRef = useRef<string | null>(null);
+  const latestTaskDescriptionRef = useRef('');
+  const latestCursorPositionRef = useRef(0);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
@@ -625,6 +656,23 @@ export default function GitRepoSelector({
       // Ignore localStorage errors and keep default theme mode.
     }
     setThemeMode('auto');
+  }, []);
+
+  useEffect(() => {
+    const syncForegroundState = () => {
+      setIsPageForegrounded(readIsDocumentForegrounded());
+    };
+
+    syncForegroundState();
+    document.addEventListener('visibilitychange', syncForegroundState);
+    window.addEventListener('focus', syncForegroundState);
+    window.addEventListener('blur', syncForegroundState);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncForegroundState);
+      window.removeEventListener('focus', syncForegroundState);
+      window.removeEventListener('blur', syncForegroundState);
+    };
   }, []);
 
   useEffect(() => {
@@ -1030,8 +1078,16 @@ export default function GitRepoSelector({
   }, [startupScript]);
 
   useEffect(() => {
+    latestSelectedRepoRef.current = selectedRepo;
+  }, [selectedRepo]);
+
+  useEffect(() => {
     latestSelectedAgentProviderRef.current = selectedAgentProvider;
   }, [selectedAgentProvider]);
+
+  useEffect(() => {
+    latestTaskDescriptionRef.current = initialMessage;
+  }, [initialMessage]);
 
   useEffect(() => {
     if (mode !== 'new') return;
@@ -1479,12 +1535,18 @@ export default function GitRepoSelector({
   // Suggestion state
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
-  const [, setSuggestionQuery] = useState('');
+  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Cache repo entries for @ mention suggestions.
   const [repoFilesCache, setRepoFilesCache] = useState<string[]>([]);
+  const [skillSuggestionsByProvider, setSkillSuggestionsByProvider] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    latestCursorPositionRef.current = cursorPosition;
+  }, [cursorPosition]);
+
   const selectedAttachmentNames = useMemo(
     () => attachments.map((attachmentPath) => getBaseName(attachmentPath)),
     [attachments],
@@ -1515,11 +1577,20 @@ export default function GitRepoSelector({
   );
   const hasPredefinedPrompts = mode === 'new' && predefinedPromptGroups.length > 0;
 
+  const hideSuggestions = useCallback(() => {
+    setShowSuggestions(false);
+    setSuggestionList([]);
+    setSelectedIndex(0);
+    setActiveMention(null);
+  }, []);
+
   const handleApplyPredefinedPrompt = useCallback((promptContent: string) => {
+    latestTaskDescriptionRef.current = promptContent;
+    latestCursorPositionRef.current = promptContent.length;
     setInitialMessage(promptContent);
     setCursorPosition(promptContent.length);
-    setShowSuggestions(false);
-  }, []);
+    hideSuggestions();
+  }, [hideSuggestions]);
   const handleSelectPredefinedPrompt = useCallback((promptId: string) => {
     if (!promptId) return;
     const prompt = predefinedPromptById.get(promptId);
@@ -1527,30 +1598,96 @@ export default function GitRepoSelector({
     handleApplyPredefinedPrompt(prompt.content);
   }, [handleApplyPredefinedPrompt, predefinedPromptById]);
 
-  const updateSuggestions = (query: string, files: string[], currentAttachments: string[], carriedAttachments: string[]) => {
-    const newList = buildRepoMentionSuggestions({
-      query,
-      repoEntries: files,
-      currentAttachments,
-      carriedAttachments,
-    });
-    setSuggestionList(newList);
-    setSelectedIndex(0); // Reset selection
-  };
+  const applySuggestionList = useCallback((mention: ActiveMention, suggestions: string[]) => {
+    setActiveMention(mention);
+    setSuggestionList(suggestions);
+    setSelectedIndex(0);
+    setShowSuggestions(suggestions.length > 0);
+  }, []);
+
+  const refreshMentionSuggestions = useCallback(async (value: string, position: number) => {
+    const mention = findActiveMention(value, position);
+    if (!mention) {
+      hideSuggestions();
+      return;
+    }
+
+    setActiveMention(mention);
+
+    if (mention.trigger === '@') {
+      const repoPath = selectedRepo;
+      if (!repoPath) {
+        applySuggestionList(mention, []);
+        return;
+      }
+
+      let files = repoFilesCache;
+      if (files.length === 0) {
+        files = await listRepoFiles(repoPath);
+        if (latestSelectedRepoRef.current === repoPath) {
+          setRepoFilesCache((previous) => (previous.length > 0 ? previous : files));
+        }
+      }
+
+      const latestMention = findActiveMention(latestTaskDescriptionRef.current, latestCursorPositionRef.current);
+      if (!areMentionsEqual(latestMention, mention) || latestSelectedRepoRef.current !== repoPath) {
+        return;
+      }
+
+      const suggestions = buildRepoMentionSuggestions({
+        query: mention.query,
+        repoEntries: files,
+        currentAttachments: selectedAttachmentNames,
+        carriedAttachments: prefilledAttachmentNames,
+      });
+      applySuggestionList(mention, suggestions);
+      return;
+    }
+
+    const provider = selectedAgentProvider;
+    let installedSkills = skillSuggestionsByProvider[provider];
+    if (!Object.prototype.hasOwnProperty.call(skillSuggestionsByProvider, provider)) {
+      installedSkills = await listInstalledAgentSkills(provider);
+      setSkillSuggestionsByProvider((previous) => (
+        Object.prototype.hasOwnProperty.call(previous, provider)
+          ? previous
+          : { ...previous, [provider]: installedSkills ?? [] }
+      ));
+    }
+
+    const latestMention = findActiveMention(latestTaskDescriptionRef.current, latestCursorPositionRef.current);
+    if (!areMentionsEqual(latestMention, mention) || latestSelectedAgentProviderRef.current !== provider) {
+      return;
+    }
+
+    const suggestions = buildSkillMentionSuggestions(mention.query, installedSkills ?? []);
+    applySuggestionList(mention, suggestions);
+  }, [
+    applySuggestionList,
+    hideSuggestions,
+    prefilledAttachmentNames,
+    repoFilesCache,
+    selectedAgentProvider,
+    selectedAttachmentNames,
+    selectedRepo,
+    skillSuggestionsByProvider,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
       if (showSuggestions && suggestionList.length > 0) {
         if (e.shiftKey) {
           e.preventDefault();
-          setShowSuggestions(false);
           const textarea = e.currentTarget;
           const start = textarea.selectionStart;
           const end = textarea.selectionEnd;
           const val = initialMessage;
           const newVal = val.slice(0, start) + '\n' + val.slice(end);
+          latestTaskDescriptionRef.current = newVal;
+          latestCursorPositionRef.current = start + 1;
           setInitialMessage(newVal);
           setCursorPosition(start + 1);
+          hideSuggestions();
           return;
         }
         e.preventDefault();
@@ -1577,7 +1714,7 @@ export default function GitRepoSelector({
         handleSelectSuggestion(suggestionList[selectedIndex]);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        setShowSuggestions(false);
+        hideSuggestions();
       }
     }
   };
@@ -1585,47 +1722,28 @@ export default function GitRepoSelector({
   const handleMessageChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     const pos = e.target.selectionStart;
+    latestTaskDescriptionRef.current = val;
+    latestCursorPositionRef.current = pos;
     setInitialMessage(val);
     setCursorPosition(pos);
-
-    // Check for @ mention
-    const textBeforeCursor = val.substring(0, pos);
-    const lastAt = textBeforeCursor.lastIndexOf('@');
-
-    if (lastAt !== -1) {
-      const query = textBeforeCursor.substring(lastAt + 1);
-      if (!/\s/.test(query)) {
-        setSuggestionQuery(query);
-        setShowSuggestions(true);
-
-        if (selectedRepo) {
-          let files = repoFilesCache;
-          if (repoFilesCache.length === 0) {
-            files = await listRepoFiles(selectedRepo);
-            setRepoFilesCache(files);
-          }
-          updateSuggestions(query, files, selectedAttachmentNames, prefilledAttachmentNames);
-        }
-        return;
-      }
-    }
-
-    setShowSuggestions(false);
+    await refreshMentionSuggestions(val, pos);
   };
 
   const handleSelectSuggestion = (suggestion: string) => {
-    const textBeforeCursor = initialMessage.substring(0, cursorPosition);
-    const lastAt = textBeforeCursor.lastIndexOf('@');
+    if (!activeMention) return;
 
-    if (lastAt !== -1) {
-      const prefix = initialMessage.substring(0, lastAt);
-      const suffix = initialMessage.substring(cursorPosition);
-
-      const newValue = `${prefix}@${suggestion} ${suffix}`;
-      setInitialMessage(newValue);
-      setShowSuggestions(false);
-    }
+    const result = replaceActiveMention(initialMessage, activeMention, suggestion);
+    latestTaskDescriptionRef.current = result.value;
+    latestCursorPositionRef.current = result.cursorPosition;
+    setInitialMessage(result.value);
+    setCursorPosition(result.cursorPosition);
+    hideSuggestions();
   };
+
+  useEffect(() => {
+    if (activeMention?.trigger !== '$') return;
+    void refreshMentionSuggestions(latestTaskDescriptionRef.current, latestCursorPositionRef.current);
+  }, [activeMention?.trigger, refreshMentionSuggestions, selectedAgentProvider]);
 
   const removeAttachment = (idx: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
@@ -2118,7 +2236,7 @@ export default function GitRepoSelector({
   }, [config, mode, saveAgentRuntimeSettings, selectedAgentModel, selectedAgentProvider, selectedReasoningEffort, selectedRepo]);
 
   useEffect(() => {
-    if (!isWaitingForLogin || !waitingForLoginProvider) {
+    if (!isWaitingForLogin || !waitingForLoginProvider || !isPageForegrounded) {
       return;
     }
 
@@ -2151,7 +2269,7 @@ export default function GitRepoSelector({
         window.clearTimeout(timer);
       }
     };
-  }, [agentProviders, fetchAgentStatus, isWaitingForLogin, waitingForLoginProvider]);
+  }, [agentProviders, fetchAgentStatus, isPageForegrounded, isWaitingForLogin, waitingForLoginProvider]);
 
   const startSession = async () => {
     if (!selectedRepo) return;
@@ -2576,7 +2694,7 @@ export default function GitRepoSelector({
   }, [discoverHomeProjectRepos, router]);
 
   useEffect(() => {
-    if (mode !== 'home' || recentProjects.length === 0) return;
+    if (mode !== 'home' || !isPageForegrounded || recentProjects.length === 0) return;
     const runtimeWindow = window as Window & {
       requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
       cancelIdleCallback?: (handle: number) => void;
@@ -2630,7 +2748,7 @@ export default function GitRepoSelector({
       cancelled = true;
       clearScheduledWork();
     };
-  }, [discoverHomeProjectRepos, mode, projectGitReposByPath, recentProjects]);
+  }, [discoverHomeProjectRepos, isPageForegrounded, mode, projectGitReposByPath, recentProjects]);
 
   useEffect(() => {
     if (mode !== 'home') return;
@@ -3385,7 +3503,7 @@ export default function GitRepoSelector({
                   <textarea
                     id="task-description"
                     className="h-full w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100 dark:placeholder:text-slate-500"
-                    placeholder={`Describe the task for the AI agent...\nExample:\n1. Create a new component for the user profile card.\n2. Ensure it fetches data from the /api/user endpoint.\n3. Add error handling for failed requests.\n\nTip: Type @ to mention files or folders.`}
+                    placeholder={`Describe the task for the AI agent...\nExample:\n1. Create a new component for the user profile card.\n2. Ensure it fetches data from the /api/user endpoint.\n3. Add error handling for failed requests.\n\nTip: Type @ to mention files or folders, and $ to mention skills.`}
                     value={initialMessage}
                     onChange={handleMessageChange}
                     onPaste={(event) => {
@@ -3393,10 +3511,16 @@ export default function GitRepoSelector({
                     }}
                     onKeyDown={handleKeyDown}
                     onClick={(event) => {
-                      setCursorPosition(event.currentTarget.selectionStart);
-                      setShowSuggestions(false);
+                      const nextCursorPosition = event.currentTarget.selectionStart;
+                      latestCursorPositionRef.current = nextCursorPosition;
+                      setCursorPosition(nextCursorPosition);
+                      hideSuggestions();
                     }}
-                    onKeyUp={(event) => setCursorPosition(event.currentTarget.selectionStart)}
+                    onKeyUp={(event) => {
+                      const nextCursorPosition = event.currentTarget.selectionStart;
+                      latestCursorPositionRef.current = nextCursorPosition;
+                      setCursorPosition(nextCursorPosition);
+                    }}
                     disabled={loading}
                   />
 

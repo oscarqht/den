@@ -97,6 +97,7 @@ const HISTORY_ITEM_GAP_PX = 12;
 const HISTORY_ITEM_OVERSCAN_PX = 600;
 const COMPOSER_MAX_HEIGHT = 112;
 const STREAMING_HISTORY_TAIL_COUNT = 4;
+const TIMELINE_BOTTOM_STICK_THRESHOLD_PX = 48;
 
 const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -660,6 +661,10 @@ function buildOptimisticHistoryItem(
   };
 }
 
+function isTimelineNearBottom(element: HTMLDivElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight < TIMELINE_BOTTOM_STICK_THRESHOLD_PX;
+}
+
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
   { sessionId, workspacePath, onFeedback, onHeaderMetaChange },
   ref,
@@ -684,6 +689,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [workspaceEntriesCache, setWorkspaceEntriesCache] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineContentRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const refreshTimerRef = useRef<number | null>(null);
@@ -770,7 +776,8 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
   useEffect(() => {
     const element = timelineRef.current;
-    if (!element) return;
+    const content = timelineContentRef.current;
+    if (!element || !content) return;
 
     const updateViewport = () => {
       setTimelineViewportHeight(element.clientHeight);
@@ -781,13 +788,17 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
     const observer = new ResizeObserver(() => {
       updateViewport();
+      if (shouldStickToBottomRef.current) {
+        element.scrollTop = element.scrollHeight;
+      }
     });
 
     observer.observe(element);
+    observer.observe(content);
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [displayHistory.length, liveTailHistory.length, virtualizedHistory.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1472,63 +1483,65 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           const target = event.currentTarget;
           setTimelineScrollTop(target.scrollTop);
           setTimelineViewportHeight(target.clientHeight);
-          shouldStickToBottomRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 48;
+          shouldStickToBottomRef.current = isTimelineNearBottom(target);
         }}
       >
-        {loading ? (
-          <div className="flex h-full min-h-[180px] items-center justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading agent timeline...
-            </div>
-          </div>
-        ) : displayHistory.length === 0 ? (
-          <div className="flex h-full min-h-[180px] items-center justify-center">
-            <div className="max-w-md rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/50 dark:text-slate-400">
-              No agent activity yet. Send a task below to start a background turn.
-            </div>
-          </div>
-        ) : (
-          <>
-            {virtualizedHistory.length > 0 ? (
-              <div
-                style={{
-                  height: historyMetrics.totalHeight,
-                  marginBottom: liveTailHistory.length > 0 ? HISTORY_ITEM_GAP_PX : 0,
-                  position: 'relative',
-                }}
-              >
-                {visibleHistoryItems.map(({ item, itemKey, top }) => (
-                  <div
-                    key={itemKey}
-                    className="absolute left-0 right-0"
-                    style={{ top }}
-                  >
-                    <VirtualHistoryRow
-                      item={item}
-                      onMeasure={handleMeasureHistoryItem}
-                      expandedItems={expandedHistoryItems}
-                      onToggleExpanded={handleToggleExpanded}
-                    />
-                  </div>
-                ))}
+        <div ref={timelineContentRef}>
+          {loading ? (
+            <div className="flex h-full min-h-[180px] items-center justify-center">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading agent timeline...
               </div>
-            ) : null}
-            {liveTailHistory.length > 0 ? (
-              <div className="space-y-3">
-                {liveTailHistory.map((item) => (
-                  <div key={item.id}>
-                    {renderHistoryItem(item, {
-                      ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
-                      expandedItems: expandedHistoryItems,
-                      onToggleExpanded: handleToggleExpanded,
-                    })}
-                  </div>
-                ))}
+            </div>
+          ) : displayHistory.length === 0 ? (
+            <div className="flex h-full min-h-[180px] items-center justify-center">
+              <div className="max-w-md rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/50 dark:text-slate-400">
+                No agent activity yet. Send a task below to start a background turn.
               </div>
-            ) : null}
-          </>
-        )}
+            </div>
+          ) : (
+            <>
+              {virtualizedHistory.length > 0 ? (
+                <div
+                  style={{
+                    height: historyMetrics.totalHeight,
+                    marginBottom: liveTailHistory.length > 0 ? HISTORY_ITEM_GAP_PX : 0,
+                    position: 'relative',
+                  }}
+                >
+                  {visibleHistoryItems.map(({ item, itemKey, top }) => (
+                    <div
+                      key={itemKey}
+                      className="absolute left-0 right-0"
+                      style={{ top }}
+                    >
+                      <VirtualHistoryRow
+                        item={item}
+                        onMeasure={handleMeasureHistoryItem}
+                        expandedItems={expandedHistoryItems}
+                        onToggleExpanded={handleToggleExpanded}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {liveTailHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {liveTailHistory.map((item) => (
+                    <div key={item.id}>
+                      {renderHistoryItem(item, {
+                        ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
+                        expandedItems: expandedHistoryItems,
+                        onToggleExpanded: handleToggleExpanded,
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="border-t border-slate-200 px-4 py-3 dark:border-[#30363d]">

@@ -25,6 +25,7 @@
   "scripts": {
     "dev": "node ./bin/viba.mjs --dev",
     "build": "next build",
+    "postbuild": "node ./scripts/copy-next-shims.mjs",
     "build:webpack": "next build --webpack",
     "prepack": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && npm run build",
     "start": "node ./bin/viba.mjs",

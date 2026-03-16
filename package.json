@@ -80,5 +80,8 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "prebuild-install": "npm:@scrypted/prebuild-install@7.1.10"
   }
 }

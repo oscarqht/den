@@ -86,7 +86,7 @@ const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 const TERMINAL_LOADING_OVERLAY_CLASS = 'pointer-events-none absolute inset-0 z-10 flex items-center justify-center';
-const FOLDER_MODE_GIT_DISABLED_REASON = 'Git controls are unavailable in folder mode because no repository context is active.';
+const NO_GIT_CONTEXT_REASON = 'Git controls are unavailable because this session has no repository context.';
 const MAIN_TERMINAL_TAB_ID = 'terminal';
 
 const readIsDocumentForegrounded = (): boolean => {
@@ -246,7 +246,10 @@ export function SessionView({
     const branch = activeGitRepo?.branchName || legacyBranch;
     const baseBranch = activeGitRepo?.baseBranch || legacyBaseBranch;
     const sessionWorkspaceRootPath = (legacyWorktree || legacyRepo || worktree || repo || '').trim();
-    const isFolderMode = workspaceMode === 'folder' || normalizedGitRepos.length === 0;
+    const hasGitContext = normalizedGitRepos.length > 0;
+    const usesIsolatedWorkspace = workspaceMode === 'single_worktree' || workspaceMode === 'multi_repo_worktree';
+    const usesDirectSourceWorkspace = workspaceMode === 'local_source';
+    const gitControlsUnavailable = !hasGitContext;
     const repoViewerOptions = useMemo<SessionRepoViewerOption[]>(() => {
         if (normalizedGitRepos.length <= 1) return [];
 
@@ -1288,8 +1291,8 @@ export function SessionView({
     }, [isRepoViewActive, isRightPanelCollapsed]);
 
     const handleChangesButtonClick = useCallback(() => {
-        if (isFolderMode) {
-            setFeedback(FOLDER_MODE_GIT_DISABLED_REASON);
+        if (gitControlsUnavailable) {
+            setFeedback(NO_GIT_CONTEXT_REASON);
             return;
         }
 
@@ -1305,7 +1308,7 @@ export function SessionView({
         }
 
         setIsRepoViewActive(true);
-    }, [isFolderMode, isRepoViewActive, isRightPanelCollapsed]);
+    }, [gitControlsUnavailable, isRepoViewActive, isRightPanelCollapsed]);
 
     useEffect(() => {
         if (!isSplitResizing) return;
@@ -1555,11 +1558,13 @@ export function SessionView({
 
     const runCleanup = async (requireConfirmation = true): Promise<boolean> => {
         if (!sessionName || !legacyRepo) return false;
-        if (!isFolderMode && (!repo || !worktree || !branch)) return false;
+        if (usesIsolatedWorkspace && (!repo || !worktree || !branch)) return false;
         if (requireConfirmation) {
-            const prompt = isFolderMode
-                ? 'Are you sure you want to delete this session? This will remove session metadata.'
-                : 'Are you sure you want to delete this session? This will remove the branch, worktree, and session metadata.';
+            const prompt = usesIsolatedWorkspace
+                ? 'Are you sure you want to delete this session? This will remove the branch, worktree, and session metadata.'
+                : usesDirectSourceWorkspace
+                    ? 'Are you sure you want to delete this session? This will remove session metadata and stop session processes, but it will not delete the source folder.'
+                    : 'Are you sure you want to delete this session? This will remove session metadata.';
             if (!confirm(prompt)) return false;
         }
 
@@ -1617,7 +1622,7 @@ export function SessionView({
     }, [insertIntoAgentComposer]);
 
     const loadBaseBranchOptions = useCallback(async () => {
-        if (!sessionName || isFolderMode || !repo) {
+        if (!sessionName || gitControlsUnavailable || !repo) {
             setBaseBranchOptions([]);
             setCurrentBaseBranch('');
             setMainWorktreeBranch('');
@@ -1643,7 +1648,7 @@ export function SessionView({
             isLoadingBaseBranchesRef.current = false;
             setIsLoadingBaseBranches(false);
         }
-    }, [isFolderMode, repo, sessionName]);
+    }, [gitControlsUnavailable, repo, sessionName]);
 
     useEffect(() => {
         if (!sessionName) return;
@@ -1651,7 +1656,7 @@ export function SessionView({
     }, [loadBaseBranchOptions, sessionName]);
 
     const loadSessionDivergence = useCallback(async () => {
-        if (!sessionName || isFolderMode || !repo) {
+        if (!sessionName || gitControlsUnavailable || !repo) {
             setDivergence({ ahead: 0, behind: 0 });
             return;
         }
@@ -1664,7 +1669,7 @@ export function SessionView({
         } catch (e) {
             console.error('Failed to load branch divergence:', e);
         }
-    }, [isFolderMode, repo, sessionName]);
+    }, [gitControlsUnavailable, repo, sessionName]);
 
     useEffect(() => {
         if (!sessionName || !currentBaseBranch) {
@@ -2424,8 +2429,8 @@ export function SessionView({
     const rebaseButtonTitle = currentBaseBranch
         ? `Select base branch and rebase onto ${currentBaseBranch}`
         : 'Select base branch and rebase';
-    const gitControlsDisabled = isFolderMode;
-    const gitControlsDisabledReason = FOLDER_MODE_GIT_DISABLED_REASON;
+    const gitControlsDisabled = gitControlsUnavailable;
+    const gitControlsDisabledReason = NO_GIT_CONTEXT_REASON;
     const hasDevServerScript = Boolean(devServerScript?.trim());
     const isDevServerButtonLoading = isStartingDevServer || isStoppingDevServer || isAwaitingDevServerPreview;
     const isDevButtonDisabled = !hasDevServerScript || isDevServerButtonLoading;
@@ -2581,7 +2586,7 @@ export function SessionView({
                         <button
                             className="btn btn-ghost btn-error btn-xs h-6 min-h-6 rounded-none rounded-r border-none px-2 hover:border-transparent hover:bg-error/20 dark:text-red-300"
                             onClick={handleCleanup}
-                            disabled={isMerging || isRebasing || (!isFolderMode && !worktree)}
+                            disabled={isMerging || isRebasing || (usesIsolatedWorkspace && !worktree)}
                             title="Clean up and exit"
                         >
                             <Trash2 className="w-3 h-3" />
@@ -2607,9 +2612,9 @@ export function SessionView({
                             type="button"
                             className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 hover:bg-base-content/10 dark:hover:bg-[#30363d]/60 ${isChangesPanelActive ? 'bg-slate-100 text-slate-900 dark:bg-[#30363d] dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}
                             onClick={handleChangesButtonClick}
-                            disabled={isFolderMode}
+                            disabled={gitControlsDisabled}
                             aria-pressed={isChangesPanelActive}
-                            title={isFolderMode
+                            title={gitControlsDisabled
                                 ? gitControlsDisabledReason
                                 : isChangesPanelActive
                                     ? 'Hide repository viewer'

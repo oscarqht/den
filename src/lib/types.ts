@@ -101,7 +101,9 @@ export interface GitConflictState {
   canContinue: boolean;
 }
 
-export type SessionWorkspaceMode = 'single_worktree' | 'multi_repo_worktree' | 'folder';
+export type SessionWorkspaceMode = 'single_worktree' | 'multi_repo_worktree' | 'folder' | 'local_source';
+
+export type SessionWorkspacePreference = 'workspace' | 'local';
 
 export interface SessionGitRepoContext {
   sourceRepoPath: string;

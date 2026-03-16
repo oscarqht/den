@@ -151,20 +151,24 @@ export function ContextMenu({
 
     const renderMenuItem = (item: ContextMenuItem, key: string) => {
         const hasChildren = !!item.children?.length;
+        const handleItemClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (item.disabled || hasChildren) {
+                return;
+            }
+            item.onClick?.();
+            setIsOpen(false);
+        };
 
         return (
             <li key={key} className={cn(hasChildren && "relative group/submenu")}>
-                <a
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (item.disabled || hasChildren) {
-                            return;
-                        }
-                        item.onClick?.();
-                        setIsOpen(false);
-                    }}
+                <button
+                    type="button"
+                    onClick={handleItemClick}
                     className={cn(
                         "flex items-center gap-2",
+                        "w-full text-left",
                         "whitespace-nowrap",
                         item.danger && "text-error",
                         item.disabled && "opacity-40 pointer-events-none",
@@ -176,11 +180,14 @@ export function ContextMenu({
                         <span>{item.labelNode ?? item.label}</span>
                     </span>
                     {hasChildren && <i className="iconoir-nav-arrow-right text-[12px]" aria-hidden="true" />}
-                </a>
+                </button>
                 {hasChildren && (
                     <>
                         <span className="hidden group-hover/submenu:block absolute left-full top-0 h-full w-3" />
-                        <ul className="hidden group-hover/submenu:block absolute left-[calc(100%-1px)] top-0 menu !m-0 p-2 shadow-lg bg-base-100 rounded-box border border-base-200 min-w-[220px] z-[10000] [&:before]:hidden">
+                        <ul
+                            data-context-menu-root="true"
+                            className="hidden group-hover/submenu:block absolute left-[calc(100%-1px)] top-0 menu !m-0 p-2 shadow-lg bg-base-100 rounded-box border border-base-200 min-w-[220px] z-[10000] [&:before]:hidden"
+                        >
                             {item.children!.map((child, idx) => renderMenuItem(child, `${key}-${idx}`))}
                         </ul>
                     </>
@@ -195,6 +202,7 @@ export function ContextMenu({
             {isOpen && typeof document !== 'undefined' && createPortal(
                 <ul
                     ref={menuRef}
+                    data-context-menu-root="true"
                     className="fixed z-[9999] menu p-2 shadow-lg bg-base-100 rounded-box border border-base-200"
                     style={{
                         left: `${position.x}px`,

@@ -909,6 +909,10 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     if (!isBranchPopoverOpen) return;
 
     const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[data-context-menu-root="true"]')) {
+        return;
+      }
       if (branchPopoverRef.current && !branchPopoverRef.current.contains(event.target as Node)) {
         setIsBranchPopoverOpen(false);
       }

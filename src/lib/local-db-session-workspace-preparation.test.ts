@@ -31,6 +31,29 @@ after(async () => {
 });
 
 describe('local DB session workspace preparation schema', () => {
+  it('creates app_config with global default agent columns', () => {
+    const db = localDbModule.getLocalDb();
+    const columns = db.prepare('PRAGMA table_info(app_config)').all() as Array<{
+      name: string;
+    }>;
+    const columnNames = new Set(columns.map((column) => column.name));
+
+    for (const requiredColumn of [
+      'default_root',
+      'selected_ide',
+      'agent_width',
+      'default_agent_provider',
+      'default_agent_model',
+      'default_agent_reasoning_effort',
+    ]) {
+      assert.equal(
+        columnNames.has(requiredColumn),
+        true,
+        `expected app_config.${requiredColumn} to exist`,
+      );
+    }
+  });
+
   it('rebuilds legacy sessions schema to allow folder-mode sessions without branch names', async () => {
     const dbPath = localDbModule.getLocalDbPath();
     await mkdir(path.dirname(dbPath), { recursive: true });

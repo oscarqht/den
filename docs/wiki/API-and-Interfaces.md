@@ -73,7 +73,7 @@ These are consumed heavily by:
 - [src/components/GitRepoSelector.tsx](../../src/components/GitRepoSelector.tsx)
 - [src/components/SessionView.tsx](../../src/components/SessionView.tsx)
 - [src/app/session/[sessionId]/SessionPageClient.tsx](../../src/app/session/%5BsessionId%5D/SessionPageClient.tsx)
-- [src/app/credentials/page.tsx](../../src/app/credentials/page.tsx)
+- [src/app/settings/page.tsx](../../src/app/settings/page.tsx)
 
 ## CLI Interface
 

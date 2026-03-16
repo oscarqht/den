@@ -129,7 +129,10 @@ function createSchema(db: Database.Database): void {
       singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
       default_root TEXT NOT NULL DEFAULT '',
       selected_ide TEXT NOT NULL DEFAULT 'vscode',
-      agent_width REAL NOT NULL DEFAULT 66.666
+      agent_width REAL NOT NULL DEFAULT 66.666,
+      default_agent_provider TEXT,
+      default_agent_model TEXT,
+      default_agent_reasoning_effort TEXT
     );
 
     CREATE TABLE IF NOT EXISTS app_config_recent_repos (
@@ -403,14 +406,19 @@ function migrateLegacyConfig(db: Database.Database): void {
 
   db.prepare(`
     INSERT OR REPLACE INTO app_config (
-      singleton_id, default_root, selected_ide, agent_width
+      singleton_id, default_root, selected_ide, agent_width,
+      default_agent_provider, default_agent_model, default_agent_reasoning_effort
     ) VALUES (
-      1, @defaultRoot, @selectedIde, @agentWidth
+      1, @defaultRoot, @selectedIde, @agentWidth,
+      @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort
     )
   `).run({
     defaultRoot: asString(config.defaultRoot) ?? '',
     selectedIde: asString(config.selectedIde) ?? 'vscode',
     agentWidth: asNumberOrNull(config.agentWidth) ?? 66.666,
+    defaultAgentProvider: asOptionalString(config.defaultAgentProvider),
+    defaultAgentModel: asOptionalString(config.defaultAgentModel),
+    defaultAgentReasoningEffort: asOptionalString(config.defaultAgentReasoningEffort),
   });
 
   db.prepare('DELETE FROM app_config_recent_repos').run();
@@ -864,6 +872,9 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'drafts', 'project_path TEXT');
   addColumnIfMissing(db, 'drafts', 'git_contexts_json TEXT');
   addColumnIfMissing(db, 'drafts', 'reasoning_effort TEXT');
+  addColumnIfMissing(db, 'app_config', 'default_agent_provider TEXT');
+  addColumnIfMissing(db, 'app_config', 'default_agent_model TEXT');
+  addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
   addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
 
   rebuildSessionsTableIfLegacyBranchNameIsRequired(db);

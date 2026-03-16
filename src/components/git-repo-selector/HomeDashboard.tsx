@@ -91,36 +91,23 @@ export function HomeDashboard({
           <button
             className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
             onClick={onOpenCredentials}
-            title="Manage GitHub/GitLab credentials"
-            aria-label="Manage GitHub/GitLab credentials"
+            title="Open settings"
+            aria-label="Open settings"
           >
             <KeyRound className="h-4 w-4" />
-            <span className="hidden max-w-24 truncate whitespace-nowrap lg:inline">Credentials</span>
+            <span className="hidden max-w-24 truncate whitespace-nowrap lg:inline">Settings</span>
           </button>
-          {showLogout && (
-            logoutEnabled ? (
-              <a
-                href="/auth/logout"
-                className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-                title="Log out"
-                aria-label="Log out"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden max-w-20 truncate whitespace-nowrap lg:inline">Logout</span>
-              </a>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-500 dark:text-slate-400"
-                title="Logout is unavailable because Auth0 is not configured"
-                aria-label="Logout is unavailable because Auth0 is not configured"
-                disabled
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden max-w-20 truncate whitespace-nowrap lg:inline">Logout</span>
-              </button>
-            )
-          )}
+          {showLogout && logoutEnabled ? (
+            <a
+              href="/auth/logout"
+              className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+              title="Log out"
+              aria-label="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden max-w-20 truncate whitespace-nowrap lg:inline">Logout</span>
+            </a>
+          ) : null}
           <button
             className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-white/10 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
             onClick={onCycleThemeMode}

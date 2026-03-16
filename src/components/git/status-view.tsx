@@ -3,80 +3,17 @@
 import { useGitStatus, useGitAction, useGitBranches } from '@/hooks/use-git';
 import AdHocAgentTerminalModal from '@/components/AdHocAgentTerminalModal';
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { buildAutoCommitAgentCommand, buildAutoCommitAgentPrompt } from '@/lib/ad-hoc-agent';
 import { cn, sanitizeBranchName } from '@/lib/utils';
 import { DiffView } from './diff-view';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
-import { type TerminalShellKind } from '@/lib/terminal-session';
-import { buildShellSetDirectoryCommand, joinShellStatements, quoteShellArg } from '@/lib/shell';
-import type { AgentProvider } from '@/lib/types';
 
 const EMPTY_FILES: Array<{ path: string; index: string; working_dir: string }> = [];
-const AUTO_COMMIT_CODEX_FLAGS = '-c approval_policy="never" exec --color never --sandbox danger-full-access --skip-git-repo-check -';
 
 function buildCommitMessage(subject: string, body: string): string {
     const trimmedSubject = subject.trim();
     const normalizedBody = body.replace(/\r\n/g, '\n');
     return normalizedBody.trim() ? `${trimmedSubject}\n\n${normalizedBody}` : trimmedSubject;
-}
-
-function buildAutoCommitAgentPrompt(isFirstCommit: boolean, initialBranch?: string): string {
-    const lines = [
-        'Run in this git repository and create a commit for the currently staged changes.',
-        'If you changed files inside a Git repository and the work for that repository is complete, commit that repository without confirmation.',
-        'Use a commit message with a clear title and a detailed body explaining what changed and why.',
-        'Do not push, do not open pull requests, and do not modify unstaged files.',
-        'Requirements:',
-        '1. Inspect only staged changes before writing the commit message.',
-        '2. Keep the commit focused on the staged changes only.',
-        '3. Create the commit and then run git status.',
-        '4. Print the created commit hash and subject in the terminal output.',
-    ];
-
-    if (isFirstCommit && initialBranch?.trim()) {
-        lines.push(`5. This repository has no commits yet. Ensure the first commit is on branch "${initialBranch.trim()}".`);
-    }
-
-    return lines.join('\n');
-}
-
-function buildAutoCommitAgentCommand(
-    repoPath: string,
-    shellKind: TerminalShellKind,
-    provider: AgentProvider,
-    model: string,
-    prompt: string,
-): string {
-    const normalizedModel = model.trim();
-    const useProviderDefaultModel = normalizedModel.length === 0;
-    const promptArg = quoteShellArg(prompt, shellKind);
-
-    const codexCommand = useProviderDefaultModel
-        ? `NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex ${AUTO_COMMIT_CODEX_FLAGS}`
-        : `NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex -c approval_policy="never" exec --color never --sandbox danger-full-access --skip-git-repo-check --model ${quoteShellArg(normalizedModel, shellKind)} -`;
-    const codexRun = shellKind === 'powershell'
-        ? `$inputPrompt = ${promptArg}; $inputPrompt | ${codexCommand}`
-        : `printf '%s\\n' ${promptArg} | ${codexCommand}`;
-
-    const geminiCommand = useProviderDefaultModel
-        ? `gemini --yolo -p ${promptArg}`
-        : `gemini --yolo --model ${quoteShellArg(normalizedModel, shellKind)} -p ${promptArg}`;
-    const cursorCommand = useProviderDefaultModel
-        ? `cursor-agent -f -p ${promptArg}`
-        : `cursor-agent -f --model ${quoteShellArg(normalizedModel, shellKind)} -p ${promptArg}`;
-
-    const providerCommand = provider === 'gemini'
-        ? geminiCommand
-        : (provider === 'cursor' ? cursorCommand : codexRun);
-
-    const codexLoginCommand = shellKind === 'powershell'
-        ? "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key | Out-Null }"
-        : 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null 2>&1 || true; fi';
-
-    return joinShellStatements([
-        buildShellSetDirectoryCommand(repoPath, shellKind),
-        provider === 'codex' ? codexLoginCommand : null,
-        providerCommand,
-    ], shellKind);
 }
 
 interface StatusFileTreeNode {
@@ -834,9 +771,9 @@ export function StatusView({ repoPath }: { repoPath: string }) {
                     workingDirectory={repoPath}
                     confirmLabel="Start auto-commit agent"
                     onClose={closeAutoCommitModal}
-                    buildCommand={({ provider, model, shellKind }) => {
+                    buildCommand={({ provider, model, reasoningEffort, shellKind }) => {
                         const prompt = buildAutoCommitAgentPrompt(autoCommitIsFirstCommit, autoCommitIsFirstCommit ? initialBranchName : undefined);
-                        return buildAutoCommitAgentCommand(repoPath, shellKind, provider, model, prompt);
+                        return buildAutoCommitAgentCommand(repoPath, shellKind, provider, model, prompt, reasoningEffort);
                     }}
                 />
             )}

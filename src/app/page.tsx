@@ -25,7 +25,7 @@ export default function Home() {
         </span>
       </a>
       <main className="relative z-10 flex min-h-screen flex-col items-center justify-start p-4 transition-colors md:p-6">
-        <HomeDashboardContainer showLogout logoutEnabled={isAuth0Configured} />
+        <HomeDashboardContainer showLogout={isAuth0Configured} logoutEnabled={isAuth0Configured} />
       </main>
     </div>
   );

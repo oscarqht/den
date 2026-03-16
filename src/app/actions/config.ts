@@ -1,11 +1,11 @@
 'use server';
 
-import { getLocalDb } from '@/lib/local-db';
+import { getLocalDb } from '../../lib/local-db.ts';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
-} from '@/lib/agent/reasoning';
-import type { AgentProvider, ReasoningEffort } from '@/lib/types';
+} from '../../lib/agent/reasoning.ts';
+import type { AgentProvider, ReasoningEffort } from '../../lib/types.ts';
 
 export interface ProjectSettings {
   agentProvider?: AgentProvider;
@@ -27,6 +27,9 @@ export interface Config {
   defaultRoot: string;
   selectedIde: string;
   agentWidth: number;
+  defaultAgentProvider?: AgentProvider;
+  defaultAgentModel?: string;
+  defaultAgentReasoningEffort?: ReasoningEffort;
   projectSettings: Record<string, ProjectSettings>;
   // Backward compatibility for callers that have not migrated yet.
   repoSettings: Record<string, ProjectSettings>;
@@ -48,6 +51,9 @@ type ConfigRow = {
   default_root: string;
   selected_ide: string;
   agent_width: number;
+  default_agent_provider: string | null;
+  default_agent_model: string | null;
+  default_agent_reasoning_effort: string | null;
 };
 
 type ProjectSettingsRow = {
@@ -86,26 +92,46 @@ function normalizeProjectSettings(settings: ProjectSettings): ProjectSettings {
   };
 }
 
+function normalizeConfig(config: Config): Config {
+  const normalizedDefaultAgentProvider = config.defaultAgentProvider;
+  return {
+    ...config,
+    defaultAgentReasoningEffort: normalizeProviderReasoningEffort(
+      normalizedDefaultAgentProvider,
+      config.defaultAgentReasoningEffort,
+    ),
+  };
+}
+
 function writeConfig(config: Config): void {
   const db = getLocalDb();
   const tx = db.transaction((nextConfig: Config) => {
+    const normalizedConfig = normalizeConfig(nextConfig);
     db.prepare(`
       INSERT OR REPLACE INTO app_config (
-        singleton_id, default_root, selected_ide, agent_width
+        singleton_id, default_root, selected_ide, agent_width,
+        default_agent_provider, default_agent_model, default_agent_reasoning_effort
       ) VALUES (
-        1, @defaultRoot, @selectedIde, @agentWidth
+        1, @defaultRoot, @selectedIde, @agentWidth,
+        @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort
       )
     `).run({
-      defaultRoot: nextConfig.defaultRoot,
-      selectedIde: nextConfig.selectedIde,
-      agentWidth: nextConfig.agentWidth,
+      defaultRoot: normalizedConfig.defaultRoot,
+      selectedIde: normalizedConfig.selectedIde,
+      agentWidth: normalizedConfig.agentWidth,
+      defaultAgentProvider: normalizedConfig.defaultAgentProvider ?? null,
+      defaultAgentModel: normalizedConfig.defaultAgentModel ?? null,
+      defaultAgentReasoningEffort: normalizeNullableProviderReasoningEffort(
+        normalizedConfig.defaultAgentProvider,
+        normalizedConfig.defaultAgentReasoningEffort,
+      ),
     });
 
     db.prepare('DELETE FROM app_config_recent_projects').run();
     const insertRecentProject = db.prepare(`
       INSERT INTO app_config_recent_projects (position, project_path) VALUES (?, ?)
     `);
-    nextConfig.recentProjects.forEach((projectPath, index) => {
+    normalizedConfig.recentProjects.forEach((projectPath, index) => {
       insertRecentProject.run(index, projectPath);
     });
 
@@ -113,7 +139,7 @@ function writeConfig(config: Config): void {
     const insertPinnedShortcut = db.prepare(`
       INSERT INTO app_config_pinned_folder_shortcuts (position, folder_path) VALUES (?, ?)
     `);
-    nextConfig.pinnedFolderShortcuts.forEach((folderPath, index) => {
+    normalizedConfig.pinnedFolderShortcuts.forEach((folderPath, index) => {
       insertPinnedShortcut.run(index, folderPath);
     });
 
@@ -127,7 +153,7 @@ function writeConfig(config: Config): void {
         @startupScript, @devServerScript, @alias
       )
     `);
-    for (const [projectPath, projectSettings] of Object.entries(nextConfig.projectSettings)) {
+    for (const [projectPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
       const normalizedProjectSettings = normalizeProjectSettings(projectSettings);
       insertProjectSettings.run({
         projectPath,
@@ -150,7 +176,9 @@ function writeConfig(config: Config): void {
 export async function getConfig(): Promise<Config> {
   const db = getLocalDb();
   const configRow = db.prepare(`
-    SELECT default_root, selected_ide, agent_width
+    SELECT
+      default_root, selected_ide, agent_width,
+      default_agent_provider, default_agent_model, default_agent_reasoning_effort
     FROM app_config
     WHERE singleton_id = 1
   `).get() as ConfigRow | undefined;
@@ -183,6 +211,14 @@ export async function getConfig(): Promise<Config> {
     defaultRoot: configRow?.default_root ?? DEFAULT_CONFIG.defaultRoot,
     selectedIde: configRow?.selected_ide ?? DEFAULT_CONFIG.selectedIde,
     agentWidth: configRow?.agent_width ?? DEFAULT_CONFIG.agentWidth,
+    defaultAgentProvider: configRow?.default_agent_provider
+      ? configRow.default_agent_provider as AgentProvider
+      : undefined,
+    defaultAgentModel: configRow?.default_agent_model ?? undefined,
+    defaultAgentReasoningEffort: normalizeProviderReasoningEffort(
+      configRow?.default_agent_provider,
+      configRow?.default_agent_reasoning_effort,
+    ),
     recentProjects: recentProjects.map((entry) => entry.project_path),
     recentRepos: recentProjects.map((entry) => entry.project_path),
     pinnedFolderShortcuts: pinnedFolderShortcuts.map((entry) => entry.folder_path),
@@ -210,7 +246,7 @@ export async function updateConfig(updates: Partial<Config>): Promise<Config> {
     normalizedUpdates.projectSettings = normalizedUpdates.repoSettings;
   }
 
-  const newConfig = { ...currentConfig, ...normalizedUpdates };
+  const newConfig = normalizeConfig({ ...currentConfig, ...normalizedUpdates });
   newConfig.recentRepos = newConfig.recentProjects;
   newConfig.repoSettings = newConfig.projectSettings;
   await saveConfig(newConfig);

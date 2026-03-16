@@ -314,9 +314,9 @@ export function RepoList() {
                     <p className="text-sm opacity-70 mt-1">Manage your git repositories.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Link href="/credentials" className="btn gap-2">
+                    <Link href="/settings" className="btn gap-2">
                         <i className="iconoir-key text-[20px]" aria-hidden="true" />
-                        Credentials
+                        Settings
                     </Link>
                     <button onClick={openCloneDialog} className="btn gap-2">
                         <i className="iconoir-git-fork text-[20px]" aria-hidden="true" />

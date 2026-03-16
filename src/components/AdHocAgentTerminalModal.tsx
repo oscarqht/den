@@ -1,8 +1,10 @@
 'use client';
 
+import { getConfig } from '@/app/actions/config';
 import { startTtydProcess } from '@/app/actions/git';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import type { TerminalWindow } from '@/hooks/useTerminalLink';
+import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import { buildTtydTerminalSrc, type TerminalShellKind } from '@/lib/terminal-session';
 import {
   applyThemeToTerminalWindow,
@@ -10,22 +12,14 @@ import {
   TERMINAL_THEME_DARK,
   TERMINAL_THEME_LIGHT,
 } from '@/lib/ttyd-theme';
-import type { AgentProvider, AppStatus, ModelOption, ProviderCatalogEntry } from '@/lib/types';
-import { ChevronDown } from 'lucide-react';
+import type { AgentProvider, AppStatus, ProviderCatalogEntry, ReasoningEffort } from '@/lib/types';
 import { useTheme } from 'next-themes';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
-const AD_HOC_AGENT_SELECTION_STORAGE_KEY_PREFIX = 'palx:ad-hoc-agent-selection:';
-const SUPPORTED_AGENT_PROVIDERS = ['codex', 'gemini', 'cursor'] as const;
 const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
   gemini: 'Gemini CLI',
   cursor: 'Cursor Agent CLI',
-};
-const DEFAULT_MODEL_OPTION: ModelOption = {
-  id: '',
-  label: 'Default model',
-  description: 'Use the provider default model.',
 };
 
 type AgentStatusResponse = {
@@ -35,14 +29,10 @@ type AgentStatusResponse = {
   error?: string;
 };
 
-type PersistedSelection = {
-  provider: AgentProvider;
-  model: string;
-};
-
 type BuildAdHocAgentCommandArgs = {
   provider: AgentProvider;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   shellKind: TerminalShellKind;
 };
 
@@ -69,42 +59,11 @@ function providerLabel(provider: string, providers: ProviderCatalogEntry[] = [])
     || provider;
 }
 
-function readPersistedSelection(scenarioKey: string): PersistedSelection | null {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const rawValue = window.localStorage.getItem(`${AD_HOC_AGENT_SELECTION_STORAGE_KEY_PREFIX}${scenarioKey}`);
-    if (!rawValue) return null;
-
-    const parsed = JSON.parse(rawValue) as Partial<PersistedSelection>;
-    const provider = normalizeProvider(parsed.provider);
-    const model = typeof parsed.model === 'string' ? parsed.model.trim() : '';
-    return { provider, model };
-  } catch {
-    return null;
-  }
-}
-
-function writePersistedSelection(scenarioKey: string, selection: PersistedSelection) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.setItem(
-      `${AD_HOC_AGENT_SELECTION_STORAGE_KEY_PREFIX}${scenarioKey}`,
-      JSON.stringify(selection),
-    );
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
 export default function AdHocAgentTerminalModal({
   isOpen,
-  scenarioKey,
   title,
   description,
   workingDirectory,
-  confirmLabel = 'Start agent',
   onClose,
   buildCommand,
 }: AdHocAgentTerminalModalProps) {
@@ -113,23 +72,28 @@ export default function AdHocAgentTerminalModal({
   const [agentProviders, setAgentProviders] = useState<ProviderCatalogEntry[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AgentProvider>('codex');
   const [selectedModel, setSelectedModel] = useState('');
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffort | ''>('');
   const [agentStatus, setAgentStatus] = useState<AppStatus | null>(null);
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [terminalSrc, setTerminalSrc] = useState('/terminal');
   const [terminalCommand, setTerminalCommand] = useState('');
   const [terminalProvider, setTerminalProvider] = useState<AgentProvider>('codex');
   const [terminalModel, setTerminalModel] = useState('');
+  const [terminalReasoningEffort, setTerminalReasoningEffort] = useState<ReasoningEffort | ''>('');
   const [isLaunching, setIsLaunching] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [isCommandInjected, setIsCommandInjected] = useState(false);
   const [hasStartedTerminal, setHasStartedTerminal] = useState(false);
+  const [hasAutoStartAttempted, setHasAutoStartAttempted] = useState(false);
 
   const resetState = useCallback(() => {
     setTerminalSrc('/terminal');
     setTerminalCommand('');
     setTerminalProvider('codex');
     setTerminalModel('');
+    setTerminalReasoningEffort('');
     setTerminalError(null);
     setIsCommandInjected(false);
     setIsLaunching(false);
@@ -143,14 +107,52 @@ export default function AdHocAgentTerminalModal({
       return;
     }
 
-    const persistedSelection = readPersistedSelection(scenarioKey);
-    setSelectedProvider(persistedSelection?.provider ?? 'codex');
-    setSelectedModel(persistedSelection?.model ?? '');
+    let cancelled = false;
+
+    setIsLoadingDefaults(true);
+    setSelectedProvider('codex');
+    setSelectedModel('');
+    setSelectedReasoningEffort('');
     setStatusError(null);
     setAgentStatus(null);
     setAgentProviders([]);
+    setHasAutoStartAttempted(false);
     resetState();
-  }, [isOpen, resetState, scenarioKey]);
+
+    void (async () => {
+      try {
+        const config = await getConfig();
+        if (cancelled) return;
+
+        const resolvedProvider = normalizeProvider(config.defaultAgentProvider);
+        setSelectedProvider(resolvedProvider);
+        setSelectedModel(config.defaultAgentModel || '');
+        setSelectedReasoningEffort(
+          normalizeProviderReasoningEffort(
+            resolvedProvider,
+            config.defaultAgentReasoningEffort,
+          ) || '',
+        );
+      } catch (error) {
+        console.error('Failed to load default ad-hoc agent settings:', error);
+        if (!cancelled) {
+          setStatusError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load default agent settings.',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDefaults(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, resetState]);
 
   const fetchAgentStatus = useCallback(async (provider: AgentProvider) => {
     setIsLoadingStatus(true);
@@ -168,10 +170,6 @@ export default function AdHocAgentTerminalModal({
       setAgentProviders(payload.providers ?? []);
       setAgentStatus(payload.status);
       setStatusError(payload.error ?? null);
-
-      if (!readPersistedSelection(scenarioKey) && payload.defaultProvider && payload.defaultProvider !== provider) {
-        setSelectedProvider(normalizeProvider(payload.defaultProvider));
-      }
     } catch (error) {
       console.error('Failed to load ad-hoc agent status:', error);
       setAgentProviders([]);
@@ -180,50 +178,12 @@ export default function AdHocAgentTerminalModal({
     } finally {
       setIsLoadingStatus(false);
     }
-  }, [scenarioKey]);
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isLoadingDefaults) return;
     void fetchAgentStatus(selectedProvider);
-  }, [fetchAgentStatus, isOpen, selectedProvider]);
-
-  const modelOptions = useMemo(() => {
-    const models = agentStatus?.models ?? [];
-    const options = [DEFAULT_MODEL_OPTION, ...models];
-    if (selectedModel.trim() && !options.some((entry) => entry.id === selectedModel)) {
-      options.push({
-        id: selectedModel,
-        label: selectedModel,
-        description: 'Previously selected model.',
-      });
-    }
-    return options;
-  }, [agentStatus?.models, selectedModel]);
-
-  const selectedModelOption = useMemo(
-    () => modelOptions.find((entry) => entry.id === selectedModel) ?? DEFAULT_MODEL_OPTION,
-    [modelOptions, selectedModel],
-  );
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const nextModel = modelOptions.find((entry) => entry.id === selectedModel)?.id
-      ?? agentStatus?.defaultModel
-      ?? agentStatus?.models[0]?.id
-      ?? '';
-    if (nextModel !== selectedModel) {
-      setSelectedModel(nextModel);
-    }
-  }, [agentStatus?.defaultModel, agentStatus?.models, isOpen, modelOptions, selectedModel]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    writePersistedSelection(scenarioKey, {
-      provider: selectedProvider,
-      model: selectedModel,
-    });
-  }, [isOpen, scenarioKey, selectedModel, selectedProvider]);
+  }, [fetchAgentStatus, isLoadingDefaults, isOpen, selectedProvider]);
 
   const handleClose = useCallback(() => {
     resetState();
@@ -249,20 +209,22 @@ export default function AdHocAgentTerminalModal({
         || agentStatus?.models[0]?.id
         || '';
       const resolvedProvider = normalizeProvider(selectedProvider);
+      const resolvedReasoningEffort = normalizeProviderReasoningEffort(
+        resolvedProvider,
+        selectedReasoningEffort,
+      );
       const command = buildCommand({
         provider: resolvedProvider,
         model: resolvedModel,
+        reasoningEffort: resolvedReasoningEffort,
         shellKind,
       });
 
-      writePersistedSelection(scenarioKey, {
-        provider: resolvedProvider,
-        model: resolvedModel,
-      });
       setTerminalProvider(resolvedProvider);
       setTerminalModel(resolvedModel);
+      setTerminalReasoningEffort(resolvedReasoningEffort || '');
       setTerminalCommand(command);
-      setTerminalSrc(buildTtydTerminalSrc(`adhoc-${scenarioKey}-${Date.now()}`, 'terminal', undefined, {
+      setTerminalSrc(buildTtydTerminalSrc(`adhoc-${Date.now()}`, 'terminal', undefined, {
         persistenceMode: 'shell',
         shellKind,
         workingDirectory,
@@ -273,7 +235,44 @@ export default function AdHocAgentTerminalModal({
     } finally {
       setIsLaunching(false);
     }
-  }, [agentStatus?.defaultModel, agentStatus?.models, buildCommand, scenarioKey, selectedModel, selectedProvider, workingDirectory]);
+  }, [agentStatus?.defaultModel, agentStatus?.models, buildCommand, selectedModel, selectedProvider, selectedReasoningEffort, workingDirectory]);
+
+  useEffect(() => {
+    if (!isOpen || isLoadingDefaults || isLoadingStatus || hasStartedTerminal || isLaunching || hasAutoStartAttempted) {
+      return;
+    }
+    if (statusError) {
+      return;
+    }
+    if (!agentStatus) {
+      return;
+    }
+
+    if (!agentStatus.installed) {
+      setTerminalError(`Install ${providerLabel(selectedProvider, agentProviders)} before continuing.`);
+      return;
+    }
+
+    if (!agentStatus.loggedIn) {
+      setTerminalError(`Log in to ${providerLabel(selectedProvider, agentProviders)} before continuing.`);
+      return;
+    }
+
+    setHasAutoStartAttempted(true);
+    void handleStart();
+  }, [
+    agentProviders,
+    agentStatus,
+    handleStart,
+    hasAutoStartAttempted,
+    hasStartedTerminal,
+    isLaunching,
+    isLoadingDefaults,
+    isLoadingStatus,
+    isOpen,
+    selectedProvider,
+    statusError,
+  ]);
 
   const handleTerminalLoad = useCallback(() => {
     if (!hasStartedTerminal || !terminalCommand || !iframeRef.current || isCommandInjected) {
@@ -319,15 +318,6 @@ export default function AdHocAgentTerminalModal({
     return null;
   }
 
-  const displayedProviders = agentProviders.length > 0
-    ? agentProviders
-    : SUPPORTED_AGENT_PROVIDERS.map((providerId) => ({
-      id: providerId,
-      label: providerLabel(providerId),
-      description: '',
-      available: true,
-    }));
-
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-w-5xl p-0 overflow-hidden">
@@ -350,49 +340,6 @@ export default function AdHocAgentTerminalModal({
 
         {!hasStartedTerminal ? (
           <div className="space-y-4 p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Provider</span>
-                <div className="relative">
-                  <select
-                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                    value={selectedProvider}
-                    onChange={(event) => setSelectedProvider(normalizeProvider(event.target.value))}
-                  >
-                    {displayedProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                </div>
-              </label>
-
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Model</span>
-                <div className="relative">
-                  <select
-                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                    value={selectedModel}
-                    onChange={(event) => setSelectedModel(event.target.value)}
-                  >
-                    {modelOptions.map((model) => (
-                      <option key={model.id || 'default-model'} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                </div>
-                {selectedModelOption.description ? (
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {selectedModelOption.description}
-                  </span>
-                ) : null}
-              </label>
-            </div>
-
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-[#30363d] dark:bg-[#0d1117]/55">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
@@ -400,7 +347,15 @@ export default function AdHocAgentTerminalModal({
                     {providerLabel(selectedProvider, agentProviders)}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {isLoadingStatus
+                    Model: {selectedModel || agentStatus?.defaultModel || 'Default model'}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Reasoning: {selectedReasoningEffort || 'Provider default'}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {isLoadingDefaults
+                      ? 'Loading saved settings...'
+                      : isLoadingStatus
                       ? 'Checking runtime status...'
                       : agentStatus
                         ? [
@@ -420,10 +375,14 @@ export default function AdHocAgentTerminalModal({
                 <button
                   type="button"
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-                  onClick={() => void fetchAgentStatus(selectedProvider)}
-                  disabled={isLoadingStatus}
+                  onClick={() => {
+                    setTerminalError(null);
+                    setHasAutoStartAttempted(false);
+                    void fetchAgentStatus(selectedProvider);
+                  }}
+                  disabled={isLoadingDefaults || isLoadingStatus || isLaunching}
                 >
-                  Refresh
+                  Retry
                 </button>
               </div>
               {statusError ? (
@@ -442,18 +401,15 @@ export default function AdHocAgentTerminalModal({
               <button className="btn" onClick={handleClose}>
                 Cancel
               </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => void handleStart()}
-                disabled={isLaunching}
-              >
-                {isLaunching ? (
-                  <>
-                    <span className="loading loading-spinner loading-xs"></span>
-                    Starting...
-                  </>
-                ) : confirmLabel}
-              </button>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {isLoadingDefaults || isLoadingStatus
+                  ? 'Preparing agent runtime...'
+                  : isLaunching
+                    ? 'Starting automatically...'
+                    : hasAutoStartAttempted
+                      ? 'Retry if the runtime state changed.'
+                      : 'Waiting for runtime checks...'}
+              </div>
             </div>
           </div>
         ) : (
@@ -465,6 +421,9 @@ export default function AdHocAgentTerminalModal({
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   Model: {terminalModel || 'Default model'}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Reasoning: {terminalReasoningEffort || 'Provider default'}
                 </div>
               </div>
             </div>

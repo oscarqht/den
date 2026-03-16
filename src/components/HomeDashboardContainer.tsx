@@ -908,7 +908,7 @@ export default function HomeDashboardContainer({
         discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
         getProjectDisplayName={getProjectDisplayName}
         onHomeSearchQueryChange={setHomeSearchQuery}
-        onOpenCredentials={() => router.push('/credentials')}
+        onOpenCredentials={() => router.push('/settings')}
         onCycleThemeMode={() => setThemeMode(nextThemeMode)}
         onSelectProject={handleSelectProject}
         onOpenGitWorkspace={handleOpenProjectGitWorkspace}

@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic';
 import { useGitLog, useGitBranches, useGitStatus, useGitAction, useCommitDiff, useCommitFileDiff, CommitFile, useRepository, useUpdateRepository, useSettings, useUpdateSettings } from '@/hooks/use-git';
 import { useQueryClient } from '@tanstack/react-query';
-import { Repository, Commit, type AgentProvider } from '@/lib/types';
+import { buildConflictAgentCommand, type ConflictAgentOperation } from '@/lib/ad-hoc-agent';
+import { Repository, Commit } from '@/lib/types';
 import AdHocAgentTerminalModal from '@/components/AdHocAgentTerminalModal';
 import { GitGraph, GitGraphHandle } from './git-graph';
 import {
@@ -28,8 +29,6 @@ import { CommitRowSelectModifiers } from './commit-row-select-modifiers';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { listSessions, SessionMetadata } from '@/app/actions/session';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
-import { buildShellSetDirectoryCommand, joinShellStatements, quoteShellArg } from '@/lib/shell';
-import { type TerminalShellKind } from '@/lib/terminal-session';
 import { buildPullAllPlan, buildPullAllToastPayload, parseTrackingUpstream } from './pull-all-utils';
 
 const LazyCommitChangesView = dynamic(
@@ -56,120 +55,6 @@ type RepoCredentialOption = {
   username: string;
   serverUrl?: string;
 };
-
-type ConflictAgentOperation =
-  | {
-    kind: 'merge';
-    sourceBranch: string;
-    targetBranch: string;
-    rebaseBeforeMerge: boolean;
-    squash: boolean;
-    fastForward: boolean;
-    squashMessage: string;
-  }
-  | {
-    kind: 'rebase';
-    sourceBranch: string;
-    targetBranch: string;
-    stashChanges: boolean;
-  };
-
-const CONFLICT_AGENT_CODEX_FLAGS = '-c tui.theme="ansi" --sandbox danger-full-access --ask-for-approval on-request --search';
-
-function buildConflictAgentPrompt(operation: ConflictAgentOperation): string {
-  if (operation.kind === 'merge') {
-    const mergeOptions = [
-      `rebaseBeforeMerge: ${operation.rebaseBeforeMerge ? 'true' : 'false'}`,
-      `squash: ${operation.squash ? 'true' : 'false'}`,
-      `fastForward: ${operation.fastForward ? 'true' : 'false'}`,
-      operation.squash
-        ? `squashMessage: ${operation.squashMessage ? operation.squashMessage : '(empty)'}` 
-        : null,
-    ].filter((entry): entry is string => Boolean(entry));
-
-    return [
-      'Perform and complete this merge operation in the current repository.',
-      '',
-      `Merge branch "${operation.sourceBranch}" into "${operation.targetBranch}".`,
-      'Operation options:',
-      ...mergeOptions.map((entry) => `- ${entry}`),
-      '',
-      'Requirements:',
-      '1. Checkout the target branch and run the merge with the options above.',
-      '2. If merge conflicts occur, resolve all conflicted files safely.',
-      '3. Stage each resolved file and run git merge --continue when needed.',
-      '4. Keep working until the merge is complete and git status has no unmerged paths.',
-      '5. Summarize what was resolved and show final git status.',
-    ].join('\n');
-  }
-
-  return [
-    'Perform and complete this rebase operation in the current repository.',
-    '',
-    `Rebase branch "${operation.sourceBranch}" onto "${operation.targetBranch}".`,
-    `stashChanges option: ${operation.stashChanges ? 'true' : 'false'}`,
-    '',
-    'Requirements:',
-    '1. Checkout the source branch and run the rebase onto the target branch.',
-    '2. If rebase conflicts occur, resolve all conflicted files safely.',
-    '3. Stage each resolved file and run git rebase --continue until complete.',
-    '4. Keep working until the rebase is complete and git status has no unmerged paths.',
-    '5. Summarize what was resolved and show final git status.',
-  ].join('\n');
-}
-
-function buildConflictAgentCommand(
-  repoPath: string,
-  operation: ConflictAgentOperation,
-  provider: AgentProvider,
-  model: string,
-  shellKind: TerminalShellKind,
-): string {
-  const prompt = buildConflictAgentPrompt(operation);
-  const normalizedModel = model.trim();
-  const promptArg = quoteShellArg(prompt, shellKind);
-  const codexCommand = [
-    'NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex',
-    CONFLICT_AGENT_CODEX_FLAGS,
-    normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
-    promptArg,
-  ].filter(Boolean).join(' ');
-
-  const providerCommand = provider === 'gemini'
-    ? [
-      'gemini --yolo',
-      normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
-      `-p ${promptArg}`,
-    ].filter(Boolean).join(' ')
-    : provider === 'cursor'
-      ? [
-        'cursor-agent -f',
-        normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
-        `-p ${promptArg}`,
-      ].filter(Boolean).join(' ')
-      : codexCommand;
-
-  if (shellKind === 'powershell') {
-    return joinShellStatements([
-      buildShellSetDirectoryCommand(repoPath, shellKind),
-      "$env:NO_COLOR = '1'",
-      "$env:FORCE_COLOR = '0'",
-      "$env:TERM = 'xterm'",
-      provider === 'codex'
-        ? "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
-        : null,
-      providerCommand,
-    ], shellKind);
-  }
-
-  return joinShellStatements([
-    buildShellSetDirectoryCommand(repoPath, shellKind),
-    provider === 'codex'
-      ? 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi'
-      : null,
-    providerCommand,
-  ], shellKind);
-}
 
 function clampHistoryPanelHeight(height: number): number {
   return Math.min(Math.max(height, MIN_HISTORY_PANEL_HEIGHT), MAX_HISTORY_PANEL_HEIGHT);
@@ -4309,8 +4194,15 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
           workingDirectory={repoPath}
           confirmLabel="Start conflict agent"
           onClose={closeConflictAgentDialog}
-          buildCommand={({ provider, model, shellKind }) => (
-            buildConflictAgentCommand(repoPath, conflictAgentOperation, provider, model, shellKind)
+          buildCommand={({ provider, model, reasoningEffort, shellKind }) => (
+            buildConflictAgentCommand(
+              repoPath,
+              conflictAgentOperation,
+              provider,
+              model,
+              shellKind,
+              reasoningEffort,
+            )
           )}
         />
       )}

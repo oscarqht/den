@@ -1,10 +1,10 @@
-# Credentials and Authentication
+# Settings, Credentials, and Authentication
 
 ## What This Feature Does
 
 User-facing behavior:
 - Optional Auth0 login gate for app access.
-- Credentials management UI for GitHub/GitLab git tokens and Codex API key/proxy.
+- Settings UI for default coding agent preferences plus GitHub/GitLab git tokens and Codex API key/proxy.
 - Automatic credential selection for clone/push/pull based on remote provider/host.
 
 System-facing behavior:
@@ -21,8 +21,8 @@ System-facing behavior:
 - [src/lib/credentials.ts](../../../src/lib/credentials.ts)
 - Agent API credential persistence:
 - [src/lib/agent-api-credentials.ts](../../../src/lib/agent-api-credentials.ts)
-- Credentials page UI:
-- [src/app/credentials/page.tsx](../../../src/app/credentials/page.tsx)
+- Settings page UI:
+- [src/app/settings/page.tsx](../../../src/app/settings/page.tsx)
 - Credentials routes/actions:
 - [src/app/api/credentials/route.ts](../../../src/app/api/credentials/route.ts)
 - [src/app/api/credentials/github/repos/route.ts](../../../src/app/api/credentials/github/repos/route.ts)
@@ -62,7 +62,7 @@ Implementation: [src/lib/credentials.ts](../../../src/lib/credentials.ts), [src/
 ```mermaid
 sequenceDiagram
   actor User
-  participant UI as credentials page
+  participant UI as settings page
   participant API as api_credentials
   participant Cred as lib/credentials
   participant Keytar as OS keychain

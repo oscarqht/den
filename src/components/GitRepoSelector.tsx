@@ -234,6 +234,28 @@ function normalizeProviderReasoningSelection(
   return normalizeProviderReasoningEffort(provider, normalizeReasoningSelection(value));
 }
 
+function getEffectiveAgentRuntimeSettings(config: Config, repoPath: string) {
+  const projectSettings = config.projectSettings[repoPath] || {};
+  const resolvedProvider = normalizeAgentProvider(
+    projectSettings.agentProvider ?? config.defaultAgentProvider,
+  );
+  const resolvedModel =
+    projectSettings.agentModel ?? config.defaultAgentModel ?? '';
+  const resolvedReasoningEffort =
+    normalizeProviderReasoningEffort(
+      resolvedProvider,
+      projectSettings.agentReasoningEffort
+        ?? config.defaultAgentReasoningEffort,
+    ) || '';
+
+  return {
+    provider: resolvedProvider,
+    model: resolvedModel,
+    reasoningEffort: resolvedReasoningEffort,
+    projectSettings,
+  };
+}
+
 function normalizeModelOption(input: unknown): ModelOption | null {
   if (!input || typeof input !== 'object') return null;
 
@@ -1445,13 +1467,14 @@ export default function GitRepoSelector({
     }
     if (!config && currentConfig) setConfig(currentConfig);
 
-    const settings = currentConfig.projectSettings[repoPath] || {};
-    const resolvedProvider = normalizeAgentProvider(settings.agentProvider);
-    setSelectedAgentProvider(resolvedProvider);
-    setSelectedAgentModel(settings.agentModel || '');
-    setSelectedReasoningEffort(
-      normalizeProviderReasoningEffort(resolvedProvider, settings.agentReasoningEffort) || '',
+    const effectiveSettings = getEffectiveAgentRuntimeSettings(
+      currentConfig,
+      repoPath,
     );
+    const settings = effectiveSettings.projectSettings;
+    setSelectedAgentProvider(effectiveSettings.provider);
+    setSelectedAgentModel(effectiveSettings.model);
+    setSelectedReasoningEffort(effectiveSettings.reasoningEffort);
 
     const savedStartupScript = settings.startupScript;
     const savedDevServerScript = settings.devServerScript;
@@ -2301,15 +2324,30 @@ export default function GitRepoSelector({
   useEffect(() => {
     if (mode !== 'new' || !selectedRepo || !config) return;
 
-    const currentSettings = config.projectSettings[selectedRepo] || {};
+    const explicitProjectSettings = config.projectSettings[selectedRepo] || {};
+    const currentSettings = getEffectiveAgentRuntimeSettings(config, selectedRepo);
     const nextReasoning = selectedAgentProvider === 'codex'
       ? normalizeProviderReasoningSelection(selectedAgentProvider, selectedReasoningEffort)
       : undefined;
+    const hasExplicitFallbackReasoning = Boolean(
+      explicitProjectSettings.agentReasoningEffort
+      || normalizeProviderReasoningEffort(
+        config.defaultAgentProvider,
+        config.defaultAgentReasoningEffort,
+      ),
+    );
+    const comparisonReasoning = !hasExplicitFallbackReasoning
+      && currentSettings.provider === selectedAgentProvider
+      && currentSettings.model === selectedAgentModel
+      && selectedAgentProvider === 'codex'
+      && (nextReasoning || '') === (reasoningEffortOptions[0] || '')
+        ? ''
+        : (nextReasoning || '');
 
     if (
-      normalizeAgentProvider(currentSettings.agentProvider) === selectedAgentProvider
-      && (currentSettings.agentModel || '') === selectedAgentModel
-      && (currentSettings.agentReasoningEffort || '') === (nextReasoning || '')
+      currentSettings.provider === selectedAgentProvider
+      && currentSettings.model === selectedAgentModel
+      && currentSettings.reasoningEffort === comparisonReasoning
     ) {
       return;
     }
@@ -2328,7 +2366,7 @@ export default function GitRepoSelector({
     }).catch((settingsError) => {
       console.error('Failed to persist agent runtime settings:', settingsError);
     });
-  }, [config, mode, saveAgentRuntimeSettings, selectedAgentModel, selectedAgentProvider, selectedReasoningEffort, selectedRepo]);
+  }, [config, mode, reasoningEffortOptions, saveAgentRuntimeSettings, selectedAgentModel, selectedAgentProvider, selectedReasoningEffort, selectedRepo]);
 
   useEffect(() => {
     if (!isWaitingForLogin || !waitingForLoginProvider || !isPageForegrounded) {
@@ -2996,7 +3034,7 @@ export default function GitRepoSelector({
           projectGitReposByPath={projectGitReposByPath}
           discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
           onHomeSearchQueryChange={setHomeSearchQuery}
-          onOpenCredentials={() => router.push('/credentials')}
+          onOpenCredentials={() => router.push('/settings')}
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}

@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 
 import type {
   AgentAccount,
+  AgentReasoningEffort,
   AppStatus,
   ChatStreamEvent,
   FileChange,

@@ -13,6 +13,7 @@
   "files": [
     "bin",
     "src/lib/cli-args.mjs",
+    "src/lib/next-native-shims.mjs",
     ".next/BUILD_ID",
     ".next/server",
     ".next/static",

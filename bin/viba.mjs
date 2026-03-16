@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "../src/lib/cli-args.mjs";
+import { syncNextNativeShims } from "../src/lib/next-native-shims.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -493,6 +494,7 @@ async function main() {
     }
 
     ensureBuildExists();
+    syncNextNativeShims(APP_ROOT);
     const url = `http://localhost:${port}`;
     console.log(`Starting Palx on ${url}`);
     const nextPromise = runNext(["start", "-p", String(port)]);

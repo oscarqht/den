@@ -3347,20 +3347,20 @@ export default function GitRepoSelector({
             <div className="self-start lg:col-span-9">
               <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
                 <div className="mb-4 space-y-3">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                    <label className="flex items-center gap-2 pt-1 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                    <label className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
                       <Bot className="h-5 w-5 text-primary" />
                       Task Description
                     </label>
-                    <div className="flex flex-1 flex-wrap items-end gap-2 xl:justify-end">
+                    <div className="flex flex-1 flex-wrap items-center gap-1.5 lg:justify-end">
                       <div
-                        className="inline-flex h-10 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
                         role="group"
                         aria-label="Session mode"
                       >
                         <button
                           type="button"
-                          className={`h-full px-3 text-xs font-semibold transition ${sessionMode === 'fast'
+                          className={`h-full px-3 text-[11px] font-semibold transition ${sessionMode === 'fast'
                             ? 'bg-primary text-white'
                             : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
                             }`}
@@ -3373,7 +3373,7 @@ export default function GitRepoSelector({
                         <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
                         <button
                           type="button"
-                          className={`h-full px-3 text-xs font-semibold transition ${sessionMode === 'plan'
+                          className={`h-full px-3 text-[11px] font-semibold transition ${sessionMode === 'plan'
                             ? 'bg-primary text-white'
                             : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
                             }`}
@@ -3386,13 +3386,13 @@ export default function GitRepoSelector({
                       </div>
 
                       <div
-                        className="inline-flex h-10 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
                         role="group"
                         aria-label="Task location"
                       >
                         <button
                           type="button"
-                          className={`h-full px-3 text-xs font-semibold transition ${sessionWorkspacePreference === 'local'
+                          className={`h-full px-3 text-[11px] font-semibold transition ${sessionWorkspacePreference === 'local'
                             ? 'bg-primary text-white'
                             : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
                             }`}
@@ -3405,7 +3405,7 @@ export default function GitRepoSelector({
                         <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
                         <button
                           type="button"
-                          className={`h-full px-3 text-xs font-semibold transition ${sessionWorkspacePreference === 'workspace'
+                          className={`h-full px-3 text-[11px] font-semibold transition ${sessionWorkspacePreference === 'workspace'
                             ? 'bg-primary text-white'
                             : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
                             }`}
@@ -3417,14 +3417,14 @@ export default function GitRepoSelector({
                         </button>
                       </div>
 
-                      <label className="flex min-w-[148px] flex-col gap-1">
-                        <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent</span>
+                      <div className="relative w-[126px] sm:w-[132px]">
                         <div className="relative">
                           <select
-                            className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                             value={selectedAgentProvider}
                             onChange={handleAgentProviderChange}
                             disabled={loading}
+                            aria-label="Agent runtime"
                           >
                             {(agentProviders.length > 0 ? agentProviders : SUPPORTED_AGENT_PROVIDERS.map((providerId) => ({
                               id: providerId,
@@ -3439,16 +3439,16 @@ export default function GitRepoSelector({
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                         </div>
-                      </label>
+                      </div>
 
-                      <label className="flex min-w-[180px] flex-col gap-1">
-                        <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Model</span>
+                      <div className="relative w-[116px] sm:w-[124px]">
                         <div className="relative">
                           <select
-                            className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                             value={selectedAgentModel}
                             onChange={handleAgentModelChange}
                             disabled={loading || (activeAgentModelCatalog.models.length === 0 && !selectedAgentModel.trim())}
+                            aria-label="Model"
                           >
                             {selectableModelOptions.map((model) => (
                               <option key={model.id || 'default-model'} value={model.id}>
@@ -3458,17 +3458,17 @@ export default function GitRepoSelector({
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                         </div>
-                      </label>
+                      </div>
 
                       {selectedAgentProvider === 'codex' && reasoningEffortOptions.length > 0 && (
-                        <label className="flex min-w-[148px] flex-col gap-1">
-                          <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Reasoning</span>
+                        <div className="relative w-[96px] sm:w-[104px]">
                           <div className="relative">
                             <select
-                              className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                               value={selectedReasoningEffort}
                               onChange={handleReasoningEffortChange}
                               disabled={loading}
+                              aria-label="Reasoning effort"
                             >
                               {reasoningEffortOptions.map((effort) => (
                                 <option key={effort} value={effort}>
@@ -3478,15 +3478,14 @@ export default function GitRepoSelector({
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                           </div>
-                        </label>
+                        </div>
                       )}
 
                       {hasPredefinedPrompts && (
-                        <label className="flex min-w-[180px] max-w-[220px] flex-col gap-1">
-                          <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Prompt</span>
+                        <div className="relative w-[120px] sm:w-[132px]">
                           <div className="relative">
                             <select
-                              className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 font-mono text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 font-mono text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                               value={activePredefinedPrompt?.id ?? ''}
                               onChange={(event) => handleSelectPredefinedPrompt(event.target.value)}
                               disabled={loading}
@@ -3505,7 +3504,7 @@ export default function GitRepoSelector({
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                           </div>
-                        </label>
+                        </div>
                       )}
                     </div>
                   </div>

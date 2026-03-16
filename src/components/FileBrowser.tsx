@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { checkDirectoryAccessible, listDirectories, getHomeDirectory } from '@/app/actions/git';
-import { Folder, ArrowLeft, Check } from 'lucide-react';
+import { checkDirectoryAccessible, createDirectory, listDirectories, getHomeDirectory } from '@/app/actions/git';
+import { Folder, ArrowLeft, Check, FolderPlus } from 'lucide-react';
 import { getDirName } from '@/lib/path';
+import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 
 interface FileSystemItem {
@@ -26,7 +27,9 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
   const [homePath, setHomePath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { prompt: promptDialog, dialog, isOpen: isAppDialogOpen } = useAppDialog();
 
   useEffect(() => {
     let isMounted = true;
@@ -127,9 +130,10 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
   }, [currentPath, handleSelectPath]);
 
   useDialogKeyboardShortcuts({
+    enabled: !isAppDialogOpen,
     onConfirm: handleSelect,
     onDismiss: onCancel,
-    canConfirm: Boolean(currentPath),
+    canConfirm: Boolean(currentPath) && !isCreatingFolder,
   });
 
   const handleNavigate = (path: string) => {
@@ -145,9 +149,44 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
     }
   };
 
+  const handleCreateFolder = useCallback(async () => {
+    if (!currentPath || isCreatingFolder) return;
+
+    const folderNameInput = await promptDialog({
+      title: 'Create folder',
+      description: `Create a new folder in:\n${currentPath}`,
+      inputLabel: 'Folder name',
+      placeholder: 'New folder name',
+      confirmLabel: 'Create',
+      requireNonEmpty: true,
+    });
+    const folderName = folderNameInput?.trim() || '';
+    if (!folderName) return;
+
+    setIsCreatingFolder(true);
+    setError(null);
+    try {
+      await createDirectory(currentPath, folderName);
+      const dirs = await listDirectories(currentPath);
+      const mapped: FileSystemItem[] = dirs.map((dir) => ({
+        name: dir.name,
+        path: dir.path,
+        isDirectory: dir.isDirectory,
+        isGitRepo: dir.isGitRepo,
+      }));
+      setItems(mapped);
+    } catch (createError) {
+      console.error('Failed to create folder:', createError);
+      setError(createError instanceof Error ? createError.message : 'Failed to create folder.');
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  }, [currentPath, isCreatingFolder, promptDialog]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-base-200 rounded-lg shadow-xl w-full max-w-3xl h-[80vh] flex flex-col">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-base-200 rounded-lg shadow-xl w-full max-w-3xl h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-base-300">
           <h2 className="text-xl font-bold flex items-center gap-2">
@@ -165,7 +204,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
             onClick={handleGoUp}
             className="btn btn-sm btn-square btn-ghost"
             title="Go Up"
-            disabled={!currentPath || getDirName(currentPath) === currentPath}
+            disabled={!currentPath || isCreatingFolder || getDirName(currentPath) === currentPath}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -173,8 +212,23 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
             {currentPath}
           </div>
           <button
+            onClick={() => {
+              void handleCreateFolder();
+            }}
+            className="btn btn-sm btn-outline gap-2"
+            disabled={!currentPath || loading || isCreatingFolder}
+          >
+            {isCreatingFolder ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <FolderPlus className="w-4 h-4" />
+            )}
+            Create Folder
+          </button>
+          <button
             onClick={handleSelect}
             className="btn btn-sm btn-primary"
+            disabled={isCreatingFolder}
           >
             Select Current Folder
           </button>
@@ -196,7 +250,10 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
                 <div
                   key={item.path}
                   className="group flex items-center justify-between p-2 hover:bg-base-100 rounded-md cursor-pointer transition-colors"
-                  onClick={() => handleNavigate(item.path)}
+                  onClick={() => {
+                    if (isCreatingFolder) return;
+                    handleNavigate(item.path);
+                  }}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
                     <Folder className={`w-5 h-5 ${item.isGitRepo ? 'text-primary' : 'text-base-content/70'}`} />
@@ -211,6 +268,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
                     className="flex items-center justify-center p-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (isCreatingFolder) return;
                       void handleSelectPath(item.path);
                     }}
                     title={`Select ${item.name}`}
@@ -226,9 +284,11 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
 
         {/* Footer info */}
         <div className="p-3 border-t border-base-300 text-xs text-base-content/50 text-center">
-          Navigate to a folder and click &quot;Select Current Folder&quot; to choose it.
+          Navigate to a folder, create one if needed, then click &quot;Select Current Folder&quot; to choose it.
+        </div>
         </div>
       </div>
-    </div>
+      {dialog}
+    </>
   );
 }

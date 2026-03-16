@@ -34,6 +34,7 @@ import {
 } from '@/lib/terminal-session';
 import { normalizePreviewUrl } from '@/lib/url';
 import { sanitizeBranchName } from '@/lib/utils';
+import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useTerminalLink, type TerminalWindow } from '@/hooks/useTerminalLink';
 import { inferPreviewUrlFromTerminalText, terminalTranscriptContainsCommand } from '@/lib/dev-server-terminal';
 import { buildShellExportEnvironmentCommand, buildShellSetDirectoryCommand } from '@/lib/shell';
@@ -715,6 +716,7 @@ export function SessionView({
     const [floatingTerminalThemeReadyByTab, setFloatingTerminalThemeReadyByTab] = useState<Record<string, boolean>>({
         [MAIN_TERMINAL_TAB_ID]: false,
     });
+    const { confirm: confirmDialog, dialog: appDialog } = useAppDialog();
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
     const [terminalTabIds, setTerminalTabIds] = useState<string[]>([MAIN_TERMINAL_TAB_ID]);
@@ -1560,12 +1562,18 @@ export function SessionView({
         if (!sessionName || !legacyRepo) return false;
         if (usesIsolatedWorkspace && (!repo || !worktree || !branch)) return false;
         if (requireConfirmation) {
-            const prompt = usesIsolatedWorkspace
-                ? 'Are you sure you want to delete this session? This will remove the branch, worktree, and session metadata.'
+            const description = usesIsolatedWorkspace
+                ? 'This will remove the branch, worktree, and session metadata.'
                 : usesDirectSourceWorkspace
-                    ? 'Are you sure you want to delete this session? This will remove session metadata and stop session processes, but it will not delete the source folder.'
-                    : 'Are you sure you want to delete this session? This will remove session metadata.';
-            if (!confirm(prompt)) return false;
+                    ? 'This will remove session metadata and stop session processes, but it will not delete the source folder.'
+                    : 'This will remove session metadata.';
+            const confirmed = await confirmDialog({
+                title: 'Delete this session?',
+                description,
+                confirmLabel: 'Delete session',
+                confirmVariant: 'danger',
+            });
+            if (!confirmed) return false;
         }
 
         setCleanupError(null);
@@ -3115,6 +3123,7 @@ export function SessionView({
                     onCancel={() => setIsFileBrowserOpen(false)}
                 />
             )}
+            {appDialog}
         </div>
     );
 }

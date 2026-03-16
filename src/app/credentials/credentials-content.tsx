@@ -18,6 +18,7 @@ import type {
   CredentialType,
   GitLabCredential,
 } from '@/lib/credentials';
+import { useAppDialog } from '@/hooks/use-app-dialog';
 import { ChevronRight, KeyRound, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -100,6 +101,7 @@ export default function CredentialsContent() {
   const [deletingAgent, setDeletingAgent] =
     useState<AgentApiCredentialAgent | null>(null);
   const [flashMessage, setFlashMessage] = useState<FlashMessage>(null);
+  const { confirm: confirmDialog, dialog } = useAppDialog();
 
   const githubCredentials = useMemo(
     () => credentials.filter((credential) => credential.type === 'github'),
@@ -259,9 +261,12 @@ export default function CredentialsContent() {
 
   const handleDelete = async (credential: Credential) => {
     const providerLabel = formatProviderLabel(credential.type);
-    const confirmed = confirm(
-      `Delete this ${providerLabel} credential for ${formatCredentialSubtitle(credential)}?`,
-    );
+    const confirmed = await confirmDialog({
+      title: `Delete ${providerLabel} credential?`,
+      description: `Delete the saved credential for ${formatCredentialSubtitle(credential)}?`,
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger',
+    });
     if (!confirmed) return;
 
     setFlashMessage(null);
@@ -283,9 +288,12 @@ export default function CredentialsContent() {
   };
 
   const handleDeleteAgentApi = async (agent: AgentApiCredentialAgent) => {
-    const confirmed = confirm(
-      `Delete the saved ${AGENT_API_LABELS[agent]} API credential?`,
-    );
+    const confirmed = await confirmDialog({
+      title: `Delete ${AGENT_API_LABELS[agent]} credential?`,
+      description: `Delete the saved ${AGENT_API_LABELS[agent]} API credential?`,
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger',
+    });
     if (!confirmed) return;
 
     setFlashMessage(null);
@@ -681,6 +689,7 @@ export default function CredentialsContent() {
           </div>
         )}
       </div>
+      {dialog}
     </main>
   );
 }

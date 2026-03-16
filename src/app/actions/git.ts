@@ -606,6 +606,40 @@ export async function checkDirectoryAccessible(dirPath: string): Promise<boolean
   }
 }
 
+export async function createDirectory(parentPath: string, folderName: string): Promise<string> {
+  const trimmedParentPath = parentPath.trim();
+  const trimmedFolderName = folderName.trim();
+
+  if (!trimmedParentPath) {
+    throw new Error('Parent directory is required.');
+  }
+
+  if (!trimmedFolderName) {
+    throw new Error('Folder name is required.');
+  }
+
+  if (
+    trimmedFolderName === '.'
+    || trimmedFolderName === '..'
+    || trimmedFolderName.includes('/')
+    || trimmedFolderName.includes('\\')
+  ) {
+    throw new Error('Folder name cannot include path separators.');
+  }
+
+  const targetPath = path.join(trimmedParentPath, trimmedFolderName);
+
+  try {
+    await fs.mkdir(targetPath);
+    return targetPath;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`"${trimmedFolderName}" already exists.`);
+    }
+    throw error;
+  }
+}
+
 export async function getBranches(repoPath: string): Promise<GitBranch[]> {
   try {
     const git = simpleGit(repoPath);

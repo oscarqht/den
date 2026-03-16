@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
+import { useAppDialog } from '@/hooks/use-app-dialog';
 import { toast } from '@/hooks/use-toast';
 
 interface FSItem {
@@ -44,6 +45,7 @@ export function FileSystemBrowser({
   const [isLoading, setIsLoading] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const { prompt: promptDialog, dialog, isOpen: isAppDialogOpen } = useAppDialog();
 
   const loadPath = async (path?: string) => {
     setIsLoading(true);
@@ -81,7 +83,7 @@ export function FileSystemBrowser({
     onOpenChange(false);
   };
 
-  useEscapeDismiss(open, () => onOpenChange(false), () => {
+  useEscapeDismiss(open && !isAppDialogOpen, () => onOpenChange(false), () => {
     if (isLoading || isCreatingFolder) {
       return;
     }
@@ -97,7 +99,14 @@ export function FileSystemBrowser({
       return;
     }
 
-    const folderNameInput = window.prompt('New folder name');
+    const folderNameInput = await promptDialog({
+      title: 'Create folder',
+      description: `Create a new folder in:\n${currentPath}`,
+      inputLabel: 'Folder name',
+      placeholder: 'New folder name',
+      confirmLabel: 'Create',
+      requireNonEmpty: true,
+    });
     const folderName = folderNameInput?.trim() || '';
     if (!folderName) {
       return;
@@ -140,8 +149,9 @@ export function FileSystemBrowser({
   if (!open) return null;
 
   return (
-    <dialog className="modal modal-open">
-      <div className="modal-box w-11/12 max-w-2xl h-[80vh] flex flex-col p-0 overflow-hidden bg-base-100">
+    <>
+      <dialog className="modal modal-open">
+        <div className="modal-box w-11/12 max-w-2xl h-[80vh] flex flex-col p-0 overflow-hidden bg-base-100">
         <div className="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
           <div className="overflow-hidden">
               <h3 className="font-bold text-lg">{title}</h3>
@@ -234,10 +244,12 @@ export function FileSystemBrowser({
              </button>
            </div>
         </div>
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button onClick={() => onOpenChange(false)}>close</button>
-      </form>
-    </dialog>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button onClick={() => onOpenChange(false)}>close</button>
+        </form>
+      </dialog>
+      {dialog}
+    </>
   );
 }

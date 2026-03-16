@@ -52,6 +52,7 @@ import {
   THEME_MODE_STORAGE_KEY,
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
+import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import SessionFileBrowser from './SessionFileBrowser';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
@@ -345,6 +346,7 @@ export default function GitRepoSelector({
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
   const [isRepoSettingsDialogOpen, setIsRepoSettingsDialogOpen] = useState(false);
   const [isCloneRemoteDialogOpen, setIsCloneRemoteDialogOpen] = useState(false);
+  const { confirm: confirmDialog, dialog: appDialog } = useAppDialog();
   const [remoteRepoUrl, setRemoteRepoUrl] = useState('');
   const [cloneCredentialSelection, setCloneCredentialSelection] = useState<RepoCredentialSelection>('auto');
   const [cloneRemoteError, setCloneRemoteError] = useState<string | null>(null);
@@ -2680,9 +2682,12 @@ export default function GitRepoSelector({
   const handleDeleteSession = async (session: SessionMetadata) => {
     if (!selectedRepo) return;
 
-    const confirmed = confirm(
-      `Delete session "${session.sessionName}"?\n\nThis will remove the worktree, branch, and session metadata.`
-    );
+    const confirmed = await confirmDialog({
+      title: `Delete session "${session.sessionName}"?`,
+      description: 'This will remove the worktree, branch, and session metadata.',
+      confirmLabel: 'Delete session',
+      confirmVariant: 'danger',
+    });
     if (!confirmed) return;
 
     setDeletingSessionName(session.sessionName);
@@ -3865,6 +3870,8 @@ export default function GitRepoSelector({
           onCancel={() => setIsSelectingRoot(false)}
         />
       )}
+
+      {appDialog}
     </>
   );
 }

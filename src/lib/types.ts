@@ -113,7 +113,7 @@ export interface SessionGitRepoContext {
 
 export type AgentProvider = 'codex' | 'gemini' | 'cursor' | (string & {});
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | (string & {});
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | (string & {});
 
 export type AgentReasoningEffort = ReasoningEffort;
 

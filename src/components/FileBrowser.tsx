@@ -166,15 +166,8 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
     setIsCreatingFolder(true);
     setError(null);
     try {
-      await createDirectory(currentPath, folderName);
-      const dirs = await listDirectories(currentPath);
-      const mapped: FileSystemItem[] = dirs.map((dir) => ({
-        name: dir.name,
-        path: dir.path,
-        isDirectory: dir.isDirectory,
-        isGitRepo: dir.isGitRepo,
-      }));
-      setItems(mapped);
+      const newFolderPath = await createDirectory(currentPath, folderName);
+      setCurrentPath(newFolderPath);
     } catch (createError) {
       console.error('Failed to create folder:', createError);
       setError(createError instanceof Error ? createError.message : 'Failed to create folder.');

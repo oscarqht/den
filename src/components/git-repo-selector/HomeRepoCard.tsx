@@ -199,7 +199,7 @@ export function HomeRepoCard({
               <button
                 onClick={(event) => onRemoveRecent(event, project)}
                 className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-500 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-rose-600 dark:bg-white/10 dark:text-slate-400 dark:hover:bg-white/20 dark:hover:text-rose-300"
-                title="Remove from history"
+                title="Delete project"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

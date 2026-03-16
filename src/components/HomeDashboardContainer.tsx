@@ -107,6 +107,9 @@ export default function HomeDashboardContainer({
     projectPath: string;
     repos: string[];
   } | null>(null);
+  const [projectPendingDelete, setProjectPendingDelete] = useState<string | null>(null);
+  const [deleteProjectLocalFolder, setDeleteProjectLocalFolder] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   const repoCardIconResolutionsInFlightRef = useRef<Set<string>>(new Set());
 
@@ -460,6 +463,12 @@ export default function HomeDashboardContainer({
     setIsLoadingCloneCredentialOptions(false);
   }, [isCloningRemote]);
 
+  const dismissDeleteProjectDialog = useCallback(() => {
+    if (isDeletingProject) return;
+    setProjectPendingDelete(null);
+    setDeleteProjectLocalFolder(false);
+  }, [isDeletingProject]);
+
   const handleCloneRemoteRepo = useCallback(async () => {
     if (isCloningRemote) return;
 
@@ -513,13 +522,74 @@ export default function HomeDashboardContainer({
     setIsSelectingRoot(false);
   }, []);
 
-  const handleRemoveRecent = useCallback(async (event: ReactMouseEvent, repo: string) => {
+  const handleRemoveRecent = useCallback((event: ReactMouseEvent, repo: string) => {
     event.stopPropagation();
-    if (!config) return;
-    const nextRecentProjects = config.recentProjects.filter((project) => project !== repo);
-    const nextConfig = await updateConfig({ recentProjects: nextRecentProjects });
-    setConfig(nextConfig);
-  }, [config]);
+    if (isDeletingProject) return;
+    setProjectPendingDelete(repo);
+    setDeleteProjectLocalFolder(false);
+  }, [isDeletingProject]);
+
+  const handleDeleteProjectConfirm = useCallback(async () => {
+    if (!projectPendingDelete || !config || isDeletingProject) return;
+
+    setError(null);
+    setIsDeletingProject(true);
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: projectPendingDelete,
+          deleteLocalFolder: deleteProjectLocalFolder,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to delete project.');
+      }
+
+      const nextRecentProjects = config.recentProjects.filter((project) => project !== projectPendingDelete);
+      const nextConfig = await updateConfig({ recentProjects: nextRecentProjects });
+      setConfig(nextConfig);
+      setProjectGitReposByPath((previous) => {
+        const next = { ...previous };
+        delete next[projectPendingDelete];
+        return next;
+      });
+      setDiscoveringHomeProjectGitRepos((previous) => {
+        const next = { ...previous };
+        delete next[projectPendingDelete];
+        return next;
+      });
+      setRepoCardIconByRepo((previous) => {
+        const next = { ...previous };
+        delete next[projectPendingDelete];
+        return next;
+      });
+      setBrokenRepoCardIcons((previous) => {
+        const next = { ...previous };
+        delete next[projectPendingDelete];
+        return next;
+      });
+      setHomeProjectGitSelector((current) => (
+        current?.projectPath === projectPendingDelete ? null : current
+      ));
+      setProjectPendingDelete(null);
+      setDeleteProjectLocalFolder(false);
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(
+        deleteError instanceof Error ? deleteError.message : 'Failed to delete project.',
+      );
+    } finally {
+      setIsDeletingProject(false);
+    }
+  }, [
+    config,
+    deleteProjectLocalFolder,
+    isDeletingProject,
+    projectPendingDelete,
+  ]);
 
   const discoverHomeProjectRepos = useCallback(async (
     projectPath: string,
@@ -692,6 +762,13 @@ export default function HomeDashboardContainer({
     onConfirm: handleCloneRemoteRepo,
     onDismiss: dismissCloneRemoteDialog,
     canConfirm: !isCloningRemote && remoteRepoUrl.trim().length > 0 && !isLoadingCloneCredentialOptions,
+  });
+
+  useDialogKeyboardShortcuts({
+    enabled: !!projectPendingDelete,
+    onConfirm: handleDeleteProjectConfirm,
+    onDismiss: dismissDeleteProjectDialog,
+    canConfirm: !isDeletingProject,
   });
 
   const runningSessionCountByProject = useMemo(() => {
@@ -929,6 +1006,68 @@ export default function HomeDashboardContainer({
                     <span className="block truncate font-mono text-xs">{repoPath}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {projectPendingDelete && (
+        <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Delete Project
+              </h3>
+              <button
+                className="btn btn-circle btn-ghost btn-sm"
+                onClick={dismissDeleteProjectDialog}
+                disabled={isDeletingProject}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <p className="text-sm text-slate-700 dark:text-slate-200">
+                Remove this project from the home page.
+              </p>
+              <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">
+                {projectPendingDelete}
+              </p>
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700 dark:border-white/10 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 dark:border-slate-600 dark:bg-slate-900"
+                  checked={deleteProjectLocalFolder}
+                  onChange={(event) => setDeleteProjectLocalFolder(event.target.checked)}
+                  disabled={isDeletingProject}
+                />
+                <span>
+                  Delete local folder too
+                </span>
+              </label>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Leave this unchecked to remove the project from Palx only and keep the local files on disk.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={dismissDeleteProjectDialog}
+                  disabled={isDeletingProject}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => {
+                    void handleDeleteProjectConfirm();
+                  }}
+                  disabled={isDeletingProject}
+                >
+                  {isDeletingProject ? 'Deleting...' : 'Delete Project'}
+                </button>
               </div>
             </div>
           </div>

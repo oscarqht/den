@@ -595,9 +595,17 @@ export default function HomeDashboardContainer({
 
     setIsSubmittingHomeNewTask(true);
     setHomeNewTaskError(null);
-    setHomeNewTaskSubmissionStage(
-      homeNewTaskSuggestedProjects.length > 0 ? 'creating' : 'analyzing',
-    );
+    let stageTransitionTimer: number | null = null;
+    if (homeNewTaskSuggestedProjects.length > 0) {
+      setHomeNewTaskSubmissionStage('creating');
+    } else {
+      setHomeNewTaskSubmissionStage('analyzing');
+      stageTransitionTimer = window.setTimeout(() => {
+        setHomeNewTaskSubmissionStage((current) => (
+          current === 'analyzing' ? 'creating' : current
+        ));
+      }, 1800);
+    }
 
     try {
       const result: CreateHomeTaskResult = await createHomeTask({
@@ -638,6 +646,9 @@ export default function HomeDashboardContainer({
       );
       setHomeNewTaskSubmissionStage('idle');
     } finally {
+      if (stageTransitionTimer !== null) {
+        window.clearTimeout(stageTransitionTimer);
+      }
       setIsSubmittingHomeNewTask(false);
     }
   }, [

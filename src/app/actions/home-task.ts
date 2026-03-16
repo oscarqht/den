@@ -5,10 +5,8 @@ import os from 'node:os';
 import { getConfig, updateConfig, type Config } from './config.ts';
 import {
   buildProjectRecommendationPrompt,
-  buildRuntimeRecommendationPrompt,
   evaluateProjectRecommendation,
   parseProjectRecommendation,
-  parseRuntimeRecommendation,
   resolveRuntimeRecommendation,
   type HomeTaskProjectOption,
   type HomeTaskSuggestedProject,
@@ -146,6 +144,109 @@ function resolveDefaultRuntime(config: Config, status: AppStatus): {
   };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizePathForMatching(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function isPathInsideProject(pathValue: string, projectPath: string): boolean {
+  const normalizedPath = normalizePathForMatching(pathValue);
+  const normalizedProjectPath = normalizePathForMatching(projectPath);
+
+  if (!normalizedPath || !normalizedProjectPath) {
+    return false;
+  }
+
+  return normalizedPath === normalizedProjectPath
+    || normalizedPath.startsWith(`${normalizedProjectPath}/`);
+}
+
+function hasStandaloneMatch(haystack: string, phrase: string): boolean {
+  const normalizedPhrase = phrase.trim().toLowerCase();
+  if (normalizedPhrase.length < 3) {
+    return false;
+  }
+
+  if (/[^a-z0-9]/i.test(normalizedPhrase)) {
+    return haystack.includes(normalizedPhrase);
+  }
+
+  const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedPhrase)}([^a-z0-9]|$)`, 'i');
+  return pattern.test(haystack);
+}
+
+function getProjectDetectionLabels(project: HomeTaskProjectOption): string[] {
+  const labels = new Set<string>();
+  const displayLabel = project.displayLabel.trim().toLowerCase();
+  if (displayLabel.length >= 3) {
+    labels.add(displayLabel);
+  }
+
+  const baseName = getBaseName(project.projectPath).trim().toLowerCase();
+  if (baseName.length >= 3) {
+    labels.add(baseName);
+  }
+
+  return Array.from(labels);
+}
+
+function resolveProjectByDeterministicSignals(input: {
+  description: string;
+  attachmentPaths: string[];
+  projects: HomeTaskProjectOption[];
+}): string | null {
+  const projectsMatchedByAttachment = input.projects.filter((project) => (
+    input.attachmentPaths.some((attachmentPath) => (
+      isPathInsideProject(attachmentPath, project.projectPath)
+    ))
+  ));
+
+  if (projectsMatchedByAttachment.length === 1) {
+    return projectsMatchedByAttachment[0].projectPath;
+  }
+
+  const normalizedDescription = input.description.trim().toLowerCase();
+  if (!normalizedDescription) {
+    return null;
+  }
+
+  const projectPathsByLabel = new Map<string, Set<string>>();
+  for (const project of input.projects) {
+    for (const label of getProjectDetectionLabels(project)) {
+      if (!projectPathsByLabel.has(label)) {
+        projectPathsByLabel.set(label, new Set());
+      }
+      projectPathsByLabel.get(label)?.add(project.projectPath);
+    }
+  }
+
+  const matchedProjectPaths = new Set<string>();
+  for (const [label, projectPaths] of projectPathsByLabel.entries()) {
+    if (projectPaths.size !== 1) {
+      continue;
+    }
+
+    if (!hasStandaloneMatch(normalizedDescription, label)) {
+      continue;
+    }
+
+    const [projectPath] = Array.from(projectPaths);
+    if (projectPath) {
+      matchedProjectPaths.add(projectPath);
+    }
+  }
+
+  if (matchedProjectPaths.size !== 1) {
+    return null;
+  }
+
+  const [matchedProjectPath] = Array.from(matchedProjectPaths);
+  return matchedProjectPath ?? null;
+}
+
 function ensureProviderReady(status: AppStatus): string | null {
   if (!status.installed) {
     return `Install ${status.provider} before creating a home task.`;
@@ -180,9 +281,18 @@ export async function createHomeTaskInternal(
   }
 
   let selectedProjectPath = input.selectedProjectPath?.trim() || '';
+  let defaultStatus: AppStatus | null = null;
+  if (!selectedProjectPath && projects.length > 1) {
+    selectedProjectPath = resolveProjectByDeterministicSignals({
+      description,
+      attachmentPaths,
+      projects,
+    }) || '';
+  }
+
   if (!selectedProjectPath && projects.length > 1) {
     const defaultProvider = config.defaultAgentProvider || deps.getDefaultAgentProvider();
-    const defaultStatus = await deps.getAgentStatus(defaultProvider);
+    defaultStatus = await deps.getAgentStatus(defaultProvider);
     const providerReadinessError = ensureProviderReady(defaultStatus);
     if (providerReadinessError) {
       return {
@@ -252,7 +362,9 @@ export async function createHomeTaskInternal(
   const provider = projectSettings.agentProvider
     || config.defaultAgentProvider
     || deps.getDefaultAgentProvider();
-  const providerStatus = await deps.getAgentStatus(provider);
+  const providerStatus = defaultStatus && defaultStatus.provider === provider
+    ? defaultStatus
+    : await deps.getAgentStatus(provider);
   const providerReadinessError = ensureProviderReady(providerStatus);
   if (providerReadinessError) {
     return {
@@ -261,43 +373,17 @@ export async function createHomeTaskInternal(
     };
   }
 
-  const runtimeRecommendationResponse = await deps.runAdHocAgentText({
+  const savedReasoningHint = normalizeProviderReasoningEffort(
     provider,
-    workspacePath: selectedProject.projectPath,
-    model: projectSettings.agentModel?.trim()
-      || providerStatus.defaultModel
-      || providerStatus.models[0]?.id
-      || null,
-    reasoningEffort: normalizeProviderReasoningEffort(
-      provider,
-      projectSettings.agentReasoningEffort ?? config.defaultAgentReasoningEffort,
-    ),
-    message: buildRuntimeRecommendationPrompt({
-      description,
-      attachmentPaths,
-      project: selectedProject,
-      provider,
-      modelOptions: providerStatus.models,
-      savedModelHint: projectSettings.agentModel,
-      savedReasoningHint: normalizeProviderReasoningEffort(
-        provider,
-        projectSettings.agentReasoningEffort ?? config.defaultAgentReasoningEffort,
-      ),
-    }),
-  });
-  const parsedRuntimeRecommendation = parseRuntimeRecommendation(
-    runtimeRecommendationResponse.assistantText,
+    projectSettings.agentReasoningEffort ?? config.defaultAgentReasoningEffort,
   );
   const resolvedRuntime = resolveRuntimeRecommendation({
     provider,
     modelOptions: providerStatus.models,
     defaultModel: providerStatus.defaultModel,
     savedModelHint: projectSettings.agentModel,
-    savedReasoningHint: normalizeProviderReasoningEffort(
-      provider,
-      projectSettings.agentReasoningEffort ?? config.defaultAgentReasoningEffort,
-    ),
-    recommendation: parsedRuntimeRecommendation,
+    savedReasoningHint,
+    recommendation: null,
   });
 
   if (!resolvedRuntime.model) {

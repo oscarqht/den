@@ -79,33 +79,21 @@ function createProjects(): Project[] {
 
 describe('createHomeTaskInternal', () => {
   it('creates a task when the project match is confident', async () => {
-    const runAdHocAgentText = mock.fn(async ({ provider }: { provider: string }) => {
-      if (provider === 'codex') {
-        return {
-          threadId: 'thread-project',
-          assistantText: JSON.stringify({
-            selectedProjectPath: '/work/apps/beta',
-            needsUserChoice: false,
-            candidates: [
-              {
-                projectPath: '/work/apps/beta',
-                confidence: 0.93,
-                rationale: 'The task clearly targets Beta.',
-              },
-            ],
-          }),
-        };
-      }
-
-      return {
-        threadId: 'thread-runtime',
-        assistantText: JSON.stringify({
-          model: 'gemini-2.5-pro',
-          reasoningEffort: null,
-          rationale: 'Gemini Pro is enough for this task.',
-        }),
-      };
-    });
+    const runAdHocAgentText = mock.fn(async () => ({
+      threadId: 'thread-project',
+      assistantText: JSON.stringify({
+        selectedProjectPath: '/work/apps/beta',
+        needsUserChoice: false,
+        candidates: [
+          {
+            projectPath: '/work/apps/beta',
+            confidence: 0.93,
+            rationale: 'The task clearly targets Beta.',
+          },
+        ],
+      }),
+    }));
+    const getAgentStatus = mock.fn(async (provider: AppStatus['provider']) => createStatus(provider));
     const updateConfig = mock.fn(async (updates: Partial<Config>) => createConfig(updates));
     const createAndLaunchTaskSession = mock.fn(async (input: Record<string, unknown>) => ({
       success: true,
@@ -115,7 +103,7 @@ describe('createHomeTaskInternal', () => {
     }));
 
     const result = await createHomeTaskInternal({
-      description: 'Fix the Beta sync bug in the payment worker.',
+      description: 'Fix the sync bug in the payment worker.',
       attachmentPaths: ['/tmp/repro.txt'],
     }, {
       getConfig: async () => createConfig({
@@ -128,7 +116,7 @@ describe('createHomeTaskInternal', () => {
       updateConfig,
       getProjects: createProjects,
       getDefaultAgentProvider: () => 'codex',
-      getAgentStatus: async (provider) => createStatus(provider),
+      getAgentStatus,
       runAdHocAgentText,
       createAndLaunchTaskSession,
       getRecommendationWorkspacePath: () => '/tmp',
@@ -140,7 +128,8 @@ describe('createHomeTaskInternal', () => {
       projectPath: '/work/apps/beta',
       title: 'Fix Beta sync bug',
     });
-    assert.strictEqual(runAdHocAgentText.mock.callCount(), 2);
+    assert.strictEqual(runAdHocAgentText.mock.callCount(), 1);
+    assert.strictEqual(getAgentStatus.mock.callCount(), 2);
     assert.strictEqual(updateConfig.mock.callCount(), 1);
     assert.deepStrictEqual(updateConfig.mock.calls[0].arguments[0], {
       recentProjects: ['/work/apps/beta', '/work/apps/alpha'],
@@ -152,6 +141,66 @@ describe('createHomeTaskInternal', () => {
     assert.equal(taskInput.model, 'gemini-2.5-pro');
     assert.equal(taskInput.sessionMode, 'plan');
     assert.equal(taskInput.workspacePreference, 'workspace');
+  });
+
+  it('uses attachment paths to deterministically select a project', async () => {
+    const runAdHocAgentText = mock.fn(async () => {
+      throw new Error('Should not run project analysis');
+    });
+    const getAgentStatus = mock.fn(async (provider: AppStatus['provider']) => createStatus(provider));
+    const createAndLaunchTaskSession = mock.fn(async () => ({
+      success: true,
+      sessionName: 'session-attachment',
+    }));
+
+    const result = await createHomeTaskInternal({
+      description: 'Investigate this failing worker.',
+      attachmentPaths: ['/work/apps/beta/src/worker.ts'],
+    }, {
+      getConfig: async () => createConfig(),
+      updateConfig: async (updates) => createConfig(updates),
+      getProjects: createProjects,
+      getDefaultAgentProvider: () => 'codex',
+      getAgentStatus,
+      runAdHocAgentText,
+      createAndLaunchTaskSession,
+      getRecommendationWorkspacePath: () => '/tmp',
+    });
+
+    assert.equal(result.status, 'created');
+    assert.equal(runAdHocAgentText.mock.callCount(), 0);
+    assert.equal(getAgentStatus.mock.callCount(), 1);
+    assert.equal(createAndLaunchTaskSession.mock.callCount(), 1);
+  });
+
+  it('uses a unique project label in the description to skip project analysis', async () => {
+    const runAdHocAgentText = mock.fn(async () => {
+      throw new Error('Should not run project analysis');
+    });
+    const getAgentStatus = mock.fn(async (provider: AppStatus['provider']) => createStatus(provider));
+    const createAndLaunchTaskSession = mock.fn(async () => ({
+      success: true,
+      sessionName: 'session-label',
+    }));
+
+    const result = await createHomeTaskInternal({
+      description: 'Fix the Beta onboarding bug and update tests.',
+      attachmentPaths: [],
+    }, {
+      getConfig: async () => createConfig(),
+      updateConfig: async (updates) => createConfig(updates),
+      getProjects: createProjects,
+      getDefaultAgentProvider: () => 'codex',
+      getAgentStatus,
+      runAdHocAgentText,
+      createAndLaunchTaskSession,
+      getRecommendationWorkspacePath: () => '/tmp',
+    });
+
+    assert.equal(result.status, 'created');
+    assert.equal(runAdHocAgentText.mock.callCount(), 0);
+    assert.equal(getAgentStatus.mock.callCount(), 1);
+    assert.equal(createAndLaunchTaskSession.mock.callCount(), 1);
   });
 
   it('returns project suggestions without creating a task when the match is ambiguous', async () => {
@@ -199,71 +248,55 @@ describe('createHomeTaskInternal', () => {
   });
 
   it('auto-creates when confidence is above eighty percent even if the agent flags ambiguity', async () => {
-    const runAdHocAgentText = mock.fn(async ({ provider }: { provider: string }) => {
-      if (provider === 'codex') {
-        return {
-          threadId: 'thread-project',
-          assistantText: JSON.stringify({
-            selectedProjectPath: '/work/apps/alpha',
-            needsUserChoice: true,
-            candidates: [
-              {
-                projectPath: '/work/apps/alpha',
-                confidence: 0.81,
-                rationale: 'Alpha is still the strongest match.',
-              },
-              {
-                projectPath: '/work/apps/beta',
-                confidence: 0.79,
-                rationale: 'Beta is somewhat plausible.',
-              },
-            ],
-          }),
-        };
-      }
-
-      return {
-        threadId: 'thread-runtime',
-        assistantText: JSON.stringify({
-          model: 'gpt-5.4',
-          reasoningEffort: 'high',
-          rationale: 'Use the default Codex runtime.',
-        }),
-      };
-    });
+    const runAdHocAgentText = mock.fn(async () => ({
+      threadId: 'thread-project',
+      assistantText: JSON.stringify({
+        selectedProjectPath: '/work/apps/alpha',
+        needsUserChoice: true,
+        candidates: [
+          {
+            projectPath: '/work/apps/alpha',
+            confidence: 0.81,
+            rationale: 'Alpha is still the strongest match.',
+          },
+          {
+            projectPath: '/work/apps/beta',
+            confidence: 0.79,
+            rationale: 'Beta is somewhat plausible.',
+          },
+        ],
+      }),
+    }));
+    const getAgentStatus = mock.fn(async (provider: AppStatus['provider']) => createStatus(provider));
     const createAndLaunchTaskSession = mock.fn(async () => ({
       success: true,
       sessionName: 'session-789',
     }));
 
     const result = await createHomeTaskInternal({
-      description: 'Fix the Alpha onboarding flow.',
+      description: 'Resolve the onboarding flow issue.',
       attachmentPaths: [],
     }, {
       getConfig: async () => createConfig(),
       updateConfig: async (updates) => createConfig(updates),
       getProjects: createProjects,
       getDefaultAgentProvider: () => 'codex',
-      getAgentStatus: async (provider) => createStatus(provider),
+      getAgentStatus,
       runAdHocAgentText,
       createAndLaunchTaskSession,
       getRecommendationWorkspacePath: () => '/tmp',
     });
 
     assert.equal(result.status, 'created');
-    assert.strictEqual(runAdHocAgentText.mock.callCount(), 2);
+    assert.strictEqual(runAdHocAgentText.mock.callCount(), 1);
+    assert.strictEqual(getAgentStatus.mock.callCount(), 1);
     assert.strictEqual(createAndLaunchTaskSession.mock.callCount(), 1);
   });
 
   it('skips project analysis when the user provides a project choice', async () => {
-    const runAdHocAgentText = mock.fn(async () => ({
-      threadId: 'thread-runtime',
-      assistantText: JSON.stringify({
-        model: 'gpt-5.4',
-        reasoningEffort: 'high',
-        rationale: 'Use the saved Codex default.',
-      }),
-    }));
+    const runAdHocAgentText = mock.fn(async () => {
+      throw new Error('Should not run project analysis');
+    });
     const createAndLaunchTaskSession = mock.fn(async () => ({
       success: true,
       sessionName: 'session-456',
@@ -285,7 +318,7 @@ describe('createHomeTaskInternal', () => {
     });
 
     assert.equal(result.status, 'created');
-    assert.strictEqual(runAdHocAgentText.mock.callCount(), 1);
+    assert.strictEqual(runAdHocAgentText.mock.callCount(), 0);
     assert.strictEqual(createAndLaunchTaskSession.mock.callCount(), 1);
   });
 

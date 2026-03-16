@@ -91,6 +91,19 @@ export function buildProjectGitInstructionLines(
     ];
   }
 
+  if (workspaceMode === 'local_source') {
+    const repoSummary = repoPaths.length === 1
+      ? `this project contains one Git repository at ${formatRepoPaths(repoPaths)}.`
+      : `this project contains ${repoPaths.length} Git repositories at ${formatRepoPaths(repoPaths)}.`;
+    return [
+      `Git context: ${repoSummary}`,
+      'Your shell starts at the selected project source folder. Changes apply directly to that source checkout, so run Git commands in the matching repository path and use extra care with destructive operations.',
+      ...(repoPaths.length > 1 || !repoPaths.includes('.')
+        ? ['If your changes span multiple repositories, handle commits, pushes, and pull or merge requests separately for each repository.']
+        : []),
+    ];
+  }
+
   return [
     `Git context: this project contains ${repoPaths.length} Git repositories at ${formatRepoPaths(repoPaths)}.`,
     'Your shell starts at the project root. Before any Git command, `cd` into the repository you are working in; do not assume the project root is itself a Git repository unless `.` is listed.',

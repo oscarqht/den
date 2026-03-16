@@ -145,6 +145,7 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /you may use `npx skills` to discover and install additional skills at your discretion/);
     assert.match(prompt!, /# Task\n\nFix the startup prompt$/m);
     assert.doesNotMatch(prompt!, /Attachments:/);
+    assert.doesNotMatch(prompt!, /Project Remote Resources:/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
   });
 
@@ -165,5 +166,26 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /Request approval again only when a proposed change is substantial/);
     assert.match(prompt!, /Attachments:\n- \/tmp\/spec\.md/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
+  });
+
+  it('includes project remote resources and notion guidance when resources are provided', () => {
+    const prompt = buildAgentStartupPrompt({
+      taskDescription: 'Update the API endpoint based on project docs',
+      workspaceMode: 'folder',
+      remoteResources: [
+        {
+          provider: 'notion',
+          resourceType: 'document',
+          uri: 'https://workspace.notion.site/Engineering-Spec-abc123',
+        },
+      ],
+    });
+
+    assert.ok(prompt);
+    assert.match(prompt!, /Remote resources: this project includes Notion documents/);
+    assert.match(
+      prompt!,
+      /Project Remote Resources:\n- notion\/document: https:\/\/workspace\.notion\.site\/Engineering-Spec-abc123/,
+    );
   });
 });

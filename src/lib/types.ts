@@ -11,6 +11,17 @@ export interface Project {
   worktreesGroupExpanded?: boolean;
 }
 
+export type ProjectRemoteResourceProvider = 'notion' | (string & {});
+
+export type ProjectRemoteResourceType = 'document' | (string & {});
+
+export interface ProjectRemoteResource {
+  provider: ProjectRemoteResourceProvider;
+  resourceType: ProjectRemoteResourceType;
+  uri: string;
+  title?: string;
+}
+
 // TODO: remove once all callers are migrated.
 export type Repository = Project;
 

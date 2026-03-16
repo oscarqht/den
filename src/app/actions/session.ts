@@ -18,6 +18,7 @@ import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
 } from '@/lib/agent/reasoning';
+import { normalizeProjectRemoteResources } from '@/lib/project-remote-resources';
 import { sortSessionHistoryForTimeline } from '@/lib/agent/history-order';
 import { publishSessionListUpdated } from '@/lib/sessionNotificationServer';
 import { runInBackground } from '@/lib/background-task';
@@ -44,6 +45,7 @@ import type {
   SessionAgentRunState,
   SessionAgentRuntimeState,
   SessionGitRepoContext,
+  ProjectRemoteResource,
   SessionWorkspaceMode,
   SessionWorkspacePreference,
 } from '@/lib/types';
@@ -85,6 +87,7 @@ export type SessionLaunchContext = {
   attachmentNames?: string[];
   projectRepoPaths?: string[];
   projectRepoRelativePaths?: string[];
+  remoteResources?: ProjectRemoteResource[];
   agentProvider?: AgentProvider;
   model?: string;
   reasoningEffort?: ReasoningEffort;
@@ -214,6 +217,7 @@ type SessionLaunchContextRow = {
   attachment_names_json: string | null;
   project_repo_paths_json: string | null;
   project_repo_relative_paths_json: string | null;
+  remote_resources_json: string | null;
   agent_provider: string | null;
   model: string | null;
   reasoning_effort: string | null;
@@ -256,6 +260,17 @@ function parseStringArray(value: string | null): string[] | undefined {
     const parsed = JSON.parse(value) as unknown;
     if (!Array.isArray(parsed)) return undefined;
     return parsed.filter((entry): entry is string => typeof entry === 'string');
+  } catch {
+    return undefined;
+  }
+}
+
+function parseProjectRemoteResources(value: string | null): ProjectRemoteResource[] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    const normalized = normalizeProjectRemoteResources(parsed);
+    return normalized.length > 0 ? normalized : undefined;
   } catch {
     return undefined;
   }
@@ -386,6 +401,7 @@ function rowToSessionLaunchContext(row: SessionLaunchContextRow): SessionLaunchC
     attachmentNames: parseStringArray(row.attachment_names_json),
     projectRepoPaths: parseStringArray(row.project_repo_paths_json),
     projectRepoRelativePaths: parseStringArray(row.project_repo_relative_paths_json),
+    remoteResources: parseProjectRemoteResources(row.remote_resources_json),
     agentProvider,
     model: row.model ?? undefined,
     reasoningEffort: normalizeProviderReasoningEffort(agentProvider, row.reasoning_effort),
@@ -1386,15 +1402,16 @@ export async function saveSessionLaunchContext(
       timestamp: new Date().toISOString(),
     };
     const agentProvider = contextData.agentProvider;
+    const normalizedRemoteResources = normalizeProjectRemoteResources(contextData.remoteResources || []);
     const db = getLocalDb();
     db.prepare(`
       INSERT OR REPLACE INTO session_launch_contexts (
         session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
+        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json, remote_resources_json,
         agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
       ) VALUES (
         @sessionName, @title, @initialMessage, @rawInitialMessage, @startupScript,
-        @attachmentPathsJson, @attachmentNamesJson, @projectRepoPathsJson, @projectRepoRelativePathsJson,
+        @attachmentPathsJson, @attachmentNamesJson, @projectRepoPathsJson, @projectRepoRelativePathsJson, @remoteResourcesJson,
         @agentProvider, @model, @reasoningEffort, @sessionMode, @isResume, @timestamp
       )
     `).run({
@@ -1408,6 +1425,9 @@ export async function saveSessionLaunchContext(
       projectRepoPathsJson: contextData.projectRepoPaths ? JSON.stringify(contextData.projectRepoPaths) : null,
       projectRepoRelativePathsJson: contextData.projectRepoRelativePaths
         ? JSON.stringify(contextData.projectRepoRelativePaths)
+        : null,
+      remoteResourcesJson: normalizedRemoteResources.length > 0
+        ? JSON.stringify(normalizedRemoteResources)
         : null,
       agentProvider: agentProvider ?? null,
       model: contextData.model ?? null,
@@ -1434,7 +1454,7 @@ export async function consumeSessionLaunchContext(
     const row = db.prepare(`
       SELECT
         session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
+        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json, remote_resources_json,
         agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
       FROM session_launch_contexts
       WHERE session_name = ?
@@ -1455,7 +1475,7 @@ export async function readSessionLaunchContext(
     const row = db.prepare(`
       SELECT
         session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
+        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json, remote_resources_json,
         agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
       FROM session_launch_contexts
       WHERE session_name = ?

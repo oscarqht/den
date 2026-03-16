@@ -22,7 +22,14 @@ import { toast } from '@/hooks/use-toast';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import type { Credential } from '@/lib/credentials';
 import { getBaseName } from '@/lib/path';
+import {
+  hasNotionDocumentResource,
+  getNotionDocumentLinks,
+  normalizeNotionDocumentLinks,
+  setNotionDocumentLinks,
+} from '@/lib/project-remote-resources';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
+import { startNotionMcpSetup } from '@/lib/notion-mcp-client';
 import {
   resolveShouldUseDarkTheme,
   THEME_MODE_STORAGE_KEY,
@@ -91,6 +98,7 @@ export default function HomeDashboardContainer({
   const [repoAlias, setRepoAlias] = useState('');
   const [repoStartupCommand, setRepoStartupCommand] = useState(DEFAULT_PROJECT_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+  const [repoNotionDocumentLinks, setRepoNotionDocumentLinks] = useState<string[]>([]);
   const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
@@ -367,6 +375,7 @@ export default function HomeDashboardContainer({
     setRepoAlias('');
     setRepoStartupCommand(DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoNotionDocumentLinks([]);
     setProjectIconPathForSettings(null);
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
@@ -384,6 +393,7 @@ export default function HomeDashboardContainer({
     setRepoAlias(settings?.alias?.trim() || '');
     setRepoStartupCommand(settings?.startupScript ?? DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoNotionDocumentLinks(getNotionDocumentLinks(settings?.remoteResources));
     setProjectIconPathForSettings(repoCardIconByRepo[repo] ?? null);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
@@ -399,11 +409,28 @@ export default function HomeDashboardContainer({
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
     try {
+      const existingProjectSettings = config?.projectSettings?.[repoForSettings] || {};
+      const { links: normalizedNotionLinks, invalidValues } = normalizeNotionDocumentLinks(
+        repoNotionDocumentLinks,
+      );
+      if (invalidValues.length > 0) {
+        throw new Error(`Invalid Notion URL: ${invalidValues[0]}`);
+      }
+
+      const hadAnyNotionLinksBefore = Object.values(config?.projectSettings || {}).some((settings) => (
+        hasNotionDocumentResource(settings.remoteResources)
+      ));
+      const shouldInitiateNotionSetup = !hadAnyNotionLinksBefore && normalizedNotionLinks.length > 0;
+      const nextRemoteResources = setNotionDocumentLinks(
+        existingProjectSettings.remoteResources,
+        normalizedNotionLinks,
+      );
       const aliasToSave = repoAlias.trim() || null;
       const nextConfig = await updateProjectSettings(repoForSettings, {
         startupScript: startupCommandToSave,
         devServerScript: devServerCommandToSave,
         alias: aliasToSave,
+        remoteResources: nextRemoteResources,
       });
       setConfig(nextConfig);
 
@@ -417,19 +444,47 @@ export default function HomeDashboardContainer({
         // Non-critical if the project registry is temporarily unavailable.
       }
 
+      if (shouldInitiateNotionSetup) {
+        try {
+          const setupResult = await startNotionMcpSetup();
+          if (setupResult.authUrl) {
+            window.open(setupResult.authUrl, '_blank', 'noopener,noreferrer');
+            toast({
+              title: 'Notion Authentication Started',
+              description: 'Finish the Notion authorization in the browser tab that was opened.',
+              type: 'info',
+            });
+          }
+        } catch (setupError) {
+          console.error('Failed to initialize Notion MCP setup:', setupError);
+          toast({
+            title: 'Notion Setup Warning',
+            description: setupError instanceof Error
+              ? setupError.message
+              : 'Project settings were saved, but Notion MCP setup did not start.',
+            type: 'warning',
+          });
+        }
+      }
+
       dismissRepoSettingsDialog();
     } catch (saveError) {
       console.error(saveError);
-      setRepoSettingsError('Failed to save project settings.');
+      setRepoSettingsError(
+        saveError instanceof Error ? saveError.message : 'Failed to save project settings.',
+      );
     } finally {
       setIsSavingRepoSettings(false);
     }
   }, [
+    config?.projectSettings,
     dismissRepoSettingsDialog,
     repoAlias,
     repoDevServerCommand,
     repoForSettings,
+    repoNotionDocumentLinks,
     repoStartupCommand,
+    toast,
   ]);
 
   const handleUploadProjectIcon = useCallback(async (iconPath: string) => {
@@ -1172,6 +1227,7 @@ export default function HomeDashboardContainer({
         projectAlias={repoAlias}
         projectStartupCommand={repoStartupCommand}
         projectDevServerCommand={repoDevServerCommand}
+        notionDocumentLinks={repoNotionDocumentLinks}
         defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
         defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
         projectIconPath={projectIconPathForSettings}
@@ -1181,6 +1237,7 @@ export default function HomeDashboardContainer({
         onAliasChange={setRepoAlias}
         onStartupCommandChange={setRepoStartupCommand}
         onDevServerCommandChange={setRepoDevServerCommand}
+        onNotionDocumentLinksChange={setRepoNotionDocumentLinks}
         onUploadIcon={(iconPath) => {
           void handleUploadProjectIcon(iconPath);
         }}

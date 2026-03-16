@@ -1,4 +1,9 @@
-import type { SessionGitRepoContext, SessionWorkspaceMode } from './types.ts';
+import type { ProjectRemoteResource, SessionGitRepoContext, SessionWorkspaceMode } from './types.ts';
+import {
+  DOCUMENT_REMOTE_RESOURCE_TYPE,
+  NOTION_REMOTE_RESOURCE_PROVIDER,
+  normalizeProjectRemoteResources,
+} from './project-remote-resources.ts';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
   'Plan mode: in your first response of this session, inspect the relevant code, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands. After the user approves that initial plan, execute small or trivial follow-up changes directly without re-requesting approval. Request approval again only when a proposed change is substantial (for example meaningfully expands scope, changes approach, or introduces material risk).';
@@ -20,6 +25,7 @@ export type BuildAgentStartupPromptOptions = {
   workspaceMode: SessionWorkspaceMode;
   gitRepos?: SessionGitRepoContext[];
   discoveredRepoRelativePaths?: string[];
+  remoteResources?: ProjectRemoteResource[];
 };
 
 function normalizeRepoPath(value: string | null | undefined): string {
@@ -120,6 +126,7 @@ export function buildAgentStartupPrompt({
   workspaceMode,
   gitRepos = [],
   discoveredRepoRelativePaths = [],
+  remoteResources = [],
 }: BuildAgentStartupPromptOptions): string | null {
   if (!hasStartupTaskDescription(taskDescription)) {
     return null;
@@ -129,6 +136,11 @@ export function buildAgentStartupPrompt({
   const normalizedAttachmentPaths = Array.from(
     new Set(attachmentPaths.map((entry) => entry.trim()).filter(Boolean)),
   );
+  const normalizedRemoteResources = normalizeProjectRemoteResources(remoteResources);
+  const notionDocuments = normalizedRemoteResources.filter((resource) => (
+    resource.provider === NOTION_REMOTE_RESOURCE_PROVIDER
+    && resource.resourceType === DOCUMENT_REMOTE_RESOURCE_TYPE
+  ));
 
   const instructionLines: string[] = [];
   if (sessionMode === 'plan') {
@@ -140,12 +152,25 @@ export function buildAgentStartupPrompt({
   instructionLines.push(SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION);
   instructionLines.push(OPTIONAL_SKILL_DISCOVERY_INSTRUCTION);
   instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
+  if (notionDocuments.length > 0) {
+    instructionLines.push(
+      'Remote resources: this project includes Notion documents. When Notion MCP tools are available in this runtime, use them to fetch and verify relevant context before editing code.',
+    );
+  }
 
   const taskSections: string[] = [trimmedTaskDescription];
   if (normalizedAttachmentPaths.length > 0) {
     taskSections.push([
       'Attachments:',
       ...normalizedAttachmentPaths.map((attachmentPath) => `- ${attachmentPath}`),
+    ].join('\n'));
+  }
+  if (normalizedRemoteResources.length > 0) {
+    taskSections.push([
+      'Project Remote Resources:',
+      ...normalizedRemoteResources.map((resource) => (
+        `- ${resource.provider}/${resource.resourceType}: ${resource.uri}`
+      )),
     ].join('\n'));
   }
 

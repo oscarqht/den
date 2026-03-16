@@ -13,6 +13,7 @@ import {
 
 import type {
   AgentProvider,
+  ProjectRemoteResource,
   ReasoningEffort,
   SessionWorkspacePreference,
 } from '../../lib/types.ts';
@@ -40,6 +41,7 @@ export type LaunchTaskSessionInput = {
   gitContexts?: SessionCreateGitContextInput[];
   projectRepoPaths?: string[];
   projectRepoRelativePaths?: string[];
+  remoteResources?: ProjectRemoteResource[];
 };
 
 export type LaunchTaskSessionResult = {
@@ -106,6 +108,7 @@ export async function createAndLaunchTaskSession(
     attachmentNames: attachmentContext.attachmentNames,
     projectRepoPaths: projectRepoLaunchContext.projectRepoPaths,
     projectRepoRelativePaths: projectRepoLaunchContext.projectRepoRelativePaths,
+    remoteResources: input.remoteResources,
     agentProvider: input.agentProvider,
     model: input.model.trim(),
     reasoningEffort: normalizeProviderReasoningEffort(
@@ -129,6 +132,7 @@ export async function createAndLaunchTaskSession(
     workspaceMode: createdSession.workspaceMode || 'folder',
     gitRepos: createdSession.gitRepos,
     discoveredRepoRelativePaths: projectRepoLaunchContext.projectRepoRelativePaths,
+    remoteResources: input.remoteResources,
   });
 
   if (initialAgentPrompt) {

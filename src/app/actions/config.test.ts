@@ -63,4 +63,36 @@ describe('config global agent defaults', () => {
     assert.equal(codexConfig.defaultAgentProvider, 'codex');
     assert.equal(codexConfig.defaultAgentReasoningEffort, 'low');
   });
+
+  it('round-trips project remote resources in project settings', async () => {
+    const projectPath = '/tmp/palx-project-with-resources';
+    await configModule.updateProjectSettings(projectPath, {
+      remoteResources: [
+        {
+          provider: 'notion',
+          resourceType: 'document',
+          uri: 'https://workspace.notion.site/Engineering-Spec-abc123/',
+        },
+        {
+          provider: 'google_drive',
+          resourceType: 'document',
+          uri: 'https://drive.google.com/file/d/xyz/view',
+        },
+      ],
+    });
+
+    const loaded = await configModule.getConfig();
+    assert.deepStrictEqual(loaded.projectSettings[projectPath]?.remoteResources, [
+      {
+        provider: 'notion',
+        resourceType: 'document',
+        uri: 'https://workspace.notion.site/Engineering-Spec-abc123',
+      },
+      {
+        provider: 'google_drive',
+        resourceType: 'document',
+        uri: 'https://drive.google.com/file/d/xyz/view',
+      },
+    ]);
+  });
 });

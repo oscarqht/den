@@ -170,7 +170,8 @@ function createSchema(db: Database.Database): void {
       agent_reasoning_effort TEXT,
       startup_script TEXT,
       dev_server_script TEXT,
-      alias TEXT
+      alias TEXT,
+      remote_resources_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS git_repo_credentials (
@@ -218,6 +219,7 @@ function createSchema(db: Database.Database): void {
       attachment_names_json TEXT,
       project_repo_paths_json TEXT,
       project_repo_relative_paths_json TEXT,
+      remote_resources_json TEXT,
       agent_provider TEXT,
       model TEXT,
       reasoning_effort TEXT,
@@ -869,6 +871,7 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'session_launch_contexts', 'reasoning_effort TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_paths_json TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_relative_paths_json TEXT');
+  addColumnIfMissing(db, 'session_launch_contexts', 'remote_resources_json TEXT');
   addColumnIfMissing(db, 'drafts', 'project_path TEXT');
   addColumnIfMissing(db, 'drafts', 'git_contexts_json TEXT');
   addColumnIfMissing(db, 'drafts', 'reasoning_effort TEXT');
@@ -876,6 +879,7 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'app_config', 'default_agent_model TEXT');
   addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
   addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
+  addColumnIfMissing(db, 'app_config_project_settings', 'remote_resources_json TEXT');
 
   rebuildSessionsTableIfLegacyBranchNameIsRequired(db);
 

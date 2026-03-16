@@ -79,6 +79,7 @@ type HomeTaskDependencies = {
     gitContexts?: import('./session.ts').SessionCreateGitContextInput[];
     projectRepoPaths?: string[];
     projectRepoRelativePaths?: string[];
+    remoteResources?: import('../../lib/types.ts').ProjectRemoteResource[];
   }) => Promise<{
     success: boolean;
     sessionName?: string;
@@ -325,6 +326,7 @@ export async function createHomeTaskInternal(
     reasoningEffort: resolvedRuntime.reasoningEffort,
     sessionMode: 'plan',
     workspacePreference: 'workspace',
+    remoteResources: projectSettings.remoteResources,
   });
 
   if (!sessionResult.success || !sessionResult.sessionName) {

@@ -52,12 +52,20 @@ import {
   toProjectRelativeRepoPath,
 } from '@/lib/task-session';
 import {
+  getNotionDocumentLinks,
+  hasNotionDocumentResource,
+  normalizeNotionDocumentLinks,
+  setNotionDocumentLinks,
+} from '@/lib/project-remote-resources';
+import { startNotionMcpSetup } from '@/lib/notion-mcp-client';
+import {
   resolveShouldUseDarkTheme,
   THEME_MODE_STORAGE_KEY,
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
+import { toast } from '@/hooks/use-toast';
 import SessionFileBrowser from './SessionFileBrowser';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
 import { RepoSettingsDialog } from './git-repo-selector/RepoSettingsDialog';
@@ -359,6 +367,7 @@ export default function GitRepoSelector({
   const [repoAlias, setRepoAlias] = useState<string>('');
   const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_PROJECT_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState<string>(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+  const [repoNotionDocumentLinks, setRepoNotionDocumentLinks] = useState<string[]>([]);
   const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
@@ -576,8 +585,10 @@ export default function GitRepoSelector({
     if (isSavingRepoSettings) return;
     setIsRepoSettingsDialogOpen(false);
     setRepoForSettings(null);
+    setRepoAlias('');
     setRepoStartupCommand(DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoNotionDocumentLinks([]);
     setProjectIconPathForSettings(null);
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
@@ -1840,6 +1851,7 @@ export default function GitRepoSelector({
     setRepoAlias(settings?.alias?.trim() || '');
     setRepoStartupCommand(settings?.startupScript ?? DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoNotionDocumentLinks(getNotionDocumentLinks(settings?.remoteResources));
     setProjectIconPathForSettings(repoCardIconByRepo[repo] ?? null);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
@@ -1853,11 +1865,28 @@ export default function GitRepoSelector({
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
     try {
+      const existingProjectSettings = config?.projectSettings?.[repoForSettings] || {};
+      const { links: normalizedNotionLinks, invalidValues } = normalizeNotionDocumentLinks(
+        repoNotionDocumentLinks,
+      );
+      if (invalidValues.length > 0) {
+        throw new Error(`Invalid Notion URL: ${invalidValues[0]}`);
+      }
+
+      const hadAnyNotionLinksBefore = Object.values(config?.projectSettings || {}).some((settings) => (
+        hasNotionDocumentResource(settings.remoteResources)
+      ));
+      const shouldInitiateNotionSetup = !hadAnyNotionLinksBefore && normalizedNotionLinks.length > 0;
+      const nextRemoteResources = setNotionDocumentLinks(
+        existingProjectSettings.remoteResources,
+        normalizedNotionLinks,
+      );
       const aliasToSave = repoAlias.trim() || null;
       const newConfig = await updateProjectSettings(repoForSettings, {
         startupScript: startupCommandToSave,
         devServerScript: devServerCommandToSave,
         alias: aliasToSave,
+        remoteResources: nextRemoteResources,
       });
       setConfig(newConfig);
 
@@ -1871,10 +1900,35 @@ export default function GitRepoSelector({
         // Non-critical if project is temporarily unavailable.
       }
 
+      if (shouldInitiateNotionSetup) {
+        try {
+          const setupResult = await startNotionMcpSetup();
+          if (setupResult.authUrl) {
+            window.open(setupResult.authUrl, '_blank', 'noopener,noreferrer');
+            toast({
+              title: 'Notion Authentication Started',
+              description: 'Finish the Notion authorization in the browser tab that was opened.',
+              type: 'info',
+            });
+          }
+        } catch (setupError) {
+          console.error('Failed to initialize Notion MCP setup:', setupError);
+          toast({
+            title: 'Notion Setup Warning',
+            description: setupError instanceof Error
+              ? setupError.message
+              : 'Project settings were saved, but Notion MCP setup did not start.',
+            type: 'warning',
+          });
+        }
+      }
+
       dismissRepoSettingsDialog();
     } catch (err) {
       console.error(err);
-      setRepoSettingsError('Failed to save project settings.');
+      setRepoSettingsError(
+        err instanceof Error ? err.message : 'Failed to save project settings.',
+      );
     } finally {
       setIsSavingRepoSettings(false);
     }
@@ -2409,6 +2463,7 @@ export default function GitRepoSelector({
         agentReasoningEffort: resolvedReasoningEffort,
       });
       setConfig(nextConfig);
+      const projectRemoteResources = nextConfig.projectSettings[selectedRepo]?.remoteResources;
 
       // 2. Create session workspace (single/multi/folder mode decided by server runtime discovery).
       const gitContexts = selectedProjectGitContexts;
@@ -2452,6 +2507,7 @@ export default function GitRepoSelector({
         projectRepoRelativePaths: projectGitRepos.map((repoPath) => (
           toProjectRelativeRepoPath(selectedRepo, repoPath)
         )),
+        remoteResources: projectRemoteResources,
       });
 
       if (!sessionResult.success || !sessionResult.sessionName) {
@@ -2966,6 +3022,7 @@ export default function GitRepoSelector({
           projectAlias={repoAlias}
           projectStartupCommand={repoStartupCommand}
           projectDevServerCommand={repoDevServerCommand}
+          notionDocumentLinks={repoNotionDocumentLinks}
           defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
           defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
           projectIconPath={projectIconPathForSettings}
@@ -2975,6 +3032,7 @@ export default function GitRepoSelector({
           onAliasChange={setRepoAlias}
           onStartupCommandChange={setRepoStartupCommand}
           onDevServerCommandChange={setRepoDevServerCommand}
+          onNotionDocumentLinksChange={setRepoNotionDocumentLinks}
           onUploadIcon={(iconPath) => {
             void handleUploadProjectIcon(iconPath);
           }}

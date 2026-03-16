@@ -122,6 +122,13 @@ describe('createHomeTaskInternal', () => {
         projectSettings: {
           '/work/apps/beta': {
             agentProvider: 'gemini',
+            remoteResources: [
+              {
+                provider: 'notion',
+                resourceType: 'document',
+                uri: 'https://workspace.notion.site/Beta-Task-Context-abc123',
+              },
+            ],
           },
         },
       }),
@@ -152,6 +159,13 @@ describe('createHomeTaskInternal', () => {
     assert.equal(taskInput.model, 'gemini-2.5-pro');
     assert.equal(taskInput.sessionMode, 'plan');
     assert.equal(taskInput.workspacePreference, 'workspace');
+    assert.deepStrictEqual(taskInput.remoteResources, [
+      {
+        provider: 'notion',
+        resourceType: 'document',
+        uri: 'https://workspace.notion.site/Beta-Task-Context-abc123',
+      },
+    ]);
   });
 
   it('returns project suggestions without creating a task when the match is ambiguous', async () => {

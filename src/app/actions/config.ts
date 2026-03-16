@@ -5,7 +5,8 @@ import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
 } from '../../lib/agent/reasoning.ts';
-import type { AgentProvider, ReasoningEffort } from '../../lib/types.ts';
+import type { AgentProvider, ProjectRemoteResource, ReasoningEffort } from '../../lib/types.ts';
+import { normalizeProjectRemoteResources } from '../../lib/project-remote-resources.ts';
 
 export interface ProjectSettings {
   agentProvider?: AgentProvider;
@@ -14,6 +15,7 @@ export interface ProjectSettings {
   startupScript?: string;
   devServerScript?: string;
   alias?: string | null;
+  remoteResources?: ProjectRemoteResource[];
   // Deprecated compatibility fields.
   lastBranch?: string;
   credentialId?: string | null;
@@ -64,7 +66,18 @@ type ProjectSettingsRow = {
   startup_script: string | null;
   dev_server_script: string | null;
   alias: string | null;
+  remote_resources_json: string | null;
 };
+
+function parseProjectRemoteResources(value: string | null): ProjectRemoteResource[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return normalizeProjectRemoteResources(parsed);
+  } catch {
+    return [];
+  }
+}
 
 function toProjectSettings(row: ProjectSettingsRow): ProjectSettings {
   const settings: ProjectSettings = {};
@@ -78,17 +91,23 @@ function toProjectSettings(row: ProjectSettingsRow): ProjectSettings {
   if (row.startup_script !== null) settings.startupScript = row.startup_script;
   if (row.dev_server_script !== null) settings.devServerScript = row.dev_server_script;
   if (row.alias !== null) settings.alias = row.alias;
+  const remoteResources = parseProjectRemoteResources(row.remote_resources_json);
+  if (remoteResources.length > 0) settings.remoteResources = remoteResources;
   return settings;
 }
 
 function normalizeProjectSettings(settings: ProjectSettings): ProjectSettings {
   const normalizedProvider = settings.agentProvider;
+  const normalizedRemoteResources = normalizeProjectRemoteResources(settings.remoteResources || []);
   return {
     ...settings,
     agentReasoningEffort: normalizeProviderReasoningEffort(
       normalizedProvider,
       settings.agentReasoningEffort,
     ),
+    remoteResources: normalizedRemoteResources.length > 0
+      ? normalizedRemoteResources
+      : undefined,
   };
 }
 
@@ -147,10 +166,10 @@ function writeConfig(config: Config): void {
     const insertProjectSettings = db.prepare(`
       INSERT INTO app_config_project_settings (
         project_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, alias, remote_resources_json
       ) VALUES (
         @projectPath, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @alias
+        @startupScript, @devServerScript, @alias, @remoteResourcesJson
       )
     `);
     for (const [projectPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
@@ -166,6 +185,9 @@ function writeConfig(config: Config): void {
         startupScript: normalizedProjectSettings.startupScript ?? null,
         devServerScript: normalizedProjectSettings.devServerScript ?? null,
         alias: normalizedProjectSettings.alias ?? null,
+        remoteResourcesJson: normalizedProjectSettings.remoteResources
+          ? JSON.stringify(normalizedProjectSettings.remoteResources)
+          : null,
       });
     }
   });
@@ -198,7 +220,7 @@ export async function getConfig(): Promise<Config> {
   const projectSettingsRows = db.prepare(`
     SELECT
       project_path, agent_provider, agent_model, agent_reasoning_effort,
-      startup_script, dev_server_script, alias
+      startup_script, dev_server_script, alias, remote_resources_json
     FROM app_config_project_settings
   `).all() as ProjectSettingsRow[];
 

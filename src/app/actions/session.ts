@@ -45,6 +45,7 @@ import type {
   SessionAgentRuntimeState,
   SessionGitRepoContext,
   SessionWorkspaceMode,
+  SessionWorkspacePreference,
 } from '@/lib/types';
 
 export type SessionMetadata = {
@@ -142,6 +143,7 @@ export type SessionCreateMetadata = {
   startupScript?: string;
   devServerScript?: string;
   preparedWorkspaceId?: string;
+  workspacePreference?: SessionWorkspacePreference;
 };
 
 export type SessionCreateResult = {
@@ -279,19 +281,33 @@ function toSessionGitRepoContext(row: SessionGitRepoRow): SessionGitRepoContext 
 }
 
 function normalizeSessionWorkspaceMode(value: string | null | undefined): SessionWorkspaceMode {
-  if (value === 'single_worktree' || value === 'multi_repo_worktree' || value === 'folder') {
+  if (
+    value === 'single_worktree'
+    || value === 'multi_repo_worktree'
+    || value === 'folder'
+    || value === 'local_source'
+  ) {
     return value;
   }
   return 'folder';
 }
 
+function normalizeSessionWorkspacePreference(
+  value: SessionWorkspacePreference | string | null | undefined,
+): SessionWorkspacePreference {
+  return value === 'local' ? 'local' : 'workspace';
+}
+
 function toCompatibilityFields(metadata: SessionMetadata): Pick<SessionMetadata, 'repoPath' | 'worktreePath' | 'branchName' | 'baseBranch'> {
   const activeContext = metadata.gitRepos.find((context) => context.sourceRepoPath === metadata.activeRepoPath)
     || metadata.gitRepos[0];
+  const compatibilityWorktreePath = metadata.workspaceMode === 'local_source'
+    ? metadata.workspacePath
+    : (activeContext?.worktreePath || metadata.workspacePath);
 
   return {
     repoPath: activeContext?.sourceRepoPath || metadata.activeRepoPath || metadata.projectPath,
-    worktreePath: activeContext?.worktreePath || metadata.workspacePath,
+    worktreePath: compatibilityWorktreePath,
     branchName: activeContext?.branchName,
     baseBranch: activeContext?.baseBranch,
   };
@@ -478,6 +494,7 @@ type ResolvedSessionWorkspaceContextInput = {
   discoveredRepoPaths: string[];
   hasOverlap: boolean;
   normalizedContexts: SessionCreateGitContextInput[];
+  workspacePreference: SessionWorkspacePreference;
   contextFingerprint: string;
 };
 
@@ -495,12 +512,14 @@ function toCanonicalGitContexts(
 function buildSessionWorkspaceContextFingerprint(
   projectPath: string,
   contexts: SessionCreateGitContextInput[],
+  workspacePreference: SessionWorkspacePreference,
 ): string {
   const normalizedProjectPath = normalizePath(projectPath);
   const canonicalContexts = toCanonicalGitContexts(contexts);
   return createHash('sha1')
     .update(JSON.stringify({
       projectPath: normalizedProjectPath,
+      workspacePreference,
       contexts: canonicalContexts,
     }))
     .digest('hex');
@@ -688,6 +707,13 @@ async function resolveDefaultBaseBranch(repoPath: string): Promise<string> {
   return 'main';
 }
 
+async function resolveRepoHeadBranch(repoPath: string): Promise<string> {
+  const git = simpleGit(repoPath);
+  const branches = await git.branchLocal();
+  if (branches.current?.trim()) return branches.current.trim();
+  return resolveDefaultBaseBranch(repoPath);
+}
+
 async function copyProjectWithoutGitRepos(
   projectPath: string,
   workspacePath: string,
@@ -749,6 +775,7 @@ function resolveRequestedGitContexts(
 async function resolveSessionWorkspaceContextInput(
   projectPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
+  workspacePreference: SessionWorkspacePreference = 'workspace',
 ): Promise<ResolvedSessionWorkspaceContextInput> {
   const normalizedProjectPath = normalizePath(projectPath);
   const projectStats = await fs.stat(normalizedProjectPath);
@@ -765,9 +792,11 @@ async function resolveSessionWorkspaceContextInput(
     discoveredRepoPaths,
     requestedContexts,
   );
+  const normalizedWorkspacePreference = normalizeSessionWorkspacePreference(workspacePreference);
   const contextFingerprint = buildSessionWorkspaceContextFingerprint(
     normalizedProjectPath,
     normalizedContexts,
+    normalizedWorkspacePreference,
   );
 
   return {
@@ -775,6 +804,7 @@ async function resolveSessionWorkspaceContextInput(
     discoveredRepoPaths,
     hasOverlap,
     normalizedContexts,
+    workspacePreference: normalizedWorkspacePreference,
     contextFingerprint,
   };
 }
@@ -850,6 +880,32 @@ async function createMultiRepoSession(
   };
 }
 
+async function createLocalSourceSession(
+  projectPath: string,
+  contexts: SessionCreateGitContextInput[],
+): Promise<{ workspacePath: string; gitRepos: SessionGitRepoContext[]; activeRepoPath?: string }> {
+  const gitRepos = await Promise.all(contexts.map(async (context) => {
+    const relativeRepoPath = path.relative(projectPath, context.repoPath);
+    const normalizedRelativeRepoPath = relativeRepoPath === '.' ? '' : relativeRepoPath;
+    const branchName = await resolveRepoHeadBranch(context.repoPath);
+    const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
+
+    return {
+      sourceRepoPath: context.repoPath,
+      relativeRepoPath: normalizedRelativeRepoPath,
+      worktreePath: context.repoPath,
+      branchName,
+      baseBranch,
+    } satisfies SessionGitRepoContext;
+  }));
+
+  return {
+    workspacePath: projectPath,
+    activeRepoPath: contexts[0]?.repoPath,
+    gitRepos,
+  };
+}
+
 async function provisionSessionWorkspace(
   projectPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
@@ -864,7 +920,16 @@ async function provisionSessionWorkspace(
   let activeRepoPath: string | undefined;
   let gitRepos: SessionGitRepoContext[] = [];
 
-  if (resolvedInput.discoveredRepoPaths.length === 1 && !resolvedInput.hasOverlap) {
+  if (resolvedInput.workspacePreference === 'local') {
+    workspaceMode = 'local_source';
+    const localResult = await createLocalSourceSession(
+      resolvedInput.normalizedProjectPath,
+      resolvedInput.normalizedContexts,
+    );
+    workspacePath = localResult.workspacePath;
+    activeRepoPath = localResult.activeRepoPath;
+    gitRepos = localResult.gitRepos;
+  } else if (resolvedInput.discoveredRepoPaths.length === 1 && !resolvedInput.hasOverlap) {
     workspaceMode = 'single_worktree';
     const singleResult = await createSingleRepoSession(
       resolvedInput.normalizedProjectPath,
@@ -1102,7 +1167,7 @@ async function cleanupWorkspaceRoot(
   workspacePath: string,
   workspaceMode: SessionWorkspaceMode,
 ): Promise<void> {
-  if (workspaceMode === 'folder') return;
+  if (workspaceMode === 'folder' || workspaceMode === 'local_source') return;
 
   const sessionRootPath = path.dirname(workspacePath);
   if (sessionRootPath && sessionRootPath.startsWith(path.join(os.homedir(), '.viba', 'projects'))) {
@@ -1930,11 +1995,16 @@ function persistPreparationPayload(
 export async function prepareSessionWorkspace(
   projectPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
+  options: { workspacePreference?: SessionWorkspacePreference } = {},
 ): Promise<{ success: boolean; preparation?: SessionWorkspacePreparation; error?: string }> {
   try {
     await sweepExpiredSessionWorkspacePreparations();
 
-    const resolvedInput = await resolveSessionWorkspaceContextInput(projectPath, gitContextsOrBaseBranch);
+    const resolvedInput = await resolveSessionWorkspaceContextInput(
+      projectPath,
+      gitContextsOrBaseBranch,
+      options.workspacePreference,
+    );
     const db = getLocalDb();
     const nowIso = new Date().toISOString();
     const existing = db.prepare(`
@@ -2106,6 +2176,7 @@ export async function consumePreparedSessionWorkspace(
   preparationId: string,
   projectPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
+  workspacePreference: SessionWorkspacePreference = 'workspace',
 ): Promise<{
   success: boolean;
   consumed: boolean;
@@ -2130,7 +2201,11 @@ export async function consumePreparedSessionWorkspace(
       return { success: false, consumed: false, error: 'Prepared workspace payload is invalid.' };
     }
 
-    const resolvedInput = await resolveSessionWorkspaceContextInput(projectPath, gitContextsOrBaseBranch);
+    const resolvedInput = await resolveSessionWorkspaceContextInput(
+      projectPath,
+      gitContextsOrBaseBranch,
+      workspacePreference,
+    );
     if (
       parsedPreparation.projectPath !== resolvedInput.normalizedProjectPath
       || parsedPreparation.contextFingerprint !== resolvedInput.contextFingerprint
@@ -2178,6 +2253,7 @@ export async function createSession(
 ): Promise<SessionCreateResult> {
   try {
     await sweepExpiredSessionWorkspacePreparations();
+    const workspacePreference = normalizeSessionWorkspacePreference(metadata.workspacePreference);
 
     let provision: ProvisionedSessionWorkspace | null = null;
     const normalizedPreparationId = normalizeOptionalText(metadata.preparedWorkspaceId);
@@ -2186,6 +2262,7 @@ export async function createSession(
         normalizedPreparationId,
         projectPath,
         gitContextsOrBaseBranch,
+        workspacePreference,
       );
       if (!consumedPreparedWorkspace.success) {
         console.warn(
@@ -2207,7 +2284,14 @@ export async function createSession(
     }
 
     if (!provision) {
-      provision = await provisionSessionWorkspace(projectPath, gitContextsOrBaseBranch);
+      const resolvedInput = await resolveSessionWorkspaceContextInput(
+        projectPath,
+        gitContextsOrBaseBranch,
+        workspacePreference,
+      );
+      provision = await provisionSessionWorkspace(projectPath, gitContextsOrBaseBranch, {
+        resolvedInput,
+      });
     }
 
     try {
@@ -2463,8 +2547,8 @@ async function resolveSessionGitTarget(
     return { error: 'Session metadata not found' };
   }
 
-  if (metadata.workspaceMode === 'folder' || metadata.gitRepos.length === 0) {
-    return { error: 'This session is in folder mode and has no Git context.' };
+  if (metadata.gitRepos.length === 0) {
+    return { error: 'This session has no Git context.' };
   }
 
   const normalizedRequestedRepoPath = sourceRepoPath?.trim();
@@ -2502,8 +2586,8 @@ export async function updateSessionActiveRepo(
       return { success: false, error: 'Session metadata not found' };
     }
 
-    if (metadata.workspaceMode === 'folder') {
-      return { success: false, error: 'This session is in folder mode.' };
+    if (metadata.gitRepos.length === 0) {
+      return { success: false, error: 'This session has no Git context.' };
     }
 
     if (!metadata.gitRepos.some((gitRepo) => gitRepo.sourceRepoPath === activeRepoPath)) {

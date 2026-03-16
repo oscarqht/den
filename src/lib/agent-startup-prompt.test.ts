@@ -100,6 +100,20 @@ describe('buildProjectGitInstructionLines', () => {
       ],
     );
   });
+
+  it('describes direct source mode', () => {
+    assert.deepStrictEqual(
+      buildProjectGitInstructionLines(
+        'local_source',
+        [createGitRepoContext()],
+        [''],
+      ),
+      [
+        'Git context: this project contains one Git repository at `.`.',
+        'Your shell starts at the selected project source folder. Changes apply directly to that source checkout, so run Git commands in the matching repository path and use extra care with destructive operations.',
+      ],
+    );
+  });
 });
 
 describe('buildAgentStartupPrompt', () => {

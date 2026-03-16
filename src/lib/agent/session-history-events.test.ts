@@ -168,6 +168,25 @@ describe('projectSessionHistoryEvent', () => {
     assert.deepStrictEqual(result.history, [existing]);
   });
 
+  it('projects structured plan updates into a trackable plan item', () => {
+    const event: ChatStreamEvent = {
+      type: 'plan_updated',
+      threadId: 'thread-1',
+      turnId: 'turn-7',
+      steps: [
+        { title: 'Inspect session page', status: 'completed' },
+        { title: 'Render checklist', status: 'in_progress' },
+      ],
+    };
+
+    const result = projectSessionHistoryEvent([], 'session-1', event, '2026-03-12T00:00:01.000Z');
+
+    assert.equal(result.history[0]?.kind, 'plan');
+    assert.equal(result.history[0]?.id, 'plan-turn-7');
+    assert.deepStrictEqual(result.history[0]?.steps, event.steps);
+    assert.equal(result.history[0]?.text, 'COMPLETED Inspect session page\nIN PROGRESS Render checklist');
+  });
+
   it('leaves history untouched for turn lifecycle events', () => {
     const existing = createItem({
       id: 'assistant-1',

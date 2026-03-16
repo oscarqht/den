@@ -23,6 +23,7 @@ import {
   updateSessionRuntime,
   upsertSessionHistoryEntries,
 } from '@/lib/agent/store';
+import { buildPlanText } from '@/lib/agent/plan';
 import { resolveSessionRuntimeUpdate } from '@/lib/agent/session-runtime-updates';
 import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
 import { deriveSessionNotificationFromRuntime } from '@/lib/session-agent-notifications';
@@ -454,7 +455,8 @@ class HistoryProjector {
         this.persist({
           kind: 'plan',
           id: `plan-${event.turnId}`,
-          text: event.steps.map((step) => `${step.status.toUpperCase()} ${step.title}`).join('\n'),
+          text: buildPlanText(event.steps),
+          steps: event.steps,
           threadId: event.threadId,
           turnId: event.turnId,
         });

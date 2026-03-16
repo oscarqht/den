@@ -6,6 +6,7 @@ export type {
   FileChange,
   HistoryEntry,
   ModelOption,
+  PlanStep,
   ProviderCatalogEntry,
   ReasoningEffort,
   SessionAgentTurnDiagnosticUpdate,

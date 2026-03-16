@@ -37,6 +37,7 @@ import type {
   ThreadHistoryResponse,
   ToolTraceSource,
 } from "@/lib/agent/types";
+import { normalizePlanSteps } from "@/lib/agent/plan";
 import {
   defaultSpawnEnv,
   normalizeText,
@@ -956,10 +957,7 @@ class AcpTurnProjector {
           type: "plan_updated",
           threadId: this.threadId,
           turnId: this.turnId,
-          steps: update.entries.map((entry) => ({
-            title: entry.content,
-            status: entry.status,
-          })),
+          steps: normalizePlanSteps(update.entries),
         });
         return;
       default:

@@ -5,17 +5,16 @@ import { readFile } from "node:fs/promises";
 
 import type {
   AgentAccount,
-  AgentReasoningEffort,
   AppStatus,
   ChatStreamEvent,
   FileChange,
   HistoryEntry,
-  ModelOption,
   SessionAgentTurnDiagnosticUpdate,
   ThreadHistoryResponse,
   ToolTraceSource,
 } from "@/lib/agent/types";
 import { normalizeProviderReasoningEffort } from "@/lib/agent/reasoning";
+import { normalizePlanSteps } from "@/lib/agent/plan";
 import {
   createDeferred,
   defaultSpawnEnv,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/agent/common";
 import { buildCodexAppServerEnv } from "@/lib/agent/spawn-env";
 import type { AgentRuntimeUpdate } from "@/lib/agent/providers/types";
+import { getCodexModelOptions } from "@/lib/agent/transports/codex-models";
 
 type JsonRpcMessage = {
   id?: number;
@@ -167,51 +167,6 @@ const CLIENT_INFO = {
 };
 const SESSION_CODEX_SANDBOX_MODE = "danger-full-access";
 
-// Palx requires web search in Codex sessions. The Codex API rejects
-// reasoning.effort="minimal" when web_search is enabled, so do not expose it.
-const GPT5_REASONING: AgentReasoningEffort[] = ["low", "medium", "high"];
-const CODEX_REASONING: AgentReasoningEffort[] = ["low", "medium", "high", "xhigh"];
-const O3_REASONING: AgentReasoningEffort[] = ["low", "medium", "high"];
-
-const CODEX_MODEL_OPTIONS: ModelOption[] = [
-  {
-    id: "gpt-5.4",
-    label: "GPT-5.4",
-    description: "Balanced frontier GPT-5 model.",
-    reasoningEfforts: GPT5_REASONING,
-  },
-  {
-    id: "gpt-5.3-codex",
-    label: "GPT-5.3 Codex",
-    description: "Agentic coding model tuned for code tasks.",
-    reasoningEfforts: CODEX_REASONING,
-  },
-  {
-    id: "gpt-5.2-codex",
-    label: "GPT-5.2 Codex",
-    description: "Earlier Codex-tuned GPT-5 model.",
-    reasoningEfforts: CODEX_REASONING,
-  },
-  {
-    id: "gpt-5.1-codex-max",
-    label: "GPT-5.1 Codex Max",
-    description: "High-capability Codex variant.",
-    reasoningEfforts: CODEX_REASONING,
-  },
-  {
-    id: "gpt-5",
-    label: "GPT-5",
-    description: "General GPT-5 model.",
-    reasoningEfforts: GPT5_REASONING,
-  },
-  {
-    id: "o3",
-    label: "o3",
-    description: "Reasoning-focused model.",
-    reasoningEfforts: O3_REASONING,
-  },
-];
-
 let activeInstall: Promise<void> | null = null;
 let activeLoginSession: CodexLoginSession | null = null;
 
@@ -237,22 +192,6 @@ async function readCodexConfiguredModel() {
   } catch {
     return null;
   }
-}
-
-function codexModelOptions(configuredModel: string | null) {
-  if (!configuredModel || CODEX_MODEL_OPTIONS.some((model) => model.id === configuredModel)) {
-    return CODEX_MODEL_OPTIONS;
-  }
-
-  return [
-    {
-      id: configuredModel,
-      label: configuredModel,
-      description: "Configured locally in ~/.codex/config.toml.",
-      reasoningEfforts: undefined,
-    },
-    ...CODEX_MODEL_OPTIONS,
-  ];
 }
 
 function parseJsonRecord(value: string): Record<string, unknown> | null {
@@ -646,7 +585,7 @@ export async function getAppStatus(): Promise<AppStatus> {
   const installCommand = getInstallCommandString();
   const installProbe = await isCodexInstalled();
   const configuredModel = await readCodexConfiguredModel();
-  const models = codexModelOptions(configuredModel);
+  const models = getCodexModelOptions(configuredModel);
   const defaultModel = configuredModel || models[0]?.id || null;
 
   if (!installProbe.installed) {
@@ -1053,15 +992,7 @@ export async function streamChat(
             type: "plan_updated",
             threadId: normalizeText(params.threadId),
             turnId: normalizeText(params.turnId),
-            steps: Array.isArray(params.steps)
-              ? params.steps.map((step) => {
-                  const current = step as Record<string, unknown>;
-                  return {
-                    title: normalizeText(current.title),
-                    status: normalizeText(current.status),
-                  };
-                })
-              : [],
+            steps: normalizePlanSteps(params.steps),
           });
           break;
         case "item/mcpToolCall/progress":

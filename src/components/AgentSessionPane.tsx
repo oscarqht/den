@@ -19,6 +19,7 @@ import {
   reconcileOptimisticUserMessages,
   type OptimisticUserMessage,
 } from '@/lib/optimistic-user-history';
+import { normalizePlanStepStatus, parsePlanStepsFromText } from '@/lib/agent/plan';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
@@ -118,8 +119,10 @@ function estimateHistoryItemHeight(item: SessionAgentHistoryItem) {
       return 164;
     case 'reasoning':
       return 116;
-    case 'plan':
-      return 112;
+    case 'plan': {
+      const stepCount = (item.steps?.length ?? 0) || parsePlanStepsFromText(item.text).length;
+      return Math.max(112, 92 + (stepCount * 36));
+    }
     case 'command':
       return 132;
     case 'tool':
@@ -186,6 +189,48 @@ function diagnosticStepTone(status: string) {
     default:
       return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
   }
+}
+
+function planStepTone(status: string) {
+  switch (normalizePlanStepStatus(status)) {
+    case 'completed':
+      return 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200';
+    case 'in_progress':
+      return 'border-blue-200 bg-blue-50/90 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200';
+    case 'failed':
+      return 'border-red-200 bg-red-50/90 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200';
+    case 'cancelled':
+      return 'border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
+    default:
+      return 'border-amber-200 bg-amber-50/90 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200';
+  }
+}
+
+function planStepMarkerTone(status: string) {
+  switch (normalizePlanStepStatus(status)) {
+    case 'completed':
+      return 'bg-emerald-500';
+    case 'in_progress':
+      return 'bg-blue-500';
+    case 'failed':
+      return 'bg-red-500';
+    case 'cancelled':
+      return 'bg-slate-400';
+    default:
+      return 'bg-amber-400';
+  }
+}
+
+function formatPlanStepStatus(status: string) {
+  return normalizePlanStepStatus(status).replace(/_/g, ' ');
+}
+
+function getPlanSteps(item: Extract<SessionAgentHistoryItem, { kind: 'plan' }>) {
+  if (item.steps && item.steps.length > 0) {
+    return item.steps;
+  }
+
+  return parsePlanStepsFromText(item.text);
 }
 
 function codeBlock(value: string | null | undefined) {
@@ -461,14 +506,55 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
           </>
         ),
       });
-    case 'plan':
+    case 'plan': {
+      const steps = getPlanSteps(item);
+      const completedCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'completed').length;
+      const inProgressCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'in_progress').length;
+      const pendingCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'pending').length;
       return (
         <div className="rounded-2xl bg-sky-50/70 px-4 py-3 text-sm text-sky-900 shadow-sm dark:bg-sky-500/10 dark:text-sky-100">
-          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-200">Plan</div>
-          <div className="whitespace-pre-wrap break-words">{item.text}</div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-200">Plan</div>
+            {steps.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-sky-700/80 dark:text-sky-200/80">
+                <span className="rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 font-semibold dark:border-sky-400/20 dark:bg-sky-950/30">
+                  {completedCount}/{steps.length} completed
+                </span>
+                {inProgressCount > 0 ? <span>{inProgressCount} active</span> : null}
+                {pendingCount > 0 ? <span>{pendingCount} pending</span> : null}
+              </div>
+            ) : null}
+          </div>
+          {steps.length > 0 ? (
+            <div className="space-y-2">
+              {steps.map((step, index) => {
+                const normalizedStatus = normalizePlanStepStatus(step.status);
+                const isCompleted = normalizedStatus === 'completed';
+                return (
+                  <div
+                    key={`${item.id}-${index}-${step.title}`}
+                    className="flex items-start gap-3 rounded-xl border border-sky-200/70 bg-white/80 px-3 py-2 dark:border-sky-400/15 dark:bg-sky-950/25"
+                  >
+                    <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${planStepMarkerTone(normalizedStatus)}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`break-words ${isCompleted ? 'text-sky-900/70 line-through dark:text-sky-100/60' : 'text-sky-950 dark:text-sky-50'}`}>
+                        {step.title}
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${planStepTone(normalizedStatus)}`}>
+                      {formatPlanStepStatus(normalizedStatus)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="whitespace-pre-wrap break-words">{item.text}</div>
+          )}
           {timestamp ? <div className="mt-3 text-[10px] text-sky-700/70 dark:text-sky-200/70">{timestamp}</div> : null}
         </div>
       );
+    }
     case 'command':
       return renderCollapsibleHistoryItem({
         itemId: item.id,

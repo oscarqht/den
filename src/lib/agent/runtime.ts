@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '@/lib/agent/plan';
 import { normalizeText, stringifyCompact } from '@/lib/agent/common';
 import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import { getAgentAdapter } from '@/lib/agent/providers';
@@ -268,12 +269,16 @@ function normalizeHistoryEntryFromItem(item: Record<string, unknown>): HistoryEn
         result: null,
         error: null,
       };
-    case 'plan':
+    case 'plan': {
+      const text = normalizeText(item.text);
+      const steps = normalizePlanSteps(item.steps);
       return {
         kind: 'plan',
         id,
-        text: normalizeText(item.text),
+        text: text || buildPlanText(steps),
+        steps: steps.length > 0 ? steps : parsePlanStepsFromText(text),
       };
+    }
     default:
       return null;
   }
@@ -343,9 +348,13 @@ function mergeHistoryEntry(existing: HistoryEntry | undefined, next: HistoryEntr
     }
     case 'plan': {
       const previous = existing as Extract<HistoryEntry, { kind: 'plan' }>;
+      const steps = next.steps && next.steps.length > 0
+        ? next.steps
+        : previous.steps;
       return {
         ...next,
-        text: next.text || previous.text,
+        text: next.text || previous.text || buildPlanText(steps ?? []),
+        steps,
       };
     }
   }
@@ -480,7 +489,8 @@ function applyPlanUpdate(
   upsertHistoryEntry(record, {
     kind: 'plan',
     id: `plan-${event.turnId}`,
-    text: event.steps.map((step) => `${step.status.toUpperCase()} ${step.title}`).join('\n'),
+    text: buildPlanText(event.steps),
+    steps: event.steps,
   });
 }
 

@@ -101,7 +101,9 @@ export interface GitConflictState {
   canContinue: boolean;
 }
 
-export type SessionWorkspaceMode = 'single_worktree' | 'multi_repo_worktree' | 'folder';
+export type SessionWorkspaceMode = 'single_worktree' | 'multi_repo_worktree' | 'folder' | 'local_source';
+
+export type SessionWorkspacePreference = 'workspace' | 'local';
 
 export interface SessionGitRepoContext {
   sourceRepoPath: string;
@@ -113,7 +115,7 @@ export interface SessionGitRepoContext {
 
 export type AgentProvider = 'codex' | 'gemini' | 'cursor' | (string & {});
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | (string & {});
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | (string & {});
 
 export type AgentReasoningEffort = ReasoningEffort;
 
@@ -160,6 +162,11 @@ export type FileChange = {
   path: string;
   kind: string;
   diff: string;
+};
+
+export type PlanStep = {
+  title: string;
+  status: string;
 };
 
 export type AppStatus = {
@@ -225,6 +232,7 @@ export type HistoryEntry =
       kind: 'plan';
       id: string;
       text: string;
+      steps?: PlanStep[];
     };
 
 export type ThreadHistoryResponse = {
@@ -338,10 +346,7 @@ export type ChatStreamEvent =
       type: 'plan_updated';
       threadId: string;
       turnId: string;
-      steps: Array<{
-        title: string;
-        status: string;
-      }>;
+      steps: PlanStep[];
     }
   | {
       type: 'tool_progress';

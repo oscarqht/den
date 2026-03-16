@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, Plus, X, ChevronRight, ChevronDown, Bot, Trash2, ExternalLink, CloudDownload, Monitor, Sun, Moon } from 'lucide-react';
+import { FolderGit2, Plus, X, ChevronRight, ChevronDown, Bot, Trash2, ExternalLink, CloudDownload, Monitor, Sun, Moon, Zap, FileText, HardDrive, Layers } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   GitBranch,
@@ -64,6 +64,7 @@ import type {
   ModelOption,
   ProviderCatalogEntry,
   ReasoningEffort,
+  SessionWorkspacePreference,
 } from '@/lib/types';
 
 type SessionMode = 'fast' | 'plan';
@@ -77,6 +78,8 @@ const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
 const AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX = 'viba:agent-provider-models:';
 const SESSION_TITLE_MAX_LENGTH = 120;
+const COMPACT_TASK_HEADER_THRESHOLD_PX = 1024;
+const STACKED_TASK_HEADER_THRESHOLD_PX = 960;
 const SUPPORTED_AGENT_PROVIDERS = ['codex', 'gemini', 'cursor'] as const;
 const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -160,9 +163,11 @@ function arePathListsEqual(left: string[], right: string[]): boolean {
 function buildWorkspacePreparationInputKey(
   projectPath: string,
   gitContexts: SessionCreateGitContextInput[],
+  workspacePreference: SessionWorkspacePreference,
 ): string {
   return JSON.stringify({
     projectPath: normalizePathForComparison(projectPath),
+    workspacePreference,
     gitContexts: gitContexts
       .map((context) => ({
         repoPath: normalizePathForComparison(context.repoPath),
@@ -378,6 +383,7 @@ export default function GitRepoSelector({
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>('');
   const [sessionMode, setSessionMode] = useState<SessionMode>('fast');
+  const [sessionWorkspacePreference, setSessionWorkspacePreference] = useState<SessionWorkspacePreference>('workspace');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isPastingTaskAttachments, setIsPastingTaskAttachments] = useState(false);
   const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
@@ -403,6 +409,8 @@ export default function GitRepoSelector({
   const [agentSetupMessage, setAgentSetupMessage] = useState<string | null>(null);
   const [isWaitingForLogin, setIsWaitingForLogin] = useState(false);
   const [waitingForLoginProvider, setWaitingForLoginProvider] = useState<AgentProvider | null>(null);
+  const [isCompactTaskHeader, setIsCompactTaskHeader] = useState(false);
+  const [isStackedTaskHeader, setIsStackedTaskHeader] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
@@ -434,6 +442,7 @@ export default function GitRepoSelector({
   const latestSelectedRepoRef = useRef<string | null>(null);
   const latestTaskDescriptionRef = useRef('');
   const latestCursorPositionRef = useRef(0);
+  const taskDescriptionPanelRef = useRef<HTMLDivElement | null>(null);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
@@ -849,9 +858,13 @@ export default function GitRepoSelector({
   }, [baseBranchByRepo, projectGitRepos]);
 
   const workspacePreparationInputKey = useMemo(() => {
-    if (!selectedRepo) return null;
-    return buildWorkspacePreparationInputKey(selectedRepo, selectedProjectGitContexts);
-  }, [selectedProjectGitContexts, selectedRepo]);
+    if (!selectedRepo || sessionWorkspacePreference !== 'workspace') return null;
+    return buildWorkspacePreparationInputKey(
+      selectedRepo,
+      selectedProjectGitContexts,
+      sessionWorkspacePreference,
+    );
+  }, [selectedProjectGitContexts, selectedRepo, sessionWorkspacePreference]);
 
   const ensureProjectRegistered = useCallback(async (projectPath: string) => {
     try {
@@ -1090,6 +1103,41 @@ export default function GitRepoSelector({
   }, [initialMessage]);
 
   useEffect(() => {
+    const panelElement = taskDescriptionPanelRef.current;
+    if (!panelElement) return;
+
+    const updateCompactState = () => {
+      const panelWidth = panelElement.getBoundingClientRect().width;
+      const nextIsCompact = panelWidth < COMPACT_TASK_HEADER_THRESHOLD_PX;
+      const nextIsStacked = panelWidth < STACKED_TASK_HEADER_THRESHOLD_PX;
+      setIsCompactTaskHeader((previous) => (
+        previous === nextIsCompact ? previous : nextIsCompact
+      ));
+      setIsStackedTaskHeader((previous) => (
+        previous === nextIsStacked ? previous : nextIsStacked
+      ));
+    };
+
+    updateCompactState();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateCompactState);
+      return () => {
+        window.removeEventListener('resize', updateCompactState);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateCompactState();
+    });
+    observer.observe(panelElement);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [mode, selectedRepo]);
+
+  useEffect(() => {
     if (mode !== 'new') return;
     if (ttydWarmupStartedRef.current) return;
     ttydWarmupStartedRef.current = true;
@@ -1100,7 +1148,13 @@ export default function GitRepoSelector({
   }, [mode]);
 
   useEffect(() => {
-    if (mode !== 'new' || !selectedRepo || isLoadingProjectGitRepos || !workspacePreparationInputKey) {
+    if (
+      mode !== 'new'
+      || sessionWorkspacePreference !== 'workspace'
+      || !selectedRepo
+      || isLoadingProjectGitRepos
+      || !workspacePreparationInputKey
+    ) {
       setIsPreparingWorkspace(false);
       return;
     }
@@ -1118,7 +1172,9 @@ export default function GitRepoSelector({
     setIsPreparingWorkspace(true);
 
     const runPreparation = async () => {
-      const result = await prepareSessionWorkspace(selectedRepo, selectedProjectGitContexts);
+      const result = await prepareSessionWorkspace(selectedRepo, selectedProjectGitContexts, {
+        workspacePreference: sessionWorkspacePreference,
+      });
       if (cancelled || workspacePreparationRequestRef.current !== requestId) {
         if (result.success && result.preparation) {
           await releasePreparedWorkspaceById(result.preparation.preparationId);
@@ -1161,6 +1217,7 @@ export default function GitRepoSelector({
     isLoadingProjectGitRepos,
     mode,
     releasePreparedWorkspaceById,
+    sessionWorkspacePreference,
     selectedProjectGitContexts,
     selectedRepo,
     setPreparedWorkspaceState,
@@ -1171,8 +1228,15 @@ export default function GitRepoSelector({
     if (mode !== 'new') return;
 
     const activePreparation = activePreparedWorkspaceRef.current;
+    if (!activePreparation) return;
+
+    if (sessionWorkspacePreference !== 'workspace') {
+      void releaseActivePreparedWorkspace();
+      return;
+    }
+
     const activePreparationInputKey = workspacePreparationInputKeyRef.current;
-    if (!activePreparation || !activePreparationInputKey || !workspacePreparationInputKey) return;
+    if (!activePreparationInputKey || !workspacePreparationInputKey) return;
     if (
       activePreparation.projectPath === selectedRepo
       && activePreparationInputKey === workspacePreparationInputKey
@@ -1184,12 +1248,13 @@ export default function GitRepoSelector({
   }, [
     mode,
     releaseActivePreparedWorkspace,
+    sessionWorkspacePreference,
     selectedRepo,
     workspacePreparationInputKey,
   ]);
 
   useEffect(() => {
-    if (mode !== 'new' || !preparedWorkspace) return;
+    if (mode !== 'new' || sessionWorkspacePreference !== 'workspace' || !preparedWorkspace) return;
 
     const requestId = preparedWorkspaceStartupSyncRequestRef.current + 1;
     preparedWorkspaceStartupSyncRequestRef.current = requestId;
@@ -1213,7 +1278,7 @@ export default function GitRepoSelector({
     return () => {
       window.clearTimeout(startupSyncTimeout);
     };
-  }, [mode, preparedWorkspace, selectedAgentProvider, startupScript]);
+  }, [mode, preparedWorkspace, selectedAgentProvider, sessionWorkspacePreference, startupScript]);
 
   useEffect(() => {
     if (mode !== 'new') return;
@@ -1445,6 +1510,10 @@ export default function GitRepoSelector({
     } catch {
       // Ignore localStorage errors.
     }
+  };
+
+  const handleSessionWorkspacePreferenceChange = (nextPreference: SessionWorkspacePreference) => {
+    setSessionWorkspacePreference(nextPreference);
   };
 
   const handleStartupScriptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2120,6 +2189,30 @@ export default function GitRepoSelector({
     return agentStatus;
   }, [agentStatus, selectedAgentProvider]);
 
+  const agentStatusSummary = useMemo(() => {
+    if (isLoadingAgentStatus) {
+      return 'Checking runtime status...';
+    }
+
+    if (!displayedAgentStatus) {
+      return 'Runtime status unavailable';
+    }
+
+    return [
+      displayedAgentStatus.installed ? 'Installed' : 'Not installed',
+      displayedAgentStatus.loggedIn ? 'Logged in' : 'Login required',
+      displayedAgentStatus.version ? `v${displayedAgentStatus.version}` : null,
+    ].filter(Boolean).join(' • ');
+  }, [displayedAgentStatus, isLoadingAgentStatus]);
+
+  const agentAccountSummary = useMemo(() => {
+    if (!displayedAgentStatus?.account?.email) return null;
+    return [
+      displayedAgentStatus.account.email,
+      displayedAgentStatus.account.planType || null,
+    ].filter(Boolean).join(' • ');
+  }, [displayedAgentStatus]);
+
   const activeAgentModelCatalog = useMemo(() => {
     const cachedCatalog = cachedAgentModelCatalogs[selectedAgentProvider] ?? null;
     return {
@@ -2307,7 +2400,8 @@ export default function GitRepoSelector({
       const derivedTitle = deriveSessionTitleFromTaskDescription(initialMessage);
       const gitContexts = selectedProjectGitContexts;
       const preparedWorkspaceId = (
-        activePreparedWorkspaceRef.current?.projectPath === selectedRepo
+        sessionWorkspacePreference === 'workspace'
+        && activePreparedWorkspaceRef.current?.projectPath === selectedRepo
           ? activePreparedWorkspaceRef.current.preparationId
           : undefined
       );
@@ -2321,6 +2415,7 @@ export default function GitRepoSelector({
         startupScript: startupScript || undefined,
         devServerScript: resolvedDevServerScript || undefined,
         preparedWorkspaceId,
+        workspacePreference: sessionWorkspacePreference,
       });
 
       if (wtResult.success && wtResult.sessionName && wtResult.workspacePath) {
@@ -3003,7 +3098,7 @@ export default function GitRepoSelector({
         </div>
       )}
       {mode === 'new' && selectedRepo && (
-        <div className="w-full max-w-[1240px]">
+        <div className="w-full max-w-[1380px]">
           {error && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200">
               {error}
@@ -3028,7 +3123,7 @@ export default function GitRepoSelector({
           </div>
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
-            <div className="self-start space-y-6 lg:col-span-4">
+            <div className="self-start space-y-6 lg:col-span-3">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
                 <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                   <FolderGit2 className="h-5 w-5 text-primary" />
@@ -3123,148 +3218,6 @@ export default function GitRepoSelector({
 
                   {showSessionAdvanced && (
                     <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/55">
-                      <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent Runtime</span>
-                        <div className="relative">
-                          <select
-                            className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                            value={selectedAgentProvider}
-                            onChange={handleAgentProviderChange}
-                            disabled={loading}
-                          >
-                            {(agentProviders.length > 0 ? agentProviders : SUPPORTED_AGENT_PROVIDERS.map((providerId) => ({
-                              id: providerId,
-                              label: agentProviderLabel(providerId),
-                              description: '',
-                              available: true,
-                            }))).map((provider) => (
-                              <option key={provider.id} value={provider.id}>
-                                {provider.label}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                        </div>
-                      </label>
-
-                      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-[#30363d] dark:bg-[#111827]">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {agentProviderLabel(selectedAgentProvider, agentProviders)}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              {isLoadingAgentStatus
-                                ? 'Checking runtime status...'
-                                : displayedAgentStatus
-                                  ? [
-                                      displayedAgentStatus.installed ? 'Installed' : 'Not installed',
-                                      displayedAgentStatus.loggedIn ? 'Logged in' : 'Login required',
-                                      displayedAgentStatus.version ? `v${displayedAgentStatus.version}` : null,
-                                    ].filter(Boolean).join(' • ')
-                                  : 'Runtime status unavailable'}
-                            </div>
-                            {displayedAgentStatus?.account?.email ? (
-                              <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {displayedAgentStatus.account.email}
-                                {displayedAgentStatus.account.planType ? ` • ${displayedAgentStatus.account.planType}` : ''}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
-                              onClick={() => void fetchAgentStatus(selectedAgentProvider)}
-                              disabled={loading || isLoadingAgentStatus}
-                            >
-                              Refresh
-                            </button>
-                            {!displayedAgentStatus?.installed && (
-                              <button
-                                type="button"
-                                className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => void handleInstallAgentProvider(selectedAgentProvider)}
-                                disabled={loading || isInstallingAgentProvider}
-                              >
-                                {isInstallingAgentProvider && installingAgentProvider === selectedAgentProvider
-                                  ? 'Installing...'
-                                  : 'Install'}
-                              </button>
-                            )}
-                            {displayedAgentStatus?.installed && !displayedAgentStatus.loggedIn && (
-                              <button
-                                type="button"
-                                className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => void handleAgentLogin(selectedAgentProvider)}
-                                disabled={loading || isWaitingForLogin}
-                              >
-                                {isWaitingForLogin && waitingForLoginProvider === selectedAgentProvider
-                                  ? 'Waiting for login...'
-                                  : 'Log In'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {agentSetupMessage && (
-                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-400/30 dark:bg-blue-950/40 dark:text-blue-200">
-                            {agentSetupMessage}
-                          </div>
-                        )}
-
-                        {installLogs.length > 0 && isInstallingAgentProvider && installingAgentProvider === selectedAgentProvider && (
-                          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] text-slate-100">
-                            {installLogs.join('\n')}
-                          </pre>
-                        )}
-                      </div>
-
-                      <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Model</span>
-                        <div className="relative">
-                          <select
-                            className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                            value={selectedAgentModel}
-                            onChange={handleAgentModelChange}
-                            disabled={loading || (activeAgentModelCatalog.models.length === 0 && !selectedAgentModel.trim())}
-                          >
-                            {selectableModelOptions.map((model) => (
-                              <option key={model.id || 'default-model'} value={model.id}>
-                                {model.label}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                        </div>
-                        {selectedModelOption?.description && (
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {selectedModelOption.description}
-                          </span>
-                        )}
-                      </label>
-
-                      {selectedAgentProvider === 'codex' && reasoningEffortOptions.length > 0 && (
-                        <label className="flex flex-col gap-2">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Reasoning Effort</span>
-                          <div className="relative">
-                            <select
-                              className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                              value={selectedReasoningEffort}
-                              onChange={handleReasoningEffortChange}
-                              disabled={loading}
-                            >
-                              {reasoningEffortOptions.map((effort) => (
-                                <option key={effort} value={effort}>
-                                  {effort}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                          </div>
-                        </label>
-                      )}
-
                       <label className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Up Command</span>
                         <textarea
@@ -3431,72 +3384,260 @@ export default function GitRepoSelector({
               </div>
             </div>
 
-            <div className="self-start lg:col-span-8">
-              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
-                    <Bot className="h-5 w-5 text-primary" />
-                    Task Description
-                  </label>
-                  <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
-                    <div
-                      className="inline-flex items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
-                      role="group"
-                      aria-label="Session mode"
-                    >
-                      <button
-                        type="button"
-                        className={`h-12 px-4 text-sm font-semibold transition ${sessionMode === 'fast'
-                          ? 'bg-primary text-white'
-                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
-                          }`}
-                        onClick={() => handleSessionModeChange('fast')}
-                        aria-pressed={sessionMode === 'fast'}
-                        disabled={loading}
+            <div className="self-start lg:col-span-9">
+              <div
+                ref={taskDescriptionPanelRef}
+                className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]"
+              >
+                <div className="mb-4 space-y-3">
+                  <div className={`flex gap-2 ${isStackedTaskHeader ? 'flex-col' : 'flex-row items-center justify-between'}`}>
+                    <label className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
+                      <Bot className="h-5 w-5 text-primary" />
+                      Task Description
+                    </label>
+                    <div className={`flex flex-1 flex-wrap items-center gap-1.5 ${isStackedTaskHeader ? '' : 'justify-end'}`}>
+                      <div
+                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        role="group"
+                        aria-label="Session mode"
                       >
-                        Fast
-                      </button>
-                      <div className="h-6 w-px bg-slate-200 dark:bg-[#30363d]" />
-                      <button
-                        type="button"
-                        className={`h-12 px-4 text-sm font-semibold transition ${sessionMode === 'plan'
-                          ? 'bg-primary text-white'
-                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
-                          }`}
-                        onClick={() => handleSessionModeChange('plan')}
-                        aria-pressed={sessionMode === 'plan'}
-                        disabled={loading}
-                      >
-                        Plan
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionMode === 'fast'
+                            ? 'bg-primary text-white'
+                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            }`}
+                          onClick={() => handleSessionModeChange('fast')}
+                          aria-pressed={sessionMode === 'fast'}
+                          disabled={loading}
+                          title="Fast"
+                        >
+                          {isCompactTaskHeader ? (
+                            <Zap className="h-3.5 w-3.5" />
+                          ) : (
+                            <span>Fast</span>
+                          )}
+                        </button>
+                        <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
+                        <button
+                          type="button"
+                          className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionMode === 'plan'
+                            ? 'bg-primary text-white'
+                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            }`}
+                          onClick={() => handleSessionModeChange('plan')}
+                          aria-pressed={sessionMode === 'plan'}
+                          disabled={loading}
+                          title="Plan"
+                        >
+                          {isCompactTaskHeader ? (
+                            <FileText className="h-3.5 w-3.5" />
+                          ) : (
+                            <span>Plan</span>
+                          )}
+                        </button>
+                      </div>
 
-                    {hasPredefinedPrompts && (
-                      <div className="w-full sm:w-[340px]">
+                      <div
+                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        role="group"
+                        aria-label="Task location"
+                      >
+                        <button
+                          type="button"
+                          className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionWorkspacePreference === 'local'
+                            ? 'bg-primary text-white'
+                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            }`}
+                          onClick={() => handleSessionWorkspacePreferenceChange('local')}
+                          aria-pressed={sessionWorkspacePreference === 'local'}
+                          disabled={loading}
+                          title="Local"
+                        >
+                          {isCompactTaskHeader ? (
+                            <HardDrive className="h-3.5 w-3.5" />
+                          ) : (
+                            <span>Local</span>
+                          )}
+                        </button>
+                        <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
+                        <button
+                          type="button"
+                          className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionWorkspacePreference === 'workspace'
+                            ? 'bg-primary text-white'
+                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            }`}
+                          onClick={() => handleSessionWorkspacePreferenceChange('workspace')}
+                          aria-pressed={sessionWorkspacePreference === 'workspace'}
+                          disabled={loading}
+                          title="Workspace"
+                        >
+                          {isCompactTaskHeader ? (
+                            <Layers className="h-3.5 w-3.5" />
+                          ) : (
+                            <span>Workspace</span>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="relative w-[126px] sm:w-[132px]">
                         <div className="relative">
                           <select
-                            className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
-                            value={activePredefinedPrompt?.id ?? ''}
-                            onChange={(event) => handleSelectPredefinedPrompt(event.target.value)}
+                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            value={selectedAgentProvider}
+                            onChange={handleAgentProviderChange}
                             disabled={loading}
-                            aria-label="Select predefined prompt"
+                            aria-label="Agent runtime"
                           >
-                            <option value="">Select Prompt</option>
-                            {predefinedPromptGroups.map(({ group, prompts }) => (
-                              <optgroup key={group} label={group}>
-                                {prompts.map((prompt) => (
-                                  <option key={prompt.id} value={prompt.id}>
-                                    {prompt.label}
-                                  </option>
-                                ))}
-                              </optgroup>
+                            {(agentProviders.length > 0 ? agentProviders : SUPPORTED_AGENT_PROVIDERS.map((providerId) => ({
+                              id: providerId,
+                              label: agentProviderLabel(providerId),
+                              description: '',
+                              available: true,
+                            }))).map((provider) => (
+                              <option key={provider.id} value={provider.id}>
+                                {provider.label}
+                              </option>
                             ))}
                           </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                         </div>
                       </div>
-                    )}
+
+                      <div className="relative w-[116px] sm:w-[124px]">
+                        <div className="relative">
+                          <select
+                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            value={selectedAgentModel}
+                            onChange={handleAgentModelChange}
+                            disabled={loading || (activeAgentModelCatalog.models.length === 0 && !selectedAgentModel.trim())}
+                            aria-label="Model"
+                          >
+                            {selectableModelOptions.map((model) => (
+                              <option key={model.id || 'default-model'} value={model.id}>
+                                {model.label}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                        </div>
+                      </div>
+
+                      {selectedAgentProvider === 'codex' && reasoningEffortOptions.length > 0 && (
+                        <div className="relative w-[96px] sm:w-[104px]">
+                          <div className="relative">
+                            <select
+                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              value={selectedReasoningEffort}
+                              onChange={handleReasoningEffortChange}
+                              disabled={loading}
+                              aria-label="Reasoning effort"
+                            >
+                              {reasoningEffortOptions.map((effort) => (
+                                <option key={effort} value={effort}>
+                                  {effort}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                          </div>
+                        </div>
+                      )}
+
+                      {hasPredefinedPrompts && (
+                        <div className="relative w-[120px] sm:w-[132px]">
+                          <div className="relative">
+                            <select
+                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 font-mono text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              value={activePredefinedPrompt?.id ?? ''}
+                              onChange={(event) => handleSelectPredefinedPrompt(event.target.value)}
+                              disabled={loading}
+                              aria-label="Select predefined prompt"
+                            >
+                              <option value="">Select Prompt</option>
+                              {predefinedPromptGroups.map(({ group, prompts }) => (
+                                <optgroup key={group} label={group}>
+                                  {prompts.map((prompt) => (
+                                    <option key={prompt.id} value={prompt.id}>
+                                      {prompt.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  <div className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700/70 dark:bg-[#0d1117]/40 dark:text-slate-400 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                        {agentProviderLabel(selectedAgentProvider, agentProviders)}
+                      </span>
+                      <span>{agentStatusSummary}</span>
+                      {agentAccountSummary && (
+                        <span className="truncate" title={agentAccountSummary}>
+                          {agentAccountSummary}
+                        </span>
+                      )}
+                      {selectedModelOption?.description && (
+                        <span className="truncate" title={selectedModelOption.description || undefined}>
+                          {selectedModelOption.description}
+                        </span>
+                      )}
+                      {sessionWorkspacePreference === 'local' ? (
+                        <span>Local mode applies changes directly to the selected source folder.</span>
+                      ) : isPreparingWorkspace ? (
+                        <span>Prewarming workspace...</span>
+                      ) : preparedWorkspace ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">Workspace ready</span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
+                        onClick={() => void fetchAgentStatus(selectedAgentProvider)}
+                        disabled={loading || isLoadingAgentStatus}
+                      >
+                        Refresh
+                      </button>
+                      {!displayedAgentStatus?.installed && (
+                        <button
+                          type="button"
+                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void handleInstallAgentProvider(selectedAgentProvider)}
+                          disabled={loading || isInstallingAgentProvider}
+                        >
+                          {isInstallingAgentProvider && installingAgentProvider === selectedAgentProvider
+                            ? 'Installing...'
+                            : 'Install'}
+                        </button>
+                      )}
+                      {displayedAgentStatus?.installed && !displayedAgentStatus.loggedIn && (
+                        <button
+                          type="button"
+                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void handleAgentLogin(selectedAgentProvider)}
+                          disabled={loading || isWaitingForLogin}
+                        >
+                          {isWaitingForLogin && waitingForLoginProvider === selectedAgentProvider
+                            ? 'Waiting for login...'
+                            : 'Log In'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {agentSetupMessage && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-400/30 dark:bg-blue-950/40 dark:text-blue-200">
+                      {agentSetupMessage}
+                    </div>
+                  )}
                 </div>
 
                 <div className="group relative mb-4 flex h-[360px] flex-grow flex-col md:h-[420px]">
@@ -3611,16 +3752,6 @@ export default function GitRepoSelector({
                   <span className="mr-auto hidden text-xs text-slate-400 dark:text-slate-500 sm:block">
                     Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Enter</kbd> to submit, <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Shift+Enter</kbd> for new line
                   </span>
-                  {isPreparingWorkspace && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      Prewarming workspace...
-                    </span>
-                  )}
-                  {!isPreparingWorkspace && preparedWorkspace && (
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                      Workspace ready
-                    </span>
-                  )}
                   <button
                     type="button"
                     className="inline-flex items-center gap-2 rounded-lg bg-slate-200 px-5 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-70"

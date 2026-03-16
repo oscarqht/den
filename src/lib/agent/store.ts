@@ -3,6 +3,7 @@ import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
 } from '@/lib/agent/reasoning';
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '@/lib/agent/plan';
 import { sortSessionHistoryForTimeline } from '@/lib/agent/history-order';
 import type {
   AgentProvider,
@@ -91,6 +92,24 @@ function toHistoryItem(row: SessionAgentHistoryRow): SessionAgentHistoryItem | n
 
     if (typeof payload.id !== 'string' || !payload.id.trim()) {
       payload.id = row.item_id;
+    }
+
+    if (payload.kind === 'plan') {
+      const text = typeof payload.text === 'string' ? payload.text : '';
+      const steps = normalizePlanSteps(payload.steps);
+      return {
+        kind: 'plan',
+        id: typeof payload.id === 'string' ? payload.id : row.item_id,
+        text: text || buildPlanText(steps),
+        steps: steps.length > 0 ? steps : parsePlanStepsFromText(text),
+        sessionName: row.session_name,
+        threadId: normalizeNullableText(row.thread_id),
+        turnId: normalizeNullableText(row.turn_id),
+        ordinal: row.ordinal ?? 0,
+        itemStatus: normalizeNullableText(row.status),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
     }
 
     return {

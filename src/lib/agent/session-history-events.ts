@@ -1,4 +1,5 @@
 import { sortSessionHistoryForTimeline } from './history-order.ts';
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from './plan.ts';
 import type {
   ChatStreamEvent,
   FileChange,
@@ -268,15 +269,19 @@ function buildNormalizedItemDraft(
         turnId: event.turnId,
         itemStatus: 'completed',
       };
-    case 'plan':
+    case 'plan': {
+      const text = normalizeText(item.text);
+      const steps = normalizePlanSteps(item.steps);
       return {
         kind: 'plan',
         id: itemId,
-        text: normalizeText(item.text),
+        text: text || buildPlanText(steps),
+        steps: steps.length > 0 ? steps : parsePlanStepsFromText(text),
         threadId: event.threadId,
         turnId: event.turnId,
         itemStatus: existing?.itemStatus ?? null,
       };
+    }
     default:
       return null;
   }
@@ -402,7 +407,8 @@ export function projectSessionHistoryEvent(
       return upsertHistoryEntry(history, sessionName, {
         kind: 'plan',
         id: `plan-${event.turnId}`,
-        text: event.steps.map((step) => `${step.status.toUpperCase()} ${step.title}`).join('\n'),
+        text: buildPlanText(event.steps),
+        steps: event.steps,
         threadId: event.threadId,
         turnId: event.turnId,
         itemStatus: null,

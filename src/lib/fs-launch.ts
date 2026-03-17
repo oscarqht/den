@@ -102,6 +102,31 @@ export async function openDirectoryInFileManager(directoryPath: string): Promise
   }
 }
 
+export function getBrowserOpenAttempts(targetUrl: string): CommandAttempt[] {
+  if (process.platform === 'win32') {
+    return [{ command: 'cmd.exe', args: ['/c', 'start', '', targetUrl] }];
+  }
+
+  if (process.platform === 'darwin') {
+    return [{ command: 'open', args: [targetUrl] }];
+  }
+
+  return [{ command: 'xdg-open', args: [targetUrl] }];
+}
+
+export async function openUrlInDefaultBrowser(targetUrl: string): Promise<void> {
+  const normalizedUrl = targetUrl.trim();
+  if (!normalizedUrl) {
+    throw new FsLaunchError('url is required', 400);
+  }
+
+  try {
+    await runFirstSuccessful(getBrowserOpenAttempts(normalizedUrl));
+  } catch (error) {
+    throw new FsLaunchError(`Failed to open URL: ${toErrorMessage(error)}`, 500);
+  }
+}
+
 export function getTerminalLaunchAttempts(directoryPath: string): CommandAttempt[] {
   if (process.platform === 'win32') {
     const escapedForCmd = directoryPath.replace(/"/g, '""');

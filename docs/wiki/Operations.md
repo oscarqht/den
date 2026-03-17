@@ -41,6 +41,8 @@ Other useful scripts:
 ```bash
 npm run prepack
 npm run pack:preview
+npm run tailscale
+npm run tailscale:stop
 ```
 
 Test entrypoints:
@@ -53,8 +55,17 @@ Test entrypoints:
 - ttyd port: `7681` (started by server action and proxied by Next rewrite `/terminal/*`).
 - Preview proxy and notification socket servers use dynamic ephemeral ports on `127.0.0.1`.
 
+### Tailscale exposure
+
+- `npm run tailscale` expects Palx to already be reachable at `127.0.0.1:3200`.
+- If the local machine is not connected to Tailscale yet, the script runs `tailscale up` so the user can complete login.
+- Exposure uses Tailscale Serve to publish `http://127.0.0.1:3200` to the same tailnet and prints the MagicDNS/IP URLs returned by `tailscale status --json`.
+- `npm run tailscale:stop` removes the Tailscale Serve mapping. It only runs `tailscale down` when the matching `npm run tailscale` invocation had to bring the machine onto the tailnet first.
+- The script stores its stop-state at `.artifacts/tailscale-state.json`.
+
 References:
 - [bin/viba.mjs](../../bin/viba.mjs)
+- [scripts/tailscale.mjs](../../scripts/tailscale.mjs)
 - [src/app/actions/git.ts](../../src/app/actions/git.ts)
 - [next.config.mjs](../../next.config.mjs)
 - [src/lib/previewProxyServer.ts](../../src/lib/previewProxyServer.ts)
@@ -82,6 +93,9 @@ Auth0-related:
 - `AUTH0_CLIENT_SECRET`
 - `AUTH0_SECRET`
 - `APP_BASE_URL`
+
+Tailscale note:
+- For remote tailnet access behind Auth0, `APP_BASE_URL` should use the Tailscale URL users will open, not `http://localhost:3200`.
 
 Runtime/launcher:
 - `PORT`

@@ -1,7 +1,11 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { getFileManagerLaunchAttempts, getTerminalLaunchAttempts } from './fs-launch.ts';
+import {
+  getBrowserOpenAttempts,
+  getFileManagerLaunchAttempts,
+  getTerminalLaunchAttempts,
+} from './fs-launch.ts';
 
 describe('fs launch command selection', () => {
   const originalPlatform = process.platform;
@@ -26,5 +30,21 @@ describe('fs launch command selection', () => {
     assert.strictEqual(attempts[1]?.command, 'pwsh.exe');
     assert.strictEqual(attempts[2]?.command, 'powershell.exe');
     assert.strictEqual(attempts[3]?.command, 'cmd.exe');
+  });
+
+  it('returns macOS browser open attempts', () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+    assert.deepStrictEqual(getBrowserOpenAttempts('http://localhost:3200/session/abc'), [
+      { command: 'open', args: ['http://localhost:3200/session/abc'] },
+    ]);
+  });
+
+  it('returns Linux browser open attempts', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    assert.deepStrictEqual(getBrowserOpenAttempts('http://localhost:3200/session/abc'), [
+      { command: 'xdg-open', args: ['http://localhost:3200/session/abc'] },
+    ]);
   });
 });

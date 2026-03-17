@@ -26,6 +26,8 @@
   "scripts": {
     "dev": "node ./bin/viba.mjs --dev",
     "kill-dev": "node ./scripts/kill-next-dev.mjs",
+    "tailscale": "node ./scripts/tailscale.mjs",
+    "tailscale:stop": "node ./scripts/tailscale.mjs stop",
     "build": "next build",
     "postbuild": "node ./scripts/copy-next-shims.mjs",
     "build:webpack": "next build --webpack",

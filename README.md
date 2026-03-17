@@ -48,6 +48,28 @@ npm run dev
 
 Then open the local URL printed in the terminal, pick a project, choose an agent, and start a session.
 
+### Expose Palx on your tailnet with Tailscale
+
+Prerequisites:
+
+- `tailscale` installed and already connected to your tailnet, or ready to complete `tailscale up`
+- Palx listening on `127.0.0.1:3200`
+
+```bash
+npm run dev -- --port 3200
+npm run tailscale
+```
+
+If the machine is not logged into Tailscale yet, the script runs `tailscale up` and lets Tailscale print the login flow in your terminal. Once connected, it exposes `127.0.0.1:3200` to other devices on the same tailnet with Tailscale Serve and prints the reachable tailnet URLs.
+
+To remove the Tailscale Serve mapping:
+
+```bash
+npm run tailscale:stop
+```
+
+If `npm run tailscale` had to bring the machine onto the tailnet itself, `npm run tailscale:stop` also runs `tailscale down`. If the machine was already connected, it only removes the Palx exposure.
+
 ### Run with `npx`
 
 ```bash
@@ -73,6 +95,8 @@ AUTH0_CLIENT_SECRET=your_client_secret
 AUTH0_SECRET=<openssl rand -hex 32>
 APP_BASE_URL=http://localhost:3200
 ```
+
+For Tailscale access, make sure `APP_BASE_URL` matches the Tailscale URL users will actually open instead of `http://localhost:3200`.
 
 ## Guiding Principle
 

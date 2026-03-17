@@ -4,6 +4,8 @@ import { URL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ChatStreamEvent, SessionAgentRuntimeState } from '@/lib/types';
 import type { QuickCreateJobUpdatePayload } from '@/lib/quick-create';
+import { sendBackgroundSessionNotification } from '@/lib/background-notifications';
+import { deliverSessionNotificationToSubscribers } from '@/lib/session-notification-delivery';
 
 const NOTIFICATION_SERVER_HOST = '127.0.0.1';
 
@@ -298,9 +300,6 @@ export async function publishSessionNotification(input: {
 
   const state = await getSessionNotificationServerState();
   const sockets = state.sessionSockets.get(sessionId);
-  if (!sockets || sockets.size === 0) {
-    return 0;
-  }
 
   const payload: SessionNotificationPayload = {
     type: 'session-notification',
@@ -311,28 +310,19 @@ export async function publishSessionNotification(input: {
   };
   const serializedPayload = JSON.stringify(payload);
 
-  let delivered = 0;
-  const staleSockets: WebSocket[] = [];
+  const delivered = await deliverSessionNotificationToSubscribers({
+    sockets,
+    openStateValue: WebSocket.OPEN,
+    payload: serializedPayload,
+    onUndelivered: () =>
+      sendBackgroundSessionNotification({
+        sessionId,
+        title,
+        description,
+      }).then(() => undefined),
+  });
 
-  for (const socket of sockets) {
-    if (socket.readyState !== WebSocket.OPEN) {
-      staleSockets.push(socket);
-      continue;
-    }
-
-    try {
-      socket.send(serializedPayload);
-      delivered += 1;
-    } catch {
-      staleSockets.push(socket);
-    }
-  }
-
-  for (const staleSocket of staleSockets) {
-    sockets.delete(staleSocket);
-  }
-
-  if (sockets.size === 0) {
+  if (sockets && sockets.size === 0) {
     state.sessionSockets.delete(sessionId);
   }
 

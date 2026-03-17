@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: __dirname,
-  allowedDevOrigins: ["localhost", "*.localhost", "127.0.0.1", "*.nport.link"],
+  allowedDevOrigins: ["localhost", "*.localhost", "127.0.0.1", "*.nport.link", "*.ts.net", "100.*"],
   serverExternalPackages: ["keytar"],
   devIndicators: {
     position: "top-right",
@@ -15,7 +15,7 @@ const nextConfig = {
     serverActions: {
       // Allow loopback iframe/proxy origins in local development previews.
       // Example host values: 127.0.0.1:55700
-      allowedOrigins: ["127.0.0.*"],
+      allowedOrigins: ["127.0.0.*", "*.ts.net", "100.*"],
     },
   },
   async rewrites() {

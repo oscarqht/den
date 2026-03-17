@@ -265,6 +265,19 @@ function ensureCommandInstalled(commandName) {
   throw new Error(`${commandName} is required, but automatic installation failed. Install ${commandName} manually and restart.`);
 }
 
+function ensureOptionalCommandInstalled(commandName) {
+  if (isCommandAvailable(commandName)) {
+    return;
+  }
+
+  try {
+    ensureCommandInstalled(commandName);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Optional dependency ${commandName} is unavailable: ${detail}`);
+  }
+}
+
 function getCodexSkillsDirectory() {
   const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
   return path.join(codexHome, "skills");
@@ -350,12 +363,12 @@ export async function resolveStartupPort(
   };
 }
 
-function runNext(args) {
+function runNext(args, env = process.env) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [getNextBin(), ...args], {
       cwd: APP_ROOT,
       stdio: "inherit",
-      env: process.env,
+      env,
     });
 
     child.on("error", reject);
@@ -478,6 +491,9 @@ async function main() {
     if (process.platform !== "win32") {
       ensureCommandInstalled("tmux");
     }
+    if (process.platform === "darwin") {
+      ensureOptionalCommandInstalled("terminal-notifier");
+    }
     ensureCodexSkillsInstalled();
 
     const { port, preferredPort } = await resolveStartupPort(options);
@@ -488,7 +504,7 @@ async function main() {
     if (options.mode === "dev") {
       const url = `http://localhost:${port}`;
       console.log(`Starting Palx in development mode on ${url}`);
-      const nextPromise = runNext(getDevServerArgs(port));
+      const nextPromise = runNext(getDevServerArgs(port), { ...process.env, PALX_APP_URL: url });
       void autoOpenBrowserWhenReady(url, port, options.mode);
       process.exit(await nextPromise);
     }
@@ -497,7 +513,7 @@ async function main() {
     syncNextNativeShims(APP_ROOT);
     const url = `http://localhost:${port}`;
     console.log(`Starting Palx on ${url}`);
-    const nextPromise = runNext(["start", "-p", String(port)]);
+    const nextPromise = runNext(["start", "-p", String(port)], { ...process.env, PALX_APP_URL: url });
     void autoOpenBrowserWhenReady(url, port, options.mode);
     process.exit(await nextPromise);
   } catch (error) {

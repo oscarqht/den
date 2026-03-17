@@ -832,6 +832,37 @@ export async function cancelAgentSessionTurn(sessionId: string) {
   return toView(record);
 }
 
+export async function waitForAgentSessionRun(sessionId: string) {
+  const record = requireSessionRecord(sessionId.trim());
+  if (record.activeRun) {
+    try {
+      await record.activeRun.promise;
+    } catch {
+      // The final snapshot already reflects the terminal state.
+    }
+  }
+
+  return toView(record);
+}
+
+export function unregisterAgentSession(sessionId: string) {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    return false;
+  }
+
+  const record = globalRecords().get(normalizedSessionId);
+  if (!record) {
+    return false;
+  }
+
+  if (record.activeRun) {
+    throw new Error(`Agent session ${normalizedSessionId} is still running.`);
+  }
+
+  return globalRecords().delete(normalizedSessionId);
+}
+
 export function listActiveAgentSessions() {
   return Array.from(globalRecords().values()).map((record) => toView(record));
 }

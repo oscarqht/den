@@ -3025,6 +3025,8 @@ export default function GitRepoSelector({
           nextThemeModeLabel={nextThemeModeLabel}
           ThemeModeIcon={ThemeModeIcon}
           filteredRecentProjects={filteredRecentProjects}
+          quickCreateActiveCount={0}
+          failedQuickCreateDrafts={[]}
           isDarkThemeActive={isDarkThemeActive}
           runningSessionCountByProject={runningSessionCountByProject}
           draftCountByProject={draftCountByProject}
@@ -3038,8 +3040,11 @@ export default function GitRepoSelector({
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}
+          onOpenQuickCreate={() => {}}
           onOpenProjectSettings={handleOpenRepoSettings}
           onRemoveRecent={handleRemoveRecent}
+          onEditQuickCreateDraft={() => {}}
+          onDeleteQuickCreateDraft={async () => {}}
           onProjectIconError={handleRepoIconError}
           onRepoCardMouseMove={handleRepoCardMouseMove}
           onRepoCardMouseLeave={handleRepoCardMouseLeave}

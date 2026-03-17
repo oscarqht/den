@@ -16,10 +16,18 @@ import { listCredentials } from '@/app/actions/credentials';
 import { listDrafts, type DraftMetadata } from '@/app/actions/draft';
 import { resolveRepoCardIcon } from '@/app/actions/git';
 import { cloneRemoteProject, discoverProjectGitRepos } from '@/app/actions/project';
+import {
+  deleteQuickCreateDraft,
+  getHomeQuickCreateState,
+  startQuickCreateTask,
+} from '@/app/actions/quick-create';
 import { listSessions, type SessionMetadata } from '@/app/actions/session';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
+import { useToast } from '@/hooks/use-toast';
 import type { Credential } from '@/lib/credentials';
 import { getBaseName } from '@/lib/path';
+import type { QuickCreateDraft } from '@/lib/quick-create';
+import { getQuickCreateTabId, subscribeToQuickCreateJobUpdates } from '@/lib/quick-create-updates';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
 import {
   resolveShouldUseDarkTheme,
@@ -35,6 +43,9 @@ const RepoSettingsDialog = dynamic(() =>
 );
 const CloneRemoteDialog = dynamic(() =>
   import('./git-repo-selector/CloneRemoteDialog').then((module) => module.CloneRemoteDialog),
+);
+const QuickCreateTaskDialog = dynamic(() =>
+  import('./QuickCreateTaskDialog').then((module) => module.QuickCreateTaskDialog),
 );
 
 type ThemeMode = 'auto' | 'light' | 'dark';
@@ -68,9 +79,12 @@ export default function HomeDashboardContainer({
   logoutEnabled = true,
 }: HomeDashboardContainerProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [config, setConfig] = useState<Config | null>(null);
   const [allSessions, setAllSessions] = useState<SessionMetadata[]>([]);
   const [allDrafts, setAllDrafts] = useState<DraftMetadata[]>([]);
+  const [quickCreateDrafts, setQuickCreateDrafts] = useState<QuickCreateDraft[]>([]);
+  const [quickCreateActiveCount, setQuickCreateActiveCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
@@ -110,8 +124,20 @@ export default function HomeDashboardContainer({
   const [projectPendingDelete, setProjectPendingDelete] = useState<string | null>(null);
   const [deleteProjectLocalFolder, setDeleteProjectLocalFolder] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = useState(false);
+  const [quickCreateDraftForEdit, setQuickCreateDraftForEdit] = useState<QuickCreateDraft | null>(null);
 
   const repoCardIconResolutionsInFlightRef = useRef<Set<string>>(new Set());
+
+  const refreshQuickCreateState = useCallback(async () => {
+    try {
+      const state = await getHomeQuickCreateState();
+      setQuickCreateDrafts(state.drafts);
+      setQuickCreateActiveCount(state.activeCount);
+    } catch (refreshError) {
+      console.error('Failed to refresh quick create state:', refreshError);
+    }
+  }, []);
 
   const refreshActivity = useCallback(async () => {
     try {
@@ -128,15 +154,18 @@ export default function HomeDashboardContainer({
 
     const loadData = async () => {
       try {
-        const [nextConfig, sessions, drafts] = await Promise.all([
+        const [nextConfig, sessions, drafts, quickCreateState] = await Promise.all([
           getConfig(),
           listSessions(),
           listDrafts(),
+          getHomeQuickCreateState(),
         ]);
         if (cancelled) return;
         setConfig(nextConfig);
         setAllSessions(sessions);
         setAllDrafts(drafts);
+        setQuickCreateDrafts(quickCreateState.drafts);
+        setQuickCreateActiveCount(quickCreateState.activeCount);
       } catch (loadError) {
         console.error('Failed to load home dashboard data:', loadError);
       } finally {
@@ -798,6 +827,49 @@ export default function HomeDashboardContainer({
     return alias || getBaseName(projectPath);
   }, [config?.projectSettings]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToQuickCreateJobUpdates((payload) => {
+      setQuickCreateActiveCount(payload.activeCount);
+      void refreshQuickCreateState();
+
+      if (payload.sourceTabId !== getQuickCreateTabId()) {
+        return;
+      }
+
+      if (payload.status === 'succeeded' && payload.sessionId && payload.projectPath) {
+        const { projectPath, sessionId } = payload;
+        const projectLabel = getProjectDisplayName(projectPath);
+        toast({
+          type: 'success',
+          title: 'Quick create finished',
+          description: `Created a new task for ${projectLabel}.`,
+          action: (
+            <button
+              type="button"
+              className="btn btn-xs btn-outline"
+              onClick={() => router.push(`/session/${encodeURIComponent(sessionId)}`)}
+            >
+              Open Task
+            </button>
+          ),
+        });
+        return;
+      }
+
+      if (payload.status === 'failed') {
+        toast({
+          type: 'error',
+          title: 'Quick create failed',
+          description: payload.error || 'Palx saved the request as a failed quick create draft.',
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [getProjectDisplayName, refreshQuickCreateState, router, toast]);
+
   const filteredRecentProjects = useMemo(() => {
     const normalizedQuery = homeSearchQuery.trim().toLowerCase();
     if (!normalizedQuery) return recentProjects;
@@ -887,6 +959,53 @@ export default function HomeDashboardContainer({
     });
   }, []);
 
+  const handleOpenQuickCreateDialog = useCallback((draft?: QuickCreateDraft | null) => {
+    setQuickCreateDraftForEdit(draft ?? null);
+    setIsQuickCreateDialogOpen(true);
+  }, []);
+
+  const handleCloseQuickCreateDialog = useCallback(() => {
+    setIsQuickCreateDialogOpen(false);
+    setQuickCreateDraftForEdit(null);
+  }, []);
+
+  const handleDeleteQuickCreateDraft = useCallback(async (draftId: string) => {
+    const result = await deleteQuickCreateDraft(draftId);
+    if (!result.success) {
+      toast({
+        type: 'error',
+        title: 'Failed to delete quick create draft',
+        description: result.error || 'Please try again.',
+      });
+      return;
+    }
+
+    await refreshQuickCreateState();
+  }, [refreshQuickCreateState, toast]);
+
+  const handleSubmitQuickCreateTask = useCallback(async (input: {
+    draftId?: string | null;
+    message: string;
+    attachmentPaths: string[];
+  }) => {
+    const result = await startQuickCreateTask({
+      draftId: input.draftId,
+      message: input.message,
+      attachmentPaths: input.attachmentPaths,
+      sourceTabId: getQuickCreateTabId(),
+    });
+
+    if (result.success) {
+      handleCloseQuickCreateDialog();
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      error: result.error || 'Failed to start quick create.',
+    };
+  }, [handleCloseQuickCreateDialog]);
+
   return (
     <>
       <HomeDashboard
@@ -895,6 +1014,8 @@ export default function HomeDashboardContainer({
         homeSearchQuery={homeSearchQuery}
         showLogout={showLogout}
         logoutEnabled={logoutEnabled}
+        quickCreateActiveCount={quickCreateActiveCount}
+        failedQuickCreateDrafts={quickCreateDrafts}
         themeModeLabel={themeModeLabel}
         nextThemeModeLabel={nextThemeModeLabel}
         ThemeModeIcon={ThemeModeIcon}
@@ -909,6 +1030,9 @@ export default function HomeDashboardContainer({
         getProjectDisplayName={getProjectDisplayName}
         onHomeSearchQueryChange={setHomeSearchQuery}
         onOpenCredentials={() => router.push('/settings')}
+        onOpenQuickCreate={() => handleOpenQuickCreateDialog()}
+        onEditQuickCreateDraft={handleOpenQuickCreateDialog}
+        onDeleteQuickCreateDraft={handleDeleteQuickCreateDraft}
         onCycleThemeMode={() => setThemeMode(nextThemeMode)}
         onSelectProject={handleSelectProject}
         onOpenGitWorkspace={handleOpenProjectGitWorkspace}
@@ -971,6 +1095,15 @@ export default function HomeDashboardContainer({
         onCloneProject={() => {
           void handleCloneRemoteRepo();
         }}
+      />
+
+      <QuickCreateTaskDialog
+        key={quickCreateDraftForEdit?.id ?? 'new-quick-create'}
+        isOpen={isQuickCreateDialogOpen}
+        draft={quickCreateDraftForEdit}
+        defaultRoot={config?.defaultRoot || undefined}
+        onClose={handleCloseQuickCreateDialog}
+        onSubmit={handleSubmitQuickCreateTask}
       />
 
       {homeProjectGitSelector && (

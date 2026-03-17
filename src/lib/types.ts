@@ -105,6 +105,31 @@ export type SessionWorkspaceMode = 'single_worktree' | 'multi_repo_worktree' | '
 
 export type SessionWorkspacePreference = 'workspace' | 'local';
 
+export type QuickCreateDraft = {
+  id: string;
+  title: string;
+  message: string;
+  attachmentPaths: string[];
+  lastError: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type QuickCreateJobStatus = 'started' | 'succeeded' | 'failed';
+
+export type QuickCreateJobUpdatePayload = {
+  type: 'quick-create-job-update';
+  jobId: string;
+  status: QuickCreateJobStatus;
+  activeCount: number;
+  sourceTabId?: string | null;
+  sessionId?: string;
+  projectPath?: string;
+  draftId?: string;
+  error?: string;
+  timestamp: string;
+};
+
 export interface SessionGitRepoContext {
   sourceRepoPath: string;
   relativeRepoPath: string;

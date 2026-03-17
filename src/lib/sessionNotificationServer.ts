@@ -3,6 +3,7 @@ import type { Socket } from 'node:net';
 import { URL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ChatStreamEvent, SessionAgentRuntimeState } from '@/lib/types';
+import type { QuickCreateJobUpdatePayload } from '@/lib/quick-create';
 
 const NOTIFICATION_SERVER_HOST = '127.0.0.1';
 
@@ -13,6 +14,7 @@ type SessionNotificationServerState = {
   sessionSockets: Map<string, Set<WebSocket>>;
   agentSessionSockets: Map<string, Set<WebSocket>>;
   sessionListSockets: Set<WebSocket>;
+  quickCreateJobSockets: Set<WebSocket>;
 };
 
 export type SessionNotificationPayload = {
@@ -93,6 +95,7 @@ async function createSessionNotificationServer(): Promise<SessionNotificationSer
   const sessionSockets = new Map<string, Set<WebSocket>>();
   const agentSessionSockets = new Map<string, Set<WebSocket>>();
   const sessionListSockets = new Set<WebSocket>();
+  const quickCreateJobSockets = new Set<WebSocket>();
   const socketServer = new WebSocketServer({ noServer: true });
 
   socketServer.on('connection', (socket, request) => {
@@ -104,6 +107,17 @@ async function createSessionNotificationServer(): Promise<SessionNotificationSer
       });
       socket.on('error', () => {
         sessionListSockets.delete(socket);
+      });
+      return;
+    }
+
+    if (channel === 'quick-create') {
+      quickCreateJobSockets.add(socket);
+      socket.on('close', () => {
+        quickCreateJobSockets.delete(socket);
+      });
+      socket.on('error', () => {
+        quickCreateJobSockets.delete(socket);
       });
       return;
     }
@@ -208,6 +222,7 @@ async function createSessionNotificationServer(): Promise<SessionNotificationSer
     sessionSockets,
     agentSessionSockets,
     sessionListSockets,
+    quickCreateJobSockets,
   };
 }
 
@@ -260,6 +275,12 @@ export function buildSessionAgentWsUrl(wsBaseUrl: string, sessionId: string): st
 export function buildSessionListNotificationWsUrl(wsBaseUrl: string): string {
   const url = new URL(wsBaseUrl);
   url.searchParams.set('channel', 'session-list');
+  return url.toString();
+}
+
+export function buildQuickCreateJobWsUrl(wsBaseUrl: string): string {
+  const url = new URL(wsBaseUrl);
+  url.searchParams.set('channel', 'quick-create');
   return url.toString();
 }
 
@@ -349,6 +370,44 @@ export async function publishSessionListUpdated(): Promise<number> {
 
   for (const staleSocket of staleSockets) {
     state.sessionListSockets.delete(staleSocket);
+  }
+
+  return delivered;
+}
+
+export async function publishQuickCreateJobUpdate(
+  payload: Omit<QuickCreateJobUpdatePayload, 'type' | 'timestamp'>,
+): Promise<number> {
+  const state = await getSessionNotificationServerState();
+  if (state.quickCreateJobSockets.size === 0) {
+    return 0;
+  }
+
+  const serializedPayload = JSON.stringify({
+    type: 'quick-create-job-update',
+    timestamp: new Date().toISOString(),
+    ...payload,
+  } satisfies QuickCreateJobUpdatePayload);
+
+  let delivered = 0;
+  const staleSockets: WebSocket[] = [];
+
+  for (const socket of state.quickCreateJobSockets) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      staleSockets.push(socket);
+      continue;
+    }
+
+    try {
+      socket.send(serializedPayload);
+      delivered += 1;
+    } catch {
+      staleSockets.push(socket);
+    }
+  }
+
+  for (const staleSocket of staleSockets) {
+    state.quickCreateJobSockets.delete(staleSocket);
   }
 
   return delivered;

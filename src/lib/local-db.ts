@@ -259,6 +259,16 @@ function createSchema(db: Database.Database): void {
       session_mode TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS quick_create_drafts (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      attachment_paths_json TEXT NOT NULL,
+      last_error TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS session_agent_history_items (
       session_name TEXT NOT NULL,
       item_id TEXT NOT NULL,
@@ -1050,6 +1060,7 @@ function runSchemaMigrations(db: Database.Database): void {
   createIndexIfColumnsExist(db, 'drafts', 'drafts_repo_path_idx', ['repo_path']);
   createIndexIfColumnsExist(db, 'drafts', 'drafts_project_path_idx', ['project_path']);
   createIndexIfColumnsExist(db, 'drafts', 'drafts_timestamp_idx', ['timestamp']);
+  createIndexIfColumnsExist(db, 'quick_create_drafts', 'quick_create_drafts_updated_at_idx', ['updated_at']);
   createIndexIfColumnsExist(db, 'session_git_repos', 'session_git_repos_session_idx', ['session_name']);
   createIndexIfColumnsExist(
     db,

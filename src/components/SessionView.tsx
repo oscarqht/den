@@ -2868,7 +2868,7 @@ export function SessionView({
                                 ) : null}
                                 {reasoningEffortOptions.length > 0 && (
                                     <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
-                                        <span className="px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                        <span className="shrink-0 whitespace-nowrap px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                             Next Round
                                         </span>
                                         <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#30363d]"></div>

@@ -448,6 +448,8 @@ export default function SessionPage() {
             gitRepos={metadata.gitRepos}
             sessionName={metadata.sessionName}
             agent={contextAgentProvider || metadata.agent}
+            model={metadata.model}
+            reasoningEffort={metadata.reasoningEffort}
             devServerScript={metadata.devServerScript}
             initialMessage={initialMessage}
             attachmentPaths={contextAttachmentPaths}

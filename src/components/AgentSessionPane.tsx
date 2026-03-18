@@ -58,9 +58,11 @@ export type AgentSessionPaneHandle = {
   insertText: (text: string) => boolean;
   openAgentDetails: () => void;
   cancelActiveTurn: () => Promise<void>;
+  refreshSnapshot: () => Promise<void>;
 };
 
 export type AgentSessionHeaderMeta = {
+  providerId: AgentProvider | null;
   providerName: string;
   model: string;
   runState: SessionAgentRunState | 'idle';
@@ -1381,6 +1383,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, [dispatchQueuedMessage, handleCancel, isCancelling, isSending, isTurnActive, onFeedback]);
 
   const headerMeta = useMemo<AgentSessionHeaderMeta>(() => ({
+    providerId: runtime?.agentProvider || null,
     providerName,
     model: runtime?.model || '',
     runState: activeRunState,
@@ -1432,7 +1435,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     async cancelActiveTurn() {
       await handleCancel();
     },
-  }), [handleCancel, onFeedback]);
+    async refreshSnapshot() {
+      await loadSnapshot();
+    },
+  }), [handleCancel, loadSnapshot, onFeedback]);
 
   useEffect(() => {
     if (isTurnActive || isSending || pendingMessages.length === 0) return;

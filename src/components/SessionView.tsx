@@ -10,6 +10,7 @@ import {
     mergeSessionToBase,
     prepareSessionDevServerTerminalRun,
     rebaseSessionOntoBase,
+    updateSessionAgentRuntimeState,
     updateSessionBaseBranch,
 } from '@/app/actions/session';
 import {
@@ -46,7 +47,8 @@ import {
     THEME_MODE_STORAGE_KEY,
     THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
-import type { SessionAgentRunState, SessionGitRepoContext, SessionWorkspaceMode } from '@/lib/types';
+import { getModelReasoningEffortOptions, resolveReasoningEffortSelection } from '@/lib/session-reasoning';
+import type { AppStatus, SessionAgentRunState, SessionGitRepoContext, SessionWorkspaceMode } from '@/lib/types';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -63,6 +65,10 @@ type CleanupPhase = 'idle' | 'error';
 type SessionDevServerState = {
     running: boolean;
     previewUrl: string | null;
+};
+type AgentStatusResponse = {
+    status: AppStatus | null;
+    error?: string;
 };
 
 type PreviewNavigationAction = 'back' | 'forward' | 'reload';
@@ -181,6 +187,8 @@ export interface SessionViewProps {
     gitRepos?: SessionGitRepoContext[];
     sessionName: string;
     agent?: string;
+    model?: string;
+    reasoningEffort?: string;
     devServerScript?: string;
     initialMessage?: string;
     attachmentPaths?: string[];
@@ -206,6 +214,9 @@ export function SessionView({
     activeRepoPath,
     gitRepos = [],
     sessionName,
+    agent: initialAgentProvider,
+    model: initialAgentModel,
+    reasoningEffort: initialReasoningEffort,
     devServerScript,
     onExit,
     isResume,
@@ -681,6 +692,10 @@ export function SessionView({
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [agentHeaderMeta, setAgentHeaderMeta] = useState<AgentSessionHeaderMeta | null>(null);
+    const [agentStatus, setAgentStatus] = useState<AppStatus | null>(null);
+    const [isLoadingAgentStatus, setIsLoadingAgentStatus] = useState(false);
+    const [selectedReasoningEffort, setSelectedReasoningEffort] = useState((initialReasoningEffort || '').trim());
+    const [isSavingReasoningEffort, setIsSavingReasoningEffort] = useState(false);
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
@@ -773,6 +788,92 @@ export function SessionView({
     useEffect(() => {
         activeTerminalTabIdRef.current = activeTerminalTabId;
     }, [activeTerminalTabId]);
+
+    const effectiveAgentProvider = (agentHeaderMeta?.providerId || initialAgentProvider || 'codex').trim();
+    const effectiveAgentModel = (agentHeaderMeta?.model || initialAgentModel || '').trim();
+    const persistedReasoningEffort = (agentHeaderMeta?.reasoningEffort || initialReasoningEffort || '').trim();
+    const reasoningEffortOptions = useMemo(() => (
+        getModelReasoningEffortOptions(
+            agentStatus?.models || [],
+            effectiveAgentModel,
+            agentStatus?.defaultModel,
+        )
+    ), [agentStatus?.defaultModel, agentStatus?.models, effectiveAgentModel]);
+
+    useEffect(() => {
+        const provider = effectiveAgentProvider.trim();
+        if (!provider) {
+            setAgentStatus(null);
+            return;
+        }
+
+        let cancelled = false;
+        setIsLoadingAgentStatus(true);
+
+        void (async () => {
+            try {
+                const response = await fetch(`/api/agent/status?provider=${encodeURIComponent(provider)}`, {
+                    cache: 'no-store',
+                });
+                const payload = await response.json().catch(() => null) as AgentStatusResponse | null;
+                if (cancelled) return;
+                if (!response.ok) {
+                    throw new Error(payload?.error || 'Failed to load agent status');
+                }
+                setAgentStatus(payload?.status || null);
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('Failed to load session agent status:', error);
+                    setAgentStatus(null);
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingAgentStatus(false);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [effectiveAgentProvider]);
+
+    useEffect(() => {
+        const nextSelection = resolveReasoningEffortSelection(
+            reasoningEffortOptions,
+            persistedReasoningEffort,
+            selectedReasoningEffort,
+        );
+        if (nextSelection !== selectedReasoningEffort) {
+            setSelectedReasoningEffort(nextSelection);
+        }
+    }, [persistedReasoningEffort, reasoningEffortOptions, selectedReasoningEffort]);
+
+    const handleReasoningEffortChange = useCallback(async (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const nextReasoningEffort = event.target.value;
+        const previousReasoningEffort = selectedReasoningEffort;
+
+        setSelectedReasoningEffort(nextReasoningEffort);
+        setIsSavingReasoningEffort(true);
+
+        try {
+            const result = await updateSessionAgentRuntimeState(sessionName, {
+                reasoningEffort: nextReasoningEffort || null,
+            });
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to update reasoning effort');
+            }
+
+            setFeedback(`Reasoning effort set to ${nextReasoningEffort} for the next round`);
+            await agentPaneRef.current?.refreshSnapshot();
+        } catch (error) {
+            console.error('Failed to update session reasoning effort:', error);
+            setSelectedReasoningEffort(previousReasoningEffort);
+            setFeedback(error instanceof Error ? error.message : 'Failed to update reasoning effort');
+        } finally {
+            setIsSavingReasoningEffort(false);
+        }
+    }, [selectedReasoningEffort, sessionName]);
 
     useEffect(() => {
         const syncForegroundState = () => {
@@ -2765,6 +2866,28 @@ export function SessionView({
                                         </span>
                                     </div>
                                 ) : null}
+                                {reasoningEffortOptions.length > 0 && (
+                                    <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
+                                        <span className="px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                            Next Round
+                                        </span>
+                                        <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#30363d]"></div>
+                                        <select
+                                            className="select select-xs h-6 min-h-6 rounded-none border-none bg-slate-100 pr-7 text-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[#161b22] dark:text-slate-300"
+                                            value={selectedReasoningEffort}
+                                            onChange={handleReasoningEffortChange}
+                                            disabled={isLoadingAgentStatus || isSavingReasoningEffort}
+                                            title="Reasoning effort for the next round of conversation"
+                                            aria-label="Reasoning effort for the next round"
+                                        >
+                                            {reasoningEffortOptions.map((effort) => (
+                                                <option key={effort} value={effort}>
+                                                    {effort}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
                                     <select
                                         className="select select-xs h-6 min-h-6 rounded-none border-none bg-slate-100 pr-7 text-slate-700 focus:outline-none dark:bg-[#161b22] dark:text-slate-300"

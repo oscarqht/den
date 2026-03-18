@@ -20,7 +20,7 @@ import {
     terminateTmuxSessionRole,
 } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, RotateCw, ScrollText, TextCursorInput, X, Info } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, ChevronLeft, Grip, ChevronDown, Plus, RotateCw, ScrollText, TextCursorInput, X, Info } from 'lucide-react';
 import AgentSessionPane, { type AgentSessionHeaderMeta, type AgentSessionPaneHandle } from './AgentSessionPane';
 import SessionFileBrowser from './SessionFileBrowser';
 import { SessionRepoViewer, type SessionRepoViewerOption } from './SessionRepoViewer';
@@ -2909,18 +2909,6 @@ export function SessionView({
                                         <span className="agent-activity-action-label">Open in IDE</span>
                                     </button>
                                 </div>
-                                <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
-                                    <button
-                                        className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                        onClick={() => setIsFileBrowserOpen(true)}
-                                        disabled={isInsertingFilePaths}
-                                        title="Browse files and insert absolute paths into the agent input"
-                                        aria-label="Add files"
-                                    >
-                                        {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="h-3 w-3" />}
-                                        <span className="agent-activity-action-label">Add Files</span>
-                                    </button>
-                                </div>
                                 <button
                                     type="button"
                                     className="btn btn-ghost btn-xs h-6 min-h-6 w-6 shrink-0 border border-slate-200 bg-white p-0 text-slate-700 hover:bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
@@ -2940,6 +2928,8 @@ export function SessionView({
                             workspacePath={sessionWorkspaceRootPath || worktree || repo}
                             onFeedback={setFeedback}
                             onHeaderMetaChange={setAgentHeaderMeta}
+                            onRequestAddFiles={() => setIsFileBrowserOpen(true)}
+                            isAddingFiles={isInsertingFilePaths}
                         />
                     </div>
                 </div>

@@ -209,8 +209,16 @@ export function QuickCreateTaskDialog({
                 onPaste={(event) => {
                   void handleTaskDescriptionPaste(event);
                 }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' || event.shiftKey) return;
+                  event.preventDefault();
+                  void handleSubmit();
+                }}
                 disabled={isSubmitting}
               />
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Press Enter to start background create, Shift+Enter for a new line.
+              </p>
             </div>
 
             <div className="border-t border-slate-100 pt-4 dark:border-slate-700/70">

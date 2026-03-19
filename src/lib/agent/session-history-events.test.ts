@@ -187,6 +187,36 @@ describe('projectSessionHistoryEvent', () => {
     assert.equal(result.history[0]?.text, 'COMPLETED Inspect session page\nIN PROGRESS Render checklist');
   });
 
+  it('does not let an empty plan item erase an existing plan update', () => {
+    const existing = createItem({
+      id: 'plan-turn-7',
+      kind: 'plan',
+      text: 'COMPLETED Inspect session page\nIN PROGRESS Render checklist',
+      steps: [
+        { title: 'Inspect session page', status: 'completed' },
+        { title: 'Render checklist', status: 'in_progress' },
+      ],
+    });
+
+    const event: ChatStreamEvent = {
+      type: 'item_completed',
+      item: {
+        id: 'plan-turn-7',
+        type: 'plan',
+        text: '',
+        steps: [],
+      },
+      threadId: 'thread-1',
+      turnId: 'turn-7',
+    };
+
+    const result = projectSessionHistoryEvent([existing], 'session-1', event, '2026-03-12T00:00:02.000Z');
+
+    assert.equal(result.history[0]?.kind, 'plan');
+    assert.deepStrictEqual(result.history[0]?.steps, existing.steps);
+    assert.equal(result.history[0]?.text, existing.text);
+  });
+
   it('leaves history untouched for turn lifecycle events', () => {
     const existing = createItem({
       id: 'assistant-1',

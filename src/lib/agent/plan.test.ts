@@ -5,6 +5,7 @@ import {
   buildPlanText,
   normalizePlanStepStatus,
   normalizePlanSteps,
+  parsePlanStepsFromToolInput,
   parsePlanStepsFromText,
 } from './plan.ts';
 
@@ -37,6 +38,22 @@ describe('normalizePlanSteps', () => {
 });
 
 describe('plan text helpers', () => {
+  it('extracts steps from update_plan tool input payloads', () => {
+    assert.deepStrictEqual(
+      parsePlanStepsFromToolInput(JSON.stringify({
+        explanation: 'Keep one step active',
+        plan: [
+          { step: 'Inspect snapshot', status: 'completed' },
+          { step: 'Patch persistence merge', status: 'in_progress' },
+        ],
+      })),
+      [
+        { title: 'Inspect snapshot', status: 'completed' },
+        { title: 'Patch persistence merge', status: 'in_progress' },
+      ],
+    );
+  });
+
   it('builds a readable text fallback from steps', () => {
     assert.equal(
       buildPlanText([

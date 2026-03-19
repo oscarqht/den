@@ -42,6 +42,7 @@ type SessionAgentHistoryRow = {
 
 type NormalizedHistoryWrite = {
   itemId: string;
+  entry: HistoryEntry;
   kind: HistoryEntry['kind'];
   payloadJson: string;
   threadIdProvided: boolean;
@@ -147,6 +148,7 @@ function normalizeHistoryWrite(input: SessionAgentHistoryInput): NormalizedHisto
 
   return {
     itemId,
+    entry: normalizedEntry,
     kind: normalizedEntry.kind,
     payloadJson: JSON.stringify(normalizedEntry),
     threadIdProvided: Object.prototype.hasOwnProperty.call(input, 'threadId'),
@@ -159,6 +161,85 @@ function normalizeHistoryWrite(input: SessionAgentHistoryInput): NormalizedHisto
     createdAt: normalizeOptionalText(createdAt) ?? new Date().toISOString(),
     updatedAt: normalizeOptionalText(updatedAt) ?? new Date().toISOString(),
   };
+}
+
+function parseHistoryEntryPayload(value: string): HistoryEntry | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const entry = parsed as Partial<HistoryEntry>;
+    return typeof entry.kind === 'string' && typeof entry.id === 'string'
+      ? (entry as HistoryEntry)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeHistoryEntry(existing: HistoryEntry | null, next: HistoryEntry): HistoryEntry {
+  if (!existing || existing.kind !== next.kind) {
+    return next;
+  }
+
+  switch (next.kind) {
+    case 'user':
+      return {
+        ...next,
+        text: next.text || existing.text,
+      };
+    case 'assistant':
+      return {
+        ...next,
+        text: next.text || existing.text,
+        phase: next.phase ?? existing.phase,
+      };
+    case 'reasoning':
+      return {
+        ...next,
+        summary: next.summary || existing.summary,
+        text: next.text || existing.text,
+      };
+    case 'command':
+      return {
+        ...next,
+        output: next.output || existing.output,
+        status: next.status || existing.status,
+        exitCode: next.exitCode ?? existing.exitCode,
+        toolName: next.toolName ?? existing.toolName,
+        toolInput: next.toolInput ?? existing.toolInput,
+      };
+    case 'tool':
+      return {
+        ...next,
+        source: next.source || existing.source,
+        server: next.server ?? existing.server,
+        status: next.status || existing.status,
+        input: next.input ?? existing.input,
+        message: next.message ?? existing.message,
+        result: next.result ?? existing.result,
+        error: next.error ?? existing.error,
+      };
+    case 'fileChange':
+      return {
+        ...next,
+        status: next.status || existing.status,
+        output: next.output || existing.output,
+        changes: next.changes.length > 0 ? next.changes : existing.changes,
+      };
+    case 'plan': {
+      const steps = next.steps && next.steps.length > 0
+        ? next.steps
+        : existing.steps;
+      return {
+        ...next,
+        text: next.text || existing.text || buildPlanText(steps ?? []),
+        steps,
+      };
+    }
+  }
 }
 
 export function readSessionRuntime(sessionName: string): SessionAgentRuntimeState | null {
@@ -311,6 +392,10 @@ export function upsertSessionHistoryEntries(sessionName: string, entries: Sessio
   const transaction = db.transaction((writes: NormalizedHistoryWrite[]) => {
     for (const write of writes) {
       const existing = selectExisting.get(sessionName, write.itemId) as SessionAgentHistoryRow | undefined;
+      const mergedEntry = mergeHistoryEntry(
+        existing ? parseHistoryEntryPayload(existing.payload_json) : null,
+        write.entry,
+      );
       insertOrReplace.run({
         sessionName,
         itemId: write.itemId,
@@ -319,7 +404,7 @@ export function upsertSessionHistoryEntries(sessionName: string, entries: Sessio
         ordinal: existing?.ordinal ?? write.ordinal,
         kind: write.kind,
         status: write.itemStatusProvided ? write.itemStatus : (existing?.status ?? null),
-        payloadJson: write.payloadJson,
+        payloadJson: JSON.stringify(mergedEntry),
         createdAt: existing?.created_at ?? write.createdAt,
         updatedAt: write.updatedAt,
       });

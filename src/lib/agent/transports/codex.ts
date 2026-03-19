@@ -15,7 +15,7 @@ import type {
   ToolTraceSource,
 } from "@/lib/agent/types";
 import { normalizeProviderReasoningEffort } from "@/lib/agent/reasoning";
-import { normalizePlanSteps } from "@/lib/agent/plan";
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromToolInput } from "@/lib/agent/plan";
 import {
   createDeferred,
   defaultSpawnEnv,
@@ -100,7 +100,8 @@ type ThreadItem =
   | {
       type: "plan";
       id: string;
-      text: string;
+      text?: string;
+      steps?: unknown;
     };
 
 type RawResponseItem =
@@ -799,10 +800,12 @@ function normalizeHistory(thread: ThreadSummary): HistoryEntry[] {
           });
           break;
         case "plan":
+          const steps = normalizePlanSteps(item.steps);
           entries.push({
             kind: "plan",
             id: item.id,
-            text: item.text,
+            text: normalizeText(item.text) || buildPlanText(steps),
+            steps,
           });
           break;
       }
@@ -1028,6 +1031,18 @@ export async function streamChat(
               source: "function",
               tool: functionCall.name,
             });
+
+            if (functionCall.name === "update_plan") {
+              const steps = parsePlanStepsFromToolInput(functionCall.arguments);
+              if (steps.length > 0) {
+                onEvent({
+                  type: "plan_updated",
+                  threadId,
+                  turnId,
+                  steps,
+                });
+              }
+            }
 
             if (functionCall.name === "exec_command") {
               const seed = parseExecCommandSeed(functionCall.arguments, input.workspacePath);

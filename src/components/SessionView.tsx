@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-// import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
     createSessionBaseBranch,
     deleteSessionInBackground,
@@ -224,6 +224,7 @@ export function SessionView({
     terminalShellKind: initialTerminalShellKind = 'posix',
     floatingTerminalSrc: floatingTerminalSrcOverride,
 }: SessionViewProps) {
+    const router = useRouter();
     const headerButtonLabelClass = 'hidden min-[1900px]:inline';
     const normalizedGitRepos = useMemo<SessionGitRepoContext[]>(() => {
         if (gitRepos.length > 0) {
@@ -269,6 +270,30 @@ export function SessionView({
         const seenPaths = new Set<string>();
         for (const context of normalizedGitRepos) {
             const optionPath = (context.worktreePath || context.sourceRepoPath || '').trim();
+            if (!optionPath || seenPaths.has(optionPath)) continue;
+            seenPaths.add(optionPath);
+
+            const relativeRepoPath = context.relativeRepoPath?.trim();
+            const label = relativeRepoPath && relativeRepoPath !== '.'
+                ? relativeRepoPath
+                : (getBaseName(context.sourceRepoPath) || context.sourceRepoPath);
+            options.push({
+                path: optionPath,
+                label,
+                branchHint: context.branchName?.trim() || undefined,
+                baseBranchHint: context.baseBranch?.trim() || undefined,
+            });
+        }
+
+        return options;
+    }, [normalizedGitRepos]);
+    const gitWorkspaceOptions = useMemo<SessionRepoViewerOption[]>(() => {
+        if (normalizedGitRepos.length <= 1) return [];
+
+        const options: SessionRepoViewerOption[] = [];
+        const seenPaths = new Set<string>();
+        for (const context of normalizedGitRepos) {
+            const optionPath = context.sourceRepoPath.trim();
             if (!optionPath || seenPaths.has(optionPath)) continue;
             seenPaths.add(optionPath);
 
@@ -728,6 +753,7 @@ export function SessionView({
     const [isSplitResizing, setIsSplitResizing] = useState(false);
     const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(true);
     const [isMobileViewport, setIsMobileViewport] = useState(false);
+    const [isGitWorkspaceDropdownOpen, setIsGitWorkspaceDropdownOpen] = useState(false);
     const [floatingTerminalThemeReadyByTab, setFloatingTerminalThemeReadyByTab] = useState<Record<string, boolean>>({
         [MAIN_TERMINAL_TAB_ID]: false,
     });
@@ -1412,6 +1438,35 @@ export function SessionView({
 
         setIsRepoViewActive(true);
     }, [gitControlsUnavailable, isRepoViewActive, isRightPanelCollapsed]);
+    const openGitWorkspace = useCallback((repoPath: string) => {
+        const normalizedRepoPath = repoPath.trim();
+        if (!normalizedRepoPath) {
+            setFeedback(NO_GIT_CONTEXT_REASON);
+            return;
+        }
+
+        setIsGitWorkspaceDropdownOpen(false);
+        router.push(`/git?path=${encodeURIComponent(normalizedRepoPath)}`);
+    }, [router]);
+    const handleGitWorkspaceButtonClick = useCallback(() => {
+        if (gitControlsUnavailable) {
+            setFeedback(NO_GIT_CONTEXT_REASON);
+            return;
+        }
+
+        if (gitWorkspaceOptions.length > 1) {
+            setIsGitWorkspaceDropdownOpen((previous) => !previous);
+            return;
+        }
+
+        const singleRepoPath = normalizedGitRepos[0]?.sourceRepoPath || repo;
+        if (!singleRepoPath) {
+            setFeedback(NO_GIT_CONTEXT_REASON);
+            return;
+        }
+
+        openGitWorkspace(singleRepoPath);
+    }, [gitControlsUnavailable, gitWorkspaceOptions.length, normalizedGitRepos, openGitWorkspace, repo]);
 
     useEffect(() => {
         if (!isSplitResizing) return;
@@ -1829,11 +1884,15 @@ export function SessionView({
 
     const [isRebaseDropdownOpen, setIsRebaseDropdownOpen] = useState(false);
     const rebaseDropdownRef = useRef<HTMLDivElement>(null);
+    const gitWorkspaceDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (rebaseDropdownRef.current && !rebaseDropdownRef.current.contains(event.target as Node)) {
                 setIsRebaseDropdownOpen(false);
+            }
+            if (gitWorkspaceDropdownRef.current && !gitWorkspaceDropdownRef.current.contains(event.target as Node)) {
+                setIsGitWorkspaceDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -2703,7 +2762,7 @@ export function SessionView({
                         </button>
                     </div>
 
-                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
+                    <div className="relative flex items-center rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
                         <button
                             type="button"
                             className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 hover:bg-base-content/10 dark:hover:bg-[#30363d]/60 ${isPreviewPanelActive ? 'bg-slate-100 text-slate-900 dark:bg-[#30363d] dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}
@@ -2732,6 +2791,50 @@ export function SessionView({
                             <GitBranch className="h-3 w-3" />
                             <span className={headerButtonLabelClass}>Changes</span>
                         </button>
+                        <div className="h-4 w-[1px] bg-base-content/10 dark:bg-[#30363d]"></div>
+                        <div className="relative" ref={gitWorkspaceDropdownRef}>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                onClick={handleGitWorkspaceButtonClick}
+                                disabled={gitControlsDisabled}
+                                aria-expanded={gitWorkspaceOptions.length > 1 ? isGitWorkspaceDropdownOpen : undefined}
+                                title={gitControlsDisabled
+                                    ? gitControlsDisabledReason
+                                    : gitWorkspaceOptions.length > 1
+                                        ? 'Choose a repository to open in Git workspace'
+                                        : 'Open Git workspace'}
+                            >
+                                <ExternalLink className="h-3 w-3" />
+                                <span className={headerButtonLabelClass}>Git</span>
+                                {gitWorkspaceOptions.length > 1 && <ChevronDown className="ml-0.5 h-3 w-3 opacity-50" />}
+                            </button>
+                            {isGitWorkspaceDropdownOpen && gitWorkspaceOptions.length > 1 && !gitControlsDisabled && (
+                                <div className="dropdown-content absolute right-0 top-full z-50 mt-1 flex max-h-80 w-64 flex-col overflow-hidden rounded-box border border-base-content/20 bg-base-200 p-0 shadow-xl dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-300">
+                                    <div className="flex shrink-0 items-center border-b border-base-content/10 bg-base-200 px-4 py-2 text-[10px] font-bold uppercase tracking-wider opacity-50 dark:border-[#30363d] dark:bg-[#161b22]">
+                                        Select Repository
+                                    </div>
+                                    <ul className="menu custom-scrollbar w-full flex-nowrap overflow-y-auto overflow-x-hidden p-0">
+                                        {gitWorkspaceOptions.map((repoOption) => {
+                                            const isActiveRepo = repoOption.path === activeGitRepo?.sourceRepoPath;
+                                            return (
+                                                <li key={repoOption.path}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openGitWorkspace(repoOption.path)}
+                                                        className={`flex max-w-full items-center justify-between truncate rounded-none py-2 text-xs hover:bg-base-content/10 dark:hover:bg-[#30363d]/60 ${isActiveRepo ? 'active font-bold' : ''}`}
+                                                        title={repoOption.path}
+                                                    >
+                                                        <span className="truncate">{repoOption.label}</span>
+                                                        {isActiveRepo && <span className="ml-2 shrink-0 text-[10px] opacity-70">(Current)</span>}
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {gitControlsDisabled && (

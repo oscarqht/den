@@ -272,11 +272,15 @@ function buildNormalizedItemDraft(
     case 'plan': {
       const text = normalizeText(item.text);
       const steps = normalizePlanSteps(item.steps);
+      const previous = existing?.kind === 'plan' ? existing : null;
+      const nextSteps = steps.length > 0
+        ? steps
+        : (previous?.steps ?? parsePlanStepsFromText(text));
       return {
         kind: 'plan',
         id: itemId,
-        text: text || buildPlanText(steps),
-        steps: steps.length > 0 ? steps : parsePlanStepsFromText(text),
+        text: text || previous?.text || buildPlanText(nextSteps),
+        steps: nextSteps,
         threadId: event.threadId,
         turnId: event.turnId,
         itemStatus: existing?.itemStatus ?? null,

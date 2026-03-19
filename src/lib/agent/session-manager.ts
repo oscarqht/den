@@ -23,7 +23,7 @@ import {
   updateSessionRuntime,
   upsertSessionHistoryEntries,
 } from '@/lib/agent/store';
-import { buildPlanText } from '@/lib/agent/plan';
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '@/lib/agent/plan';
 import { resolveSessionRuntimeUpdate } from '@/lib/agent/session-runtime-updates';
 import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
 import { deriveSessionNotificationFromRuntime } from '@/lib/session-agent-notifications';
@@ -544,6 +544,24 @@ class HistoryProjector {
         threadId: event.threadId,
         turnId: event.turnId,
       });
+      return;
+    }
+
+    if (itemType === 'plan') {
+      const existing = this.getPlan(itemId);
+      const text = typeof item.text === 'string' ? item.text : '';
+      const rawSteps = normalizePlanSteps(item.steps);
+      const steps = rawSteps.length > 0
+        ? rawSteps
+        : (existing?.steps ?? parsePlanStepsFromText(text));
+      this.persist({
+        kind: 'plan',
+        id: itemId,
+        text: text || existing?.text || buildPlanText(steps),
+        steps,
+        threadId: event.threadId,
+        turnId: event.turnId,
+      });
     }
   }
 
@@ -565,6 +583,11 @@ class HistoryProjector {
   private getFileChange(itemId: string) {
     const entry = this.entries.get(itemId);
     return entry?.kind === 'fileChange' ? entry : null;
+  }
+
+  private getPlan(itemId: string) {
+    const entry = this.entries.get(itemId);
+    return entry?.kind === 'plan' ? entry : null;
   }
 
   private appendAssistant(itemId: string, delta: string, threadId: string, turnId: string) {

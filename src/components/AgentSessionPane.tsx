@@ -19,7 +19,7 @@ import {
   reconcileOptimisticUserMessages,
   type OptimisticUserMessage,
 } from '@/lib/optimistic-user-history';
-import { normalizePlanStepStatus, parsePlanStepsFromText } from '@/lib/agent/plan';
+import { normalizePlanStepStatus, parsePlanStepsFromText, parsePlanStepsFromToolInput } from '@/lib/agent/plan';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
@@ -27,6 +27,7 @@ import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import type {
   AgentProvider,
   ChatStreamEvent,
+  PlanStep,
   SessionAgentHistoryItem,
   SessionAgentRunState,
   SessionAgentRuntimeState,
@@ -235,6 +236,18 @@ function getPlanSteps(item: Extract<SessionAgentHistoryItem, { kind: 'plan' }>) 
   }
 
   return parsePlanStepsFromText(item.text);
+}
+
+function getRenderablePlanSteps(
+  item: Extract<SessionAgentHistoryItem, { kind: 'plan' }>,
+  fallbackSteps?: PlanStep[],
+) {
+  const steps = getPlanSteps(item);
+  if (steps.length > 0) {
+    return steps;
+  }
+
+  return fallbackSteps ?? [];
 }
 
 function codeBlock(value: string | null | undefined) {
@@ -511,7 +524,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
         ),
       });
     case 'plan': {
-      const steps = getPlanSteps(item);
+      const steps = getRenderablePlanSteps(item, options.planFallbackStepsById?.[item.id]);
       const completedCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'completed').length;
       const inProgressCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'in_progress').length;
       const pendingCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'pending').length;
@@ -690,6 +703,7 @@ type VirtualHistoryRowProps = {
   onMeasure: (key: string, height: number) => void;
   expandedItems: Record<string, boolean>;
   onToggleExpanded: (itemId: string, open: boolean) => void;
+  planFallbackStepsById: Record<string, PlanStep[]>;
 };
 
 type RenderHistoryItemOptions = {
@@ -697,9 +711,10 @@ type RenderHistoryItemOptions = {
   pulse?: boolean;
   expandedItems?: Record<string, boolean>;
   onToggleExpanded?: (itemId: string, open: boolean) => void;
+  planFallbackStepsById?: Record<string, PlanStep[]>;
 };
 
-function VirtualHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded }: VirtualHistoryRowProps) {
+function VirtualHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded, planFallbackStepsById }: VirtualHistoryRowProps) {
   const itemKey = item.id;
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -729,6 +744,7 @@ function VirtualHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded }:
         ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
         expandedItems,
         onToggleExpanded,
+        planFallbackStepsById,
       })}
     </div>
   );
@@ -987,6 +1003,31 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     () => [...history, ...optimisticHistory],
     [history, optimisticHistory],
   );
+  const planFallbackStepsById = useMemo<Record<string, PlanStep[]>>(() => {
+    const planToolStepsByTurnId = new Map<string, PlanStep[]>();
+    const fallbackById: Record<string, PlanStep[]> = {};
+
+    displayHistory.forEach((item) => {
+      if (item.kind === 'tool' && item.tool === 'update_plan') {
+        const steps = parsePlanStepsFromToolInput(item.input);
+        if (steps.length > 0 && item.turnId) {
+          planToolStepsByTurnId.set(item.turnId, steps);
+        }
+        return;
+      }
+
+      if (item.kind !== 'plan' || !item.turnId || getPlanSteps(item).length > 0) {
+        return;
+      }
+
+      const fallbackSteps = planToolStepsByTurnId.get(item.turnId);
+      if (fallbackSteps && fallbackSteps.length > 0) {
+        fallbackById[item.id] = fallbackSteps;
+      }
+    });
+
+    return fallbackById;
+  }, [displayHistory]);
   const liveHistoryTailCount = useMemo(
     () => Math.min(displayHistory.length, isTurnActive ? STREAMING_HISTORY_TAIL_COUNT : Math.min(2, displayHistory.length)),
     [displayHistory.length, isTurnActive],
@@ -1616,6 +1657,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                         onMeasure={handleMeasureHistoryItem}
                         expandedItems={expandedHistoryItems}
                         onToggleExpanded={handleToggleExpanded}
+                        planFallbackStepsById={planFallbackStepsById}
                       />
                     </div>
                   ))}
@@ -1629,6 +1671,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                         ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
                         expandedItems: expandedHistoryItems,
                         onToggleExpanded: handleToggleExpanded,
+                        planFallbackStepsById,
                       })}
                     </div>
                   ))}

@@ -132,7 +132,8 @@ function createSchema(db: Database.Database): void {
       agent_width REAL NOT NULL DEFAULT 66.666,
       default_agent_provider TEXT,
       default_agent_model TEXT,
-      default_agent_reasoning_effort TEXT
+      default_agent_reasoning_effort TEXT,
+      home_project_sort TEXT NOT NULL DEFAULT 'last-update'
     );
 
     CREATE TABLE IF NOT EXISTS app_config_recent_repos (
@@ -885,6 +886,7 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'app_config', 'default_agent_provider TEXT');
   addColumnIfMissing(db, 'app_config', 'default_agent_model TEXT');
   addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
+  addColumnIfMissing(db, 'app_config', "home_project_sort TEXT NOT NULL DEFAULT 'last-update'");
   addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
 
   rebuildSessionsTableIfLegacyBranchNameIsRequired(db);

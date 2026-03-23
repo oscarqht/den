@@ -1,5 +1,6 @@
 import type { QuickCreateDraft } from '@/lib/quick-create';
-import { KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import type { HomeProjectSort } from '@/lib/home-project-sort';
+import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
 import { HomeRepoCard } from './HomeRepoCard';
@@ -8,6 +9,7 @@ export type HomeDashboardProps = {
   error: string | null;
   isLoaded: boolean;
   homeSearchQuery: string;
+  homeProjectSort: HomeProjectSort;
   showLogout: boolean;
   logoutEnabled: boolean;
   quickCreateActiveCount: number;
@@ -25,6 +27,7 @@ export type HomeDashboardProps = {
   discoveringProjectGitRepos: Record<string, boolean>;
   getProjectDisplayName: (project: string) => string;
   onHomeSearchQueryChange: (value: string) => void;
+  onHomeProjectSortChange: (value: HomeProjectSort) => void;
   onOpenCredentials: () => void;
   onOpenQuickCreate: () => void;
   onEditQuickCreateDraft: (draft: QuickCreateDraft) => void;
@@ -44,6 +47,7 @@ export function HomeDashboard({
   error,
   isLoaded,
   homeSearchQuery,
+  homeProjectSort,
   showLogout,
   logoutEnabled,
   quickCreateActiveCount,
@@ -61,6 +65,7 @@ export function HomeDashboard({
   discoveringProjectGitRepos,
   getProjectDisplayName,
   onHomeSearchQueryChange,
+  onHomeProjectSortChange,
   onOpenCredentials,
   onOpenQuickCreate,
   onEditQuickCreateDraft,
@@ -88,7 +93,7 @@ export function HomeDashboard({
           </div>
         </div>
 
-        <div className="flex w-full items-center gap-2 lg:w-auto">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap">
           <label className="input input-sm flex w-full items-center gap-2 border-white/40 bg-white/50 text-slate-700 shadow-none backdrop-blur-sm transition-colors lg:w-72 dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
             <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
@@ -98,6 +103,19 @@ export function HomeDashboard({
               value={homeSearchQuery}
               onChange={(event) => onHomeSearchQueryChange(event.target.value)}
             />
+          </label>
+          <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-white/40 bg-white/50 px-2.5 text-sm text-slate-700 backdrop-blur-sm transition-colors dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
+            <ArrowUpDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+            <span className="sr-only">Sort projects</span>
+            <select
+              className="min-w-0 bg-transparent text-sm outline-none"
+              value={homeProjectSort}
+              onChange={(event) => onHomeProjectSortChange(event.target.value as HomeProjectSort)}
+              aria-label="Sort projects"
+            >
+              <option value="last-update">Last update</option>
+              <option value="name">Name</option>
+            </select>
           </label>
           <div className="relative shrink-0">
             <button

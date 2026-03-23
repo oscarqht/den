@@ -30,6 +30,23 @@ after(async () => {
 });
 
 describe('config global agent defaults', () => {
+  it('defaults home project sort to last-update', async () => {
+    const config = await configModule.getConfig();
+
+    assert.equal(config.homeProjectSort, 'last-update');
+  });
+
+  it('round-trips the home project sort preference', async () => {
+    const updated = await configModule.updateConfig({
+      homeProjectSort: 'name',
+    });
+
+    assert.equal(updated.homeProjectSort, 'name');
+
+    const loaded = await configModule.getConfig();
+    assert.equal(loaded.homeProjectSort, 'name');
+  });
+
   it('round-trips global default agent settings', async () => {
     const updated = await configModule.updateConfig({
       defaultAgentProvider: 'codex',

@@ -5,6 +5,11 @@ import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
 } from '../../lib/agent/reasoning.ts';
+import {
+  DEFAULT_HOME_PROJECT_SORT,
+  normalizeHomeProjectSort,
+  type HomeProjectSort,
+} from '../../lib/home-project-sort.ts';
 import type { AgentProvider, ReasoningEffort } from '../../lib/types.ts';
 
 export interface ProjectSettings {
@@ -24,6 +29,7 @@ export interface Config {
   recentProjects: string[];
   // Backward compatibility for callers that have not migrated yet.
   recentRepos: string[];
+  homeProjectSort: HomeProjectSort;
   defaultRoot: string;
   selectedIde: string;
   agentWidth: number;
@@ -39,6 +45,7 @@ export interface Config {
 const DEFAULT_CONFIG: Config = {
   recentProjects: [],
   recentRepos: [],
+  homeProjectSort: DEFAULT_HOME_PROJECT_SORT,
   defaultRoot: '',
   selectedIde: 'vscode',
   agentWidth: 66.666,
@@ -48,6 +55,7 @@ const DEFAULT_CONFIG: Config = {
 };
 
 type ConfigRow = {
+  home_project_sort: string | null;
   default_root: string;
   selected_ide: string;
   agent_width: number;
@@ -96,6 +104,7 @@ function normalizeConfig(config: Config): Config {
   const normalizedDefaultAgentProvider = config.defaultAgentProvider;
   return {
     ...config,
+    homeProjectSort: normalizeHomeProjectSort(config.homeProjectSort),
     defaultAgentReasoningEffort: normalizeProviderReasoningEffort(
       normalizedDefaultAgentProvider,
       config.defaultAgentReasoningEffort,
@@ -110,10 +119,12 @@ function writeConfig(config: Config): void {
     db.prepare(`
       INSERT OR REPLACE INTO app_config (
         singleton_id, default_root, selected_ide, agent_width,
-        default_agent_provider, default_agent_model, default_agent_reasoning_effort
+        default_agent_provider, default_agent_model, default_agent_reasoning_effort,
+        home_project_sort
       ) VALUES (
         1, @defaultRoot, @selectedIde, @agentWidth,
-        @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort
+        @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort,
+        @homeProjectSort
       )
     `).run({
       defaultRoot: normalizedConfig.defaultRoot,
@@ -125,6 +136,7 @@ function writeConfig(config: Config): void {
         normalizedConfig.defaultAgentProvider,
         normalizedConfig.defaultAgentReasoningEffort,
       ),
+      homeProjectSort: normalizeHomeProjectSort(normalizedConfig.homeProjectSort),
     });
 
     db.prepare('DELETE FROM app_config_recent_projects').run();
@@ -178,7 +190,8 @@ export async function getConfig(): Promise<Config> {
   const configRow = db.prepare(`
     SELECT
       default_root, selected_ide, agent_width,
-      default_agent_provider, default_agent_model, default_agent_reasoning_effort
+      default_agent_provider, default_agent_model, default_agent_reasoning_effort,
+      home_project_sort
     FROM app_config
     WHERE singleton_id = 1
   `).get() as ConfigRow | undefined;
@@ -208,6 +221,7 @@ export async function getConfig(): Promise<Config> {
 
   return {
     ...DEFAULT_CONFIG,
+    homeProjectSort: normalizeHomeProjectSort(configRow?.home_project_sort),
     defaultRoot: configRow?.default_root ?? DEFAULT_CONFIG.defaultRoot,
     selectedIde: configRow?.selected_ide ?? DEFAULT_CONFIG.selectedIde,
     agentWidth: configRow?.agent_width ?? DEFAULT_CONFIG.agentWidth,

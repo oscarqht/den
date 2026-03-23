@@ -24,6 +24,12 @@ import {
 import { listSessions, type SessionMetadata } from '@/app/actions/session';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import { useToast } from '@/hooks/use-toast';
+import {
+  DEFAULT_HOME_PROJECT_SORT,
+  normalizeHomeProjectSort,
+  sortHomeProjects,
+  type HomeProjectSort,
+} from '@/lib/home-project-sort';
 import type { Credential } from '@/lib/credentials';
 import { getBaseName } from '@/lib/path';
 import type { QuickCreateDraft } from '@/lib/quick-create';
@@ -55,6 +61,7 @@ const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
 const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
 const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
+const HOME_PROJECT_SORT_STORAGE_KEY = 'palx-home-project-sort';
 
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
@@ -67,6 +74,26 @@ function readIsDocumentForegrounded(): boolean {
 function arePathListsEqual(left: string[], right: string[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
+}
+
+function readStoredHomeProjectSort(): HomeProjectSort | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storedSort = window.localStorage.getItem(HOME_PROJECT_SORT_STORAGE_KEY);
+    if (!storedSort) return null;
+    return normalizeHomeProjectSort(storedSort);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredHomeProjectSort(nextSort: HomeProjectSort): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(HOME_PROJECT_SORT_STORAGE_KEY, nextSort);
+  } catch {
+    // Ignore localStorage access errors.
+  }
 }
 
 type HomeDashboardContainerProps = {
@@ -88,6 +115,9 @@ export default function HomeDashboardContainer({
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const [homeProjectSort, setHomeProjectSort] = useState<HomeProjectSort>(() => (
+    readStoredHomeProjectSort() ?? DEFAULT_HOME_PROJECT_SORT
+  ));
   const [themeMode, setThemeMode] = useState<ThemeMode>('auto');
   const [isDarkThemeActive, setIsDarkThemeActive] = useState(false);
   const [isHomePageForegrounded, setIsHomePageForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
@@ -162,6 +192,7 @@ export default function HomeDashboardContainer({
         ]);
         if (cancelled) return;
         setConfig(nextConfig);
+        setHomeProjectSort(readStoredHomeProjectSort() ?? nextConfig.homeProjectSort);
         setAllSessions(sessions);
         setAllDrafts(drafts);
         setQuickCreateDrafts(quickCreateState.drafts);
@@ -870,18 +901,34 @@ export default function HomeDashboardContainer({
     };
   }, [getProjectDisplayName, refreshQuickCreateState, router, toast]);
 
+  const sortedRecentProjects = useMemo(() => (
+    sortHomeProjects(recentProjects, homeProjectSort, getProjectDisplayName)
+  ), [getProjectDisplayName, homeProjectSort, recentProjects]);
+
   const filteredRecentProjects = useMemo(() => {
     const normalizedQuery = homeSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return recentProjects;
+    if (!normalizedQuery) return sortedRecentProjects;
 
-    return recentProjects.filter((projectPath) => {
+    return sortedRecentProjects.filter((projectPath) => {
       const displayName = getProjectDisplayName(projectPath).toLowerCase();
       return (
         displayName.includes(normalizedQuery)
         || projectPath.toLowerCase().includes(normalizedQuery)
       );
     });
-  }, [getProjectDisplayName, homeSearchQuery, recentProjects]);
+  }, [getProjectDisplayName, homeSearchQuery, sortedRecentProjects]);
+
+  const handleHomeProjectSortChange = useCallback(async (nextSort: HomeProjectSort) => {
+    writeStoredHomeProjectSort(nextSort);
+    setHomeProjectSort(nextSort);
+
+    try {
+      const nextConfig = await updateConfig({ homeProjectSort: nextSort });
+      setConfig(nextConfig);
+    } catch (sortError) {
+      console.error('Failed to save home project sort:', sortError);
+    }
+  }, []);
 
   const currentThemeModeIndex = THEME_MODE_SEQUENCE.indexOf(themeMode);
   const nextThemeMode =
@@ -1012,6 +1059,7 @@ export default function HomeDashboardContainer({
         error={error}
         isLoaded={isLoaded}
         homeSearchQuery={homeSearchQuery}
+        homeProjectSort={homeProjectSort}
         showLogout={showLogout}
         logoutEnabled={logoutEnabled}
         quickCreateActiveCount={quickCreateActiveCount}
@@ -1029,6 +1077,7 @@ export default function HomeDashboardContainer({
         discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
         getProjectDisplayName={getProjectDisplayName}
         onHomeSearchQueryChange={setHomeSearchQuery}
+        onHomeProjectSortChange={handleHomeProjectSortChange}
         onOpenCredentials={() => router.push('/settings')}
         onOpenQuickCreate={() => handleOpenQuickCreateDialog()}
         onEditQuickCreateDraft={handleOpenQuickCreateDialog}

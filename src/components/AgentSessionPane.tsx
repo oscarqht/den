@@ -885,6 +885,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
+    let isConnecting = false;
 
     const clearReconnectTimer = () => {
       if (reconnectTimer === null) return;
@@ -892,8 +893,22 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       reconnectTimer = null;
     };
 
+    const closeSocket = (target: WebSocket | null = socket) => {
+      if (!target) return;
+
+      target.onopen = null;
+      target.onerror = null;
+      target.onclose = null;
+      target.onmessage = null;
+      target.close();
+
+      if (socket === target) {
+        socket = null;
+      }
+    };
+
     const scheduleReconnect = () => {
-      if (cancelled) return;
+      if (cancelled || reconnectTimer !== null) return;
       const delay = Math.min(10000, 1000 * (2 ** reconnectAttempt));
       reconnectAttempt += 1;
       reconnectTimer = window.setTimeout(() => {
@@ -903,6 +918,13 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     };
 
     const connect = async () => {
+      if (cancelled) return;
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      if (isConnecting) return;
+
+      isConnecting = true;
       try {
         const response = await fetch(`/api/agent/socket?sessionId=${encodeURIComponent(sessionId)}`, {
           cache: 'no-store',
@@ -914,23 +936,33 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
         if (cancelled) return;
 
-        socket = new WebSocket(payload.wsUrl);
-        socket.onopen = () => {
+        closeSocket();
+
+        const nextSocket = new WebSocket(payload.wsUrl);
+        socket = nextSocket;
+        nextSocket.onopen = () => {
+          if (socket !== nextSocket) return;
           reconnectAttempt = 0;
+          clearReconnectTimer();
           setSocketConnected(true);
           setError(null);
           scheduleRefresh(0);
         };
-        socket.onerror = () => {
-          socket?.close();
+        nextSocket.onerror = () => {
+          nextSocket.close();
         };
-        socket.onclose = () => {
+        nextSocket.onclose = () => {
+          if (socket !== nextSocket) return;
+
+          socket = null;
           setSocketConnected(false);
-          if (!cancelled) {
-            scheduleReconnect();
-          }
+          if (cancelled) return;
+
+          scheduleReconnect();
         };
-        socket.onmessage = (event) => {
+        nextSocket.onmessage = (event) => {
+          if (socket !== nextSocket) return;
+
           try {
             const message = JSON.parse(event.data as string) as AgentSocketPayload;
             if (message.type !== 'session-agent-event' || message.sessionId !== sessionId) {
@@ -961,6 +993,8 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           setError(socketError instanceof Error ? socketError.message : 'Failed to initialize agent socket.');
           scheduleReconnect();
         }
+      } finally {
+        isConnecting = false;
       }
     };
 
@@ -969,8 +1003,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     return () => {
       cancelled = true;
       clearReconnectTimer();
+      isConnecting = false;
       setSocketConnected(false);
-      socket?.close();
+      closeSocket();
     };
   }, [scheduleRefresh, sessionId]);
 

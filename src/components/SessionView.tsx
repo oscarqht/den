@@ -3033,6 +3033,7 @@ export function SessionView({
                             onHeaderMetaChange={setAgentHeaderMeta}
                             onRequestAddFiles={() => setIsFileBrowserOpen(true)}
                             isAddingFiles={isInsertingFilePaths}
+                            isMobileViewport={isMobileViewport}
                         />
                     </div>
                 </div>

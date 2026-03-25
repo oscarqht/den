@@ -84,6 +84,7 @@ type AgentSessionPaneProps = {
   onHeaderMetaChange?: (meta: AgentSessionHeaderMeta) => void;
   onRequestAddFiles?: () => void;
   isAddingFiles?: boolean;
+  isMobileViewport?: boolean;
 };
 
 type PendingMessage = {
@@ -775,7 +776,15 @@ function isTimelineNearBottom(element: HTMLDivElement) {
 }
 
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
-  { sessionId, workspacePath, onFeedback, onHeaderMetaChange, onRequestAddFiles, isAddingFiles = false },
+  {
+    sessionId,
+    workspacePath,
+    onFeedback,
+    onHeaderMetaChange,
+    onRequestAddFiles,
+    isAddingFiles = false,
+    isMobileViewport = false,
+  },
   ref,
 ) {
   const [runtime, setRuntime] = useState<SessionAgentRuntimeState | null>(null);
@@ -1963,34 +1972,38 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               {onRequestAddFiles ? (
                 <button
                   type="button"
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937]"
+                  className={`inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937] ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-3'}`}
                   onClick={onRequestAddFiles}
                   disabled={isAddingFiles}
                   title="Browse files and insert absolute paths into the agent input"
                   aria-label="Add files"
                 >
                   {isAddingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-                  Add Files
+                  {!isMobileViewport ? 'Add Files' : null}
                 </button>
               ) : null}
               <button
                 type="button"
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`inline-flex h-9 items-center rounded-lg bg-blue-600 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-4'}`}
                 onClick={() => void handleSubmit()}
                 disabled={!canSend}
+                title={isTurnActive ? 'Queue' : 'Send'}
+                aria-label={isTurnActive ? 'Queue' : 'Send'}
               >
                 {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {isTurnActive ? 'Queue' : 'Send'}
+                {!isMobileViewport ? (isTurnActive ? 'Queue' : 'Send') : null}
               </button>
               {(isTurnActive || isCancelling) ? (
                 <button
                   type="button"
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937]"
+                  className={`inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937] ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-4'}`}
                   onClick={() => void handleCancel()}
                   disabled={isCancelling}
+                  title="Stop"
+                  aria-label="Stop"
                 >
                   {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-                  Stop
+                  {!isMobileViewport ? 'Stop' : null}
                 </button>
               ) : null}
             </div>

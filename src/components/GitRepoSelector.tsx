@@ -58,6 +58,7 @@ import {
   THEME_MODE_STORAGE_KEY,
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
+import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import SessionFileBrowser from './SessionFileBrowser';
@@ -437,10 +438,12 @@ export default function GitRepoSelector({
   const [sessionWorkspacePreference, setSessionWorkspacePreference] = useState<SessionWorkspacePreference>('workspace');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isPastingTaskAttachments, setIsPastingTaskAttachments] = useState(false);
+  const [isUploadingTaskAttachments, setIsUploadingTaskAttachments] = useState(false);
   const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
   const [lastAttachmentBrowserPath, setLastAttachmentBrowserPath] = useState<string>('');
   const [prefilledAttachmentPaths, setPrefilledAttachmentPaths] = useState<string[]>([]);
   const [hasAppliedPrefill, setHasAppliedPrefill] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [deletingSessionName, setDeletingSessionName] = useState<string | null>(null);
@@ -497,6 +500,7 @@ export default function GitRepoSelector({
   const latestTaskDescriptionRef = useRef('');
   const latestCursorPositionRef = useRef(0);
   const taskDescriptionPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
@@ -777,6 +781,27 @@ export default function GitRepoSelector({
       mediaQuery.removeListener(handleThemeChange);
     };
   }, [themeMode]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(SESSION_MOBILE_VIEWPORT_QUERY);
+    const applyViewportMode = () => {
+      setIsMobileViewport(mediaQuery.matches);
+    };
+
+    applyViewportMode();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', applyViewportMode);
+      return () => {
+        mediaQuery.removeEventListener('change', applyViewportMode);
+      };
+    }
+
+    mediaQuery.addListener(applyViewportMode);
+    return () => {
+      mediaQuery.removeListener(applyViewportMode);
+    };
+  }, []);
 
   useEffect(() => {
     if (mode !== 'new') return;
@@ -1656,6 +1681,50 @@ export default function GitRepoSelector({
       setIsPastingTaskAttachments(false);
     }
   }, [appendAttachmentPaths, selectedRepo]);
+
+  const handleMobileAttachmentSelection = useCallback(async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    if (!selectedRepo) return;
+
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    setError(null);
+    setIsUploadingTaskAttachments(true);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file, index) => {
+        const fileName = file.name.trim() || `attachment-${Date.now()}-${index + 1}`;
+        formData.append(`attachment-${index}`, file, fileName);
+      });
+
+      const savedPaths = await saveAttachments(selectedRepo, formData);
+      if (savedPaths.length === 0) {
+        throw new Error('Failed to upload selected attachments.');
+      }
+
+      appendAttachmentPaths(savedPaths);
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : 'Failed to upload selected attachments.';
+      setError(message);
+    } finally {
+      setIsUploadingTaskAttachments(false);
+    }
+  }, [appendAttachmentPaths, selectedRepo]);
+
+  const handleSelectAttachments = useCallback(() => {
+    if (!selectedRepo) return;
+
+    if (isMobileViewport) {
+      mobileAttachmentInputRef.current?.click();
+      return;
+    }
+
+    setIsAttachmentBrowserOpen(true);
+  }, [isMobileViewport, selectedRepo]);
 
   // Suggestion state
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -3784,13 +3853,20 @@ export default function GitRepoSelector({
                 </div>
 
                 <div className="border-t border-slate-100 pt-4 dark:border-slate-700/70">
+                  <input
+                    ref={mobileAttachmentInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleMobileAttachmentSelection}
+                  />
                   <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                     <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attachments</h4>
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => setIsAttachmentBrowserOpen(true)}
-                      disabled={loading || !selectedRepo}
+                      onClick={handleSelectAttachments}
+                      disabled={loading || !selectedRepo || isUploadingTaskAttachments}
                     >
                       <CloudDownload className="h-4 w-4" />
                       Select Attachments
@@ -3798,6 +3874,9 @@ export default function GitRepoSelector({
                   </div>
                   {isPastingTaskAttachments && (
                     <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">Saving pasted image attachments...</div>
+                  )}
+                  {isUploadingTaskAttachments && (
+                    <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">Uploading selected attachments...</div>
                   )}
 
                   <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1117]/40">

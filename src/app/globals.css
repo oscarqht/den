@@ -25,6 +25,10 @@
 
 html.session-page {
   overflow: hidden;
+  --session-mobile-viewport-height: 100dvh;
+  --session-mobile-viewport-offset-top: 0px;
+  --session-mobile-safe-top: env(safe-area-inset-top, 0px);
+  --session-mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {

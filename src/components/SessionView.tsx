@@ -95,6 +95,8 @@ const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 const TERMINAL_LOADING_OVERLAY_CLASS = 'pointer-events-none absolute inset-0 z-10 flex items-center justify-center';
 const NO_GIT_CONTEXT_REASON = 'Git controls are unavailable because this session has no repository context.';
 const MAIN_TERMINAL_TAB_ID = 'terminal';
+const SESSION_MOBILE_VIEWPORT_HEIGHT_CSS_VAR = '--session-mobile-viewport-height';
+const SESSION_MOBILE_VIEWPORT_OFFSET_TOP_CSS_VAR = '--session-mobile-viewport-offset-top';
 
 const readIsDocumentForegrounded = (): boolean => {
     if (typeof document === 'undefined') return true;
@@ -1394,6 +1396,64 @@ export function SessionView({
         setIsSplitResizing(false);
     }, [isMobileViewport]);
 
+    useEffect(() => {
+        const root = document.documentElement;
+        const clearViewportVars = () => {
+            root.style.removeProperty(SESSION_MOBILE_VIEWPORT_HEIGHT_CSS_VAR);
+            root.style.removeProperty(SESSION_MOBILE_VIEWPORT_OFFSET_TOP_CSS_VAR);
+        };
+
+        if (!isMobileViewport) {
+            clearViewportVars();
+            return;
+        }
+
+        const updateViewportMetrics = () => {
+            const visualViewport = window.visualViewport;
+            const viewportHeight = Math.max(
+                1,
+                Math.round(visualViewport?.height ?? window.innerHeight),
+            );
+            const viewportOffsetTop = Math.max(
+                0,
+                Math.round(visualViewport?.offsetTop ?? 0),
+            );
+
+            root.style.setProperty(SESSION_MOBILE_VIEWPORT_HEIGHT_CSS_VAR, `${viewportHeight}px`);
+            root.style.setProperty(SESSION_MOBILE_VIEWPORT_OFFSET_TOP_CSS_VAR, `${viewportOffsetTop}px`);
+        };
+
+        const scheduleViewportMetricsUpdate = () => {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(updateViewportMetrics);
+            });
+        };
+
+        updateViewportMetrics();
+
+        const visualViewport = window.visualViewport;
+        visualViewport?.addEventListener('resize', updateViewportMetrics);
+        visualViewport?.addEventListener('scroll', updateViewportMetrics);
+        window.addEventListener('resize', updateViewportMetrics);
+        window.addEventListener('orientationchange', scheduleViewportMetricsUpdate);
+        window.addEventListener('focus', scheduleViewportMetricsUpdate);
+        window.addEventListener('blur', scheduleViewportMetricsUpdate);
+        document.addEventListener('focusin', scheduleViewportMetricsUpdate);
+        document.addEventListener('focusout', scheduleViewportMetricsUpdate);
+
+        return () => {
+            visualViewport?.removeEventListener('resize', updateViewportMetrics);
+            visualViewport?.removeEventListener('scroll', updateViewportMetrics);
+            window.removeEventListener('resize', updateViewportMetrics);
+            window.removeEventListener('orientationchange', scheduleViewportMetricsUpdate);
+            window.removeEventListener('focus', scheduleViewportMetricsUpdate);
+            window.removeEventListener('blur', scheduleViewportMetricsUpdate);
+            document.removeEventListener('focusin', scheduleViewportMetricsUpdate);
+            document.removeEventListener('focusout', scheduleViewportMetricsUpdate);
+            clearViewportVars();
+        };
+    }, [isMobileViewport]);
+
     const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isRightPanelCollapsed || isMobileViewport) return;
         e.preventDefault();
@@ -2640,13 +2700,28 @@ export function SessionView({
     const rightPanelShellClass = isMobileRightPanelOverlay
         ? 'absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden bg-white dark:bg-[#161b22]'
         : 'absolute inset-y-0 left-0 flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]';
+    const sessionShellStyle = isMobileViewport
+        ? {
+            height: `var(${SESSION_MOBILE_VIEWPORT_HEIGHT_CSS_VAR}, 100dvh)`,
+            paddingBottom: 'var(--session-mobile-safe-bottom, env(safe-area-inset-bottom, 0px))',
+        }
+        : undefined;
+    const sessionHeaderStyle = isMobileViewport
+        ? {
+            paddingTop: `calc(var(--session-mobile-safe-top, env(safe-area-inset-top, 0px)) + var(${SESSION_MOBILE_VIEWPORT_OFFSET_TOP_CSS_VAR}, 0px) + 0.5rem)`,
+            paddingBottom: '0.5rem',
+        }
+        : undefined;
 
     return (
-        <div className={`flex h-screen w-full flex-col overflow-hidden bg-[#f6f6f8] dark:bg-[#0d1117] ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
+        <div
+            className={`flex w-full flex-col overflow-hidden bg-[#f6f6f8] dark:bg-[#0d1117] ${(isResizing || isSplitResizing) ? 'select-none' : ''} ${isMobileViewport ? 'fixed inset-0' : 'h-screen'}`}
+            style={sessionShellStyle}
+        >
             {(isResizing || isSplitResizing) && (
                 <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
-            <div className={sessionHeaderClass}>
+            <div className={sessionHeaderClass} style={sessionHeaderStyle}>
                 <div className="flex min-w-0 flex-1 items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 text-slate-600 hover:bg-base-content/10 dark:text-slate-300 dark:hover:bg-[#30363d]/60"

@@ -2,13 +2,11 @@ import Image from 'next/image';
 import { headers } from 'next/headers';
 import HomeDashboardContainer from '@/components/HomeDashboardContainer';
 import { isAuth0Configured } from '@/lib/auth0';
-import { getRequestHostname } from '@/lib/request-origin';
-import { isLocalHostname } from '@/lib/url';
+import { isDirectLocalRequest } from '@/lib/request-origin';
 
 export default async function Home() {
   const requestHeaders = await headers();
-  const requestHost = getRequestHostname(requestHeaders);
-  const logoutEnabled = isAuth0Configured && !isLocalHostname(requestHost);
+  const logoutEnabled = isAuth0Configured && !isDirectLocalRequest(requestHeaders);
 
   return (
     <div className="min-h-screen bg-[#f6f6f8] text-slate-950 transition-colors dark:bg-[#0d1117] dark:text-white">

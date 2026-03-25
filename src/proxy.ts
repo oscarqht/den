@@ -1,8 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { auth0, isAuth0Configured, missingAuth0EnvVars } from '@/lib/auth0';
-import { getRequestHostname, getRequestOrigin } from '@/lib/request-origin';
-import { isLocalHostname } from '@/lib/url';
+import { isDirectLocalRequest } from '@/lib/request-origin';
 
 const PUBLIC_FILE_PATH_PATTERN = /\.[^/]+$/;
 
@@ -13,8 +12,7 @@ function buildReturnTo(request: NextRequest): string {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hostname = getRequestHostname(request.headers, request.nextUrl.hostname);
-  const requestOrigin = getRequestOrigin(
+  const isLocalRequest = isDirectLocalRequest(
     request.headers,
     request.nextUrl.hostname,
     request.nextUrl.protocol,
@@ -26,7 +24,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!isAuth0Configured || !auth0) {
-    if (isLocalHostname(hostname)) {
+    if (isLocalRequest) {
       return NextResponse.next();
     }
 
@@ -50,7 +48,7 @@ export async function proxy(request: NextRequest) {
     return authResponse;
   }
 
-  if (isLocalHostname(hostname)) {
+  if (isLocalRequest) {
     return NextResponse.next();
   }
 
@@ -63,7 +61,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const loginUrl = new URL('/auth/login', requestOrigin ?? request.url);
+  const loginUrl = new URL('/auth/login', request.url);
   loginUrl.searchParams.set('returnTo', buildReturnTo(request));
   return NextResponse.redirect(loginUrl);
 }

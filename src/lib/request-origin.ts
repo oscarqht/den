@@ -1,3 +1,5 @@
+import { isLocalHostname } from './url.ts';
+
 type HeaderReader = Pick<Headers, 'get'>;
 
 function getFirstHeaderValue(value: string | null | undefined): string | null {
@@ -34,4 +36,25 @@ export function getRequestOrigin(
   const protocol = forwardedProto || fallbackProtocol.replace(/:$/, '');
 
   return `${protocol}://${hostname}`;
+}
+
+export function isDirectLocalRequest(
+  headers: HeaderReader,
+  fallbackHostname = '',
+  fallbackProtocol = 'http:',
+): boolean {
+  const forwardedHost = getFirstHeaderValue(headers.get('x-forwarded-host'));
+  const forwardedProto = getFirstHeaderValue(headers.get('x-forwarded-proto'));
+  const hostname = getRequestHostname(headers, fallbackHostname);
+  const protocol = (forwardedProto || fallbackProtocol).replace(/:$/, '');
+
+  if (!isLocalHostname(hostname)) {
+    return false;
+  }
+
+  if (forwardedHost && !isLocalHostname(forwardedHost)) {
+    return false;
+  }
+
+  return protocol === 'http';
 }

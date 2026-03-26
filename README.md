@@ -86,7 +86,7 @@ Palx starts on an available local port, usually `3200`.
 
 ## Auth
 
-Palx skips authentication on localhost and loopback addresses. Any non-local host requires Auth0 login before use, so remote access should only be exposed after Auth0 is configured.
+Palx skips authentication on localhost, loopback addresses, and trusted Tailscale hosts. Any other non-local host requires Auth0 login before use, so internet-facing remote access should only be exposed after Auth0 is configured.
 
 ```bash
 AUTH0_DOMAIN=your-tenant.us.auth0.com
@@ -98,7 +98,11 @@ APP_BASE_URL=http://localhost:3200
 
 If you want Auth0 to work across multiple known origins, set `APP_BASE_URL` to a comma-separated list, for example `http://localhost:3200,https://palx.nport.link`.
 
-For remote access, make sure every origin users will actually open is included in `APP_BASE_URL` and registered in Auth0 Allowed Callback / Logout URLs.
+For Auth0-protected remote access, make sure every origin users will actually open is included in `APP_BASE_URL` and registered in Auth0 Allowed Callback / Logout URLs.
+
+Tailscale note:
+- Requests opened via `*.ts.net`, Tailscale CGNAT `100.64.0.0/10`, or the Tailscale IPv6 ULA prefix bypass Auth0 entirely.
+- Existing `/auth/login?...` links opened over Tailscale are redirected back to their `returnTo` target instead of showing an Auth0 error page.
 
 ### Channels
 

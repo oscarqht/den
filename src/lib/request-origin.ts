@@ -1,4 +1,4 @@
-import { isLocalHostname } from './url.ts';
+import { isLocalHostname, isTailscaleHostname } from './url.ts';
 
 type HeaderReader = Pick<Headers, 'get'>;
 
@@ -57,4 +57,22 @@ export function isDirectLocalRequest(
   }
 
   return protocol === 'http';
+}
+
+export function isTrustedTailnetRequest(
+  headers: HeaderReader,
+  fallbackHostname = '',
+): boolean {
+  const forwardedHost = getFirstHeaderValue(headers.get('x-forwarded-host'));
+  const hostname = getRequestHostname(headers, fallbackHostname);
+
+  if (!isTailscaleHostname(hostname)) {
+    return false;
+  }
+
+  if (forwardedHost && !isTailscaleHostname(forwardedHost)) {
+    return false;
+  }
+
+  return true;
 }

@@ -95,7 +95,9 @@ Auth0-related:
 - `APP_BASE_URL`
 
 Tailscale note:
-- For remote tailnet access behind Auth0, `APP_BASE_URL` should use the Tailscale URL users will open, not `http://localhost:3200`.
+- Tailscale MagicDNS hosts (`*.ts.net`), Tailscale CGNAT `100.64.0.0/10`, and the Tailscale IPv6 ULA prefix bypass Auth0.
+- Existing `/auth/login?...` links opened over Tailscale redirect back to `returnTo`.
+- `APP_BASE_URL` only needs to cover Auth0-protected origins such as localhost, ngrok, or nport.
 
 Runtime/launcher:
 - `PORT`

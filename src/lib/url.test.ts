@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { isLocalHostname, normalizePreviewUrl } from './url.ts';
+import { isLocalHostname, isTailscaleHostname, normalizePreviewUrl } from './url.ts';
 
 describe('isLocalHostname', () => {
     it('detects localhost and loopback hostnames', () => {
@@ -48,5 +48,21 @@ describe('normalizePreviewUrl', () => {
         assert.strictEqual(normalizePreviewUrl('localhost:3000'), 'http://localhost:3000');
         assert.strictEqual(normalizePreviewUrl('127.0.0.1:8080'), 'http://127.0.0.1:8080');
         assert.strictEqual(normalizePreviewUrl('app.localhost:3200'), 'http://app.localhost:3200');
+    });
+});
+
+describe('isTailscaleHostname', () => {
+    it('detects Tailscale MagicDNS names and IPs', () => {
+        assert.strictEqual(isTailscaleHostname('office-mac.tail3158df.ts.net'), true);
+        assert.strictEqual(isTailscaleHostname('100.88.1.2'), true);
+        assert.strictEqual(isTailscaleHostname('100.127.255.254:3200'), true);
+        assert.strictEqual(isTailscaleHostname('[fd7a:115c:a1e0::1234]:3200'), true);
+    });
+
+    it('does not treat unrelated hosts as Tailscale', () => {
+        assert.strictEqual(isTailscaleHostname('localhost'), false);
+        assert.strictEqual(isTailscaleHostname('palx.nport.link'), false);
+        assert.strictEqual(isTailscaleHostname('100.63.0.1'), false);
+        assert.strictEqual(isTailscaleHostname('100.128.0.1'), false);
     });
 });

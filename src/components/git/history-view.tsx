@@ -21,6 +21,7 @@ import { GroupedDiffViewer } from './grouped-diff-viewer';
 import { ImageDiffView } from './image-diff-view';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import { toast } from '@/hooks/use-toast';
+import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import { BranchTreeNode, VisibilityMap, buildBranchTree, buildRemoteBranchTree, getEffectiveVisibility, collectAllBranchRefs, collectVisibleBranchRefs } from './branch-tree-utils';
 import { GroupHeader } from './group-header';
 import { BranchMenuOptions, BranchOperation, buildBranchContextMenuItems } from './branch-context-menu';
@@ -3182,7 +3183,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const worktrees = branchData?.worktrees ?? [];
 
   const branchTreePopoverContent = (
-    <div className="flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[20px] bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
+    <div className="flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[20px] border border-slate-200/70 bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
       <div className="flex h-[57px] shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/96 px-4 dark:border-slate-800 dark:bg-slate-950/96">
         <h3 className="font-semibold flex items-center gap-2">Branches</h3>
         <div className="flex items-center gap-1">
@@ -3478,10 +3479,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
   if (!log) return <div className="flex items-center justify-center p-8 h-full opacity-70">No history data available</div>;
 
-  const gitPanelClass =
-    'rounded-[22px] bg-white/88 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.38)] backdrop-blur dark:bg-slate-950/88 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.82)]';
-  const gitToolbarClass =
-    'rounded-[22px] bg-white/82 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.34)] backdrop-blur dark:bg-slate-950/82 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.8)]';
+  const gitPanelClass = APP_PAGE_PANEL_CLASS;
+  const gitToolbarClass = gitPanelClass;
   const headerActionButtonClass =
     "flex h-8 items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white/88 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 max-[1199px]:w-8 max-[1199px]:justify-center max-[1199px]:px-0 dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
   const headerIconButtonClass =
@@ -3508,7 +3507,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     );
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden">
       {isResetOpen && (
         <dialog className="modal modal-open">
           <div className="modal-box">
@@ -4733,7 +4732,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 )}
               </button>
               {isCredentialMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 flex w-[20rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[20px] bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
+                <div className="absolute right-0 top-full z-50 mt-2 flex w-[20rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[20px] border border-slate-200/70 bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
                   <div className="flex h-[57px] shrink-0 items-center border-b border-slate-200/70 bg-white/96 px-4 dark:border-slate-800 dark:bg-slate-950/96">
                     <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Credential</h3>
                   </div>
@@ -4852,7 +4851,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
             </div>
 
             {/* Header with commit info */}
-            <div className="flex flex-row items-center py-2 px-4 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/70 dark:bg-[#161b22] shrink-0 justify-between gap-4">
+            <div className="flex shrink-0 flex-row items-center justify-between gap-4 border-b border-slate-200/70 bg-white/30 px-4 py-2 dark:border-slate-800 dark:bg-slate-950/30">
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 {isCommitRangeSelection && selectedCommitRange ? (
                   <>
@@ -4891,8 +4890,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
             </div>
 
             {activeCommitDetailsRange ? (
-              <div className="flex-1 overflow-hidden min-h-0 flex flex-col bg-white dark:bg-[#161b22]">
-                <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/70 dark:bg-[#161b22] shrink-0">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+                <div className="shrink-0 border-b border-slate-200/70 bg-white/20 px-4 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider opacity-60 dark:border-slate-800 dark:bg-slate-950/20">
                   Changes
                 </div>
                 <div className="flex-1 min-h-0">
@@ -4907,12 +4906,12 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               /* Combined commit message and changes content */
               <div
                 ref={commitDetailsContentRef}
-                className="flex-1 overflow-hidden bg-white dark:bg-[#161b22] grid"
+                className="grid flex-1 overflow-hidden bg-transparent"
                 style={{
                   gridTemplateRows: `${commitDetailsMessageRatio}fr 6px ${1 - commitDetailsMessageRatio}fr`,
                 }}
               >
-                <div className="border-b border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] min-h-0 flex flex-col">
+                <div className="flex min-h-0 flex-col border-b border-slate-200/70 bg-transparent dark:border-slate-800">
                   <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60">
                     Message
                   </div>
@@ -4937,8 +4936,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 >
                   <div className="w-8 h-1 rounded-full bg-base-300" />
                 </div>
-                <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
-                  <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold opacity-60 border-b border-slate-200 dark:border-[#30363d] bg-slate-50/70 dark:bg-[#161b22] shrink-0">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div className="shrink-0 border-b border-slate-200/70 bg-white/20 px-4 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider opacity-60 dark:border-slate-800 dark:bg-slate-950/20">
                     Changes
                   </div>
                   <div className="flex-1 min-h-0">

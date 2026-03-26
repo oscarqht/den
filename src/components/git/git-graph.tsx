@@ -575,9 +575,9 @@ export const GitGraph = forwardRef<GitGraphHandle, GitGraphProps>(function GitGr
   if (preparedRows.length === 0) return null;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-[#161b22] font-mono text-sm select-none">
+    <div className="flex h-full flex-col overflow-hidden bg-transparent font-mono text-sm select-none">
       {isSearchOpen && (
-        <div className="sticky top-0 z-30 bg-white dark:bg-[#161b22] border-b border-base-300 px-2 py-2 flex items-center gap-2">
+        <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-slate-200/70 bg-white/92 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/92">
           <span className="opacity-50">Search</span>
           <input
             ref={searchInputRef}

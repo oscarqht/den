@@ -316,13 +316,13 @@ export function CommitChangesView({
     <div
       className={cn(
         'flex h-full min-w-0',
-        isFullPageDiff && 'fixed inset-0 z-[80] h-auto bg-base-100 shadow-2xl'
+        isFullPageDiff && 'fixed inset-0 z-[80] h-auto bg-white/95 shadow-2xl dark:bg-slate-950/95'
       )}
     >
       {/* File list */}
       {!isMobileViewport && (
-        <div className={cn(fileListWidthClass, 'border-r border-base-300 flex flex-col bg-base-200/30 shrink-0')}>
-          <div className="h-9 flex items-center shrink-0 px-3 text-xs font-bold opacity-70 border-b border-base-300 bg-base-100">
+        <div className={cn(fileListWidthClass, 'flex shrink-0 flex-col border-r border-slate-200/70 bg-white/20 dark:border-slate-800 dark:bg-slate-950/20')}>
+          <div className="flex h-9 shrink-0 items-center border-b border-slate-200/70 bg-white/30 px-3 text-xs font-bold opacity-70 dark:border-slate-800 dark:bg-slate-950/30">
             {files.length} file{files.length !== 1 ? 's' : ''} changed
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -343,7 +343,7 @@ export function CommitChangesView({
       <div className="flex-1 min-w-0 overflow-hidden">
         {isMobileViewport ? (
           <div className="h-full flex flex-col">
-            <div className="h-9 flex items-center justify-between shrink-0 px-4 text-xs font-mono opacity-70 border-b border-base-300 bg-base-100 truncate">
+            <div className="flex h-9 shrink-0 items-center justify-between truncate border-b border-slate-200/70 bg-white/30 px-4 text-xs font-mono opacity-70 dark:border-slate-800 dark:bg-slate-950/30">
               <span className="truncate">{files.length} file{files.length !== 1 ? 's' : ''} changed</span>
               <div className="flex items-center gap-2 shrink-0 ml-4">
                 <label htmlFor="commit-diff-split-view" className="text-[10px] uppercase tracking-wider font-bold cursor-pointer opacity-70">Split View</label>
@@ -376,9 +376,9 @@ export function CommitChangesView({
                 {files.map((file) => (
                   <section
                     key={`${selectionKey}:${file.path}`}
-                    className="overflow-hidden rounded-lg border border-base-300 bg-base-100"
+                    className="overflow-hidden rounded-lg border border-slate-200/70 bg-white/25 dark:border-slate-800 dark:bg-slate-950/25"
                   >
-                    <div className="border-b border-base-300 px-4 py-2 text-xs font-mono opacity-70">
+                    <div className="border-b border-slate-200/70 bg-white/20 px-4 py-2 text-xs font-mono opacity-70 dark:border-slate-800 dark:bg-slate-950/20">
                       <span className="block truncate" title={file.path}>{file.path}</span>
                     </div>
                     <div className="max-w-full overflow-hidden">
@@ -410,7 +410,7 @@ export function CommitChangesView({
           </div>
         ) : selectedFile ? (
           <div className="h-full flex flex-col">
-            <div className="h-9 flex items-center justify-between shrink-0 px-4 text-xs font-mono opacity-70 border-b border-base-300 bg-base-100 truncate">
+            <div className="flex h-9 shrink-0 items-center justify-between truncate border-b border-slate-200/70 bg-white/30 px-4 text-xs font-mono opacity-70 dark:border-slate-800 dark:bg-slate-950/30">
               <span className="truncate">{selectedFile}</span>
               <div className="flex items-center gap-2 shrink-0 ml-4">
                 <label htmlFor="commit-diff-split-view" className="text-[10px] uppercase tracking-wider font-bold cursor-pointer opacity-70">Split View</label>

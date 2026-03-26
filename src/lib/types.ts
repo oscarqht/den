@@ -1,18 +1,20 @@
 export interface Project {
-  path: string;
+  id: string;
   name: string;
-  displayName?: string | null;
+  folderPaths: string[];
   iconPath?: string | null;
   lastOpenedAt?: string;
+}
+
+export interface Repository {
+  path: string;
+  name: string;
   expandedFolders?: string[];
   visibilityMap?: Record<string, 'visible' | 'hidden'>;
   localGroupExpanded?: boolean;
   remotesGroupExpanded?: boolean;
   worktreesGroupExpanded?: boolean;
 }
-
-// TODO: remove once all callers are migrated.
-export type Repository = Project;
 
 export interface GitWorktree {
   path: string;
@@ -25,6 +27,15 @@ export interface AppSettings {
   defaultRootFolder: string | null;
   sidebarCollapsed?: boolean;
   historyPanelHeight?: number;
+}
+
+export type SessionWorkspaceFolderProvisioning = 'direct' | 'link' | 'copy' | 'worktree';
+
+export interface SessionWorkspaceFolder {
+  sourcePath: string;
+  workspaceRelativePath: string;
+  workspacePath: string;
+  provisioning: SessionWorkspaceFolderProvisioning;
 }
 
 export interface DiffImageSide {
@@ -124,6 +135,7 @@ export type QuickCreateJobUpdatePayload = {
   activeCount: number;
   sourceTabId?: string | null;
   sessionId?: string;
+  projectId?: string;
   projectPath?: string;
   draftId?: string;
   error?: string;

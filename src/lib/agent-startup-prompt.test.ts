@@ -3,9 +3,10 @@ import assert from 'node:assert';
 import {
   buildAgentStartupPrompt,
   buildProjectGitInstructionLines,
+  buildWorkspaceInstructionLines,
   hasStartupTaskDescription,
 } from './agent-startup-prompt.ts';
-import type { SessionGitRepoContext } from './types.ts';
+import type { SessionGitRepoContext, SessionWorkspaceFolder } from './types.ts';
 
 function createGitRepoContext(overrides: Partial<SessionGitRepoContext> = {}): SessionGitRepoContext {
   return {
@@ -13,6 +14,16 @@ function createGitRepoContext(overrides: Partial<SessionGitRepoContext> = {}): S
     relativeRepoPath: '',
     worktreePath: '/tmp/worktree',
     branchName: 'codex/test',
+    ...overrides,
+  };
+}
+
+function createWorkspaceFolder(overrides: Partial<SessionWorkspaceFolder> = {}): SessionWorkspaceFolder {
+  return {
+    sourcePath: '/tmp/project',
+    workspaceRelativePath: '.',
+    workspacePath: '/tmp/project',
+    provisioning: 'direct',
     ...overrides,
   };
 }
@@ -116,6 +127,43 @@ describe('buildProjectGitInstructionLines', () => {
   });
 });
 
+describe('buildWorkspaceInstructionLines', () => {
+  it('describes a single mapped workspace root', () => {
+    assert.deepStrictEqual(
+      buildWorkspaceInstructionLines('local_source', [
+        createWorkspaceFolder(),
+      ]),
+      [
+        'Workspace layout: your shell starts in `.`, which maps to `/tmp/project` as a direct source folder.',
+      ],
+    );
+  });
+
+  it('describes multiple mapped workspace entries', () => {
+    assert.deepStrictEqual(
+      buildWorkspaceInstructionLines('multi_repo_worktree', [
+        createWorkspaceFolder({
+          sourcePath: '/tmp/project/apps/api',
+          workspaceRelativePath: 'api',
+          workspacePath: '/tmp/workspace/api',
+          provisioning: 'worktree',
+        }),
+        createWorkspaceFolder({
+          sourcePath: '/tmp/project/docs',
+          workspaceRelativePath: 'docs',
+          workspacePath: '/tmp/workspace/docs',
+          provisioning: 'copy',
+        }),
+      ]),
+      [
+        'Workspace layout: your shell starts at the workspace root in multi_repo_worktree mode with 2 mapped entries.',
+        'Workspace entry `api`: `/tmp/project/apps/api` (Git worktree).',
+        'Workspace entry `docs`: `/tmp/project/docs` (copied folder).',
+      ],
+    );
+  });
+});
+
 describe('buildAgentStartupPrompt', () => {
   it('returns null when the task description is empty', () => {
     assert.strictEqual(
@@ -132,12 +180,17 @@ describe('buildAgentStartupPrompt', () => {
     const prompt = buildAgentStartupPrompt({
       taskDescription: 'Fix the startup prompt',
       workspaceMode: 'single_worktree',
+      workspaceFolders: [createWorkspaceFolder({
+        workspacePath: '/tmp/worktree',
+        provisioning: 'worktree',
+      })],
       gitRepos: [createGitRepoContext()],
       discoveredRepoRelativePaths: [''],
     });
 
     assert.ok(prompt);
     assert.match(prompt!, /^# Instructions/m);
+    assert.match(prompt!, /Workspace layout: your shell starts in `\.`/);
     assert.match(prompt!, /Git context: this project contains one Git repository at `\.`\./);
     assert.match(prompt!, /For visual UI tasks, prioritize Chrome remote-debug MCP tooling to attach to the user's current browser session/);
     assert.match(prompt!, /If that is unavailable, fall back to the `agent-browser` skill/);
@@ -154,6 +207,20 @@ describe('buildAgentStartupPrompt', () => {
       attachmentPaths: ['/tmp/spec.md', '/tmp/spec.md', ''],
       sessionMode: 'plan',
       workspaceMode: 'multi_repo_worktree',
+      workspaceFolders: [
+        createWorkspaceFolder({
+          sourcePath: '/tmp/project/apps/api',
+          workspaceRelativePath: 'apps/api',
+          workspacePath: '/tmp/worktree/apps/api',
+          provisioning: 'worktree',
+        }),
+        createWorkspaceFolder({
+          sourcePath: '/tmp/project/apps/web',
+          workspaceRelativePath: 'apps/web',
+          workspacePath: '/tmp/worktree/apps/web',
+          provisioning: 'worktree',
+        }),
+      ],
       gitRepos: [createGitRepoContext({ relativeRepoPath: 'apps/api' })],
       discoveredRepoRelativePaths: ['apps/api', 'apps/web'],
     });

@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import fs from 'node:fs';
 import path from 'node:path';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { findProjectByFolderPath, addProject } from '@/lib/store';
+import { normalizeProjectFolderPath } from '@/lib/project-folders';
 import { GitService } from '@/lib/git';
-import { addProject, getProjects } from '@/lib/store';
 import { findCredentialForRemote, getCredentialById, getCredentialToken } from '@/lib/credentials';
 
 const cloneProjectSchema = z.object({
@@ -23,7 +24,6 @@ function inferFolderNameFromRepoUrl(repoUrl: string): string | null {
   const rawName = splitIndex >= 0 ? sanitized.slice(splitIndex + 1) : sanitized;
   const normalized = rawName.endsWith('.git') ? rawName.slice(0, -4) : rawName;
   const trimmed = normalized.trim();
-
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { repoUrl, destinationParent, folderName, credentialId } = cloneProjectSchema.parse(body);
 
-    const normalizedParent = path.resolve(destinationParent.trim());
+    const normalizedParent = normalizeProjectFolderPath(destinationParent);
     if (!fs.existsSync(normalizedParent)) {
       return NextResponse.json({ error: `Destination parent folder not found: ${normalizedParent}` }, { status: 404 });
     }
@@ -63,10 +63,9 @@ export async function POST(request: Request) {
     }
 
     const normalizedFolderName = normalizeFolderName(inferredFolderName);
-    const destinationPath = path.join(normalizedParent, normalizedFolderName);
-    const normalizedDestinationPath = path.resolve(destinationPath);
+    const normalizedDestinationPath = path.join(normalizedParent, normalizedFolderName);
 
-    const existingProject = getProjects().find((project) => path.resolve(project.path) === normalizedDestinationPath);
+    const existingProject = findProjectByFolderPath(normalizedDestinationPath);
     if (existingProject) {
       return NextResponse.json({ error: 'Project already exists' }, { status: 400 });
     }
@@ -83,7 +82,6 @@ export async function POST(request: Request) {
     }
 
     let credentialsForClone: { username: string; token: string } | undefined;
-
     if (credentialId) {
       const selectedCredential = await getCredentialById(credentialId);
       if (!selectedCredential) {
@@ -108,10 +106,15 @@ export async function POST(request: Request) {
       credentials: credentialsForClone,
     });
 
-    const project = addProject(normalizedDestinationPath, normalizedFolderName);
+    const project = addProject({
+      name: normalizedFolderName,
+      folderPaths: [normalizedDestinationPath],
+    });
 
     return NextResponse.json({
       ...project,
+      projectId: project.id,
+      projectPath: normalizedDestinationPath,
       usedCredentialId: credentialId ?? null,
     });
   } catch (error) {

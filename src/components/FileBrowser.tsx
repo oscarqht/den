@@ -20,9 +20,17 @@ interface FileBrowserProps {
   onSelect: (path: string) => void | Promise<unknown>;
   onCancel: () => void;
   checkRepo?: (path: string) => Promise<boolean>;
+  zIndexClassName?: string;
 }
 
-export default function FileBrowser({ title, initialPath, onSelect, onCancel, checkRepo }: FileBrowserProps) {
+export default function FileBrowser({
+  title,
+  initialPath,
+  onSelect,
+  onCancel,
+  checkRepo,
+  zIndexClassName = 'z-50',
+}: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [homePath, setHomePath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
@@ -178,7 +186,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
         <div className="bg-base-200 rounded-lg shadow-xl w-full max-w-3xl h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-base-300">

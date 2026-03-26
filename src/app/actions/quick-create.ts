@@ -17,6 +17,7 @@ import {
 } from '../../lib/quick-create.ts';
 import { completeQuickCreateJob, getActiveQuickCreateJobCount, registerQuickCreateJob } from '../../lib/quick-create-jobs.ts';
 import { getBaseName } from '../../lib/path.ts';
+import { getProjectPrimaryFolderPath } from '../../lib/project-folders.ts';
 import type {
   AppStatus,
   AgentProvider,
@@ -24,6 +25,7 @@ import type {
   QuickCreateJobUpdatePayload,
   ReasoningEffort,
   SessionGitRepoContext,
+  SessionWorkspaceFolder,
   SessionWorkspacePreference,
   SessionWorkspaceMode,
 } from '../../lib/types.ts';
@@ -46,6 +48,7 @@ export type QuickCreateTaskInput = {
 };
 
 export type QuickCreateProjectCandidate = {
+  projectId: string;
   path: string;
   displayName: string;
   recentIndex: number | null;
@@ -63,6 +66,7 @@ type SessionCreateGitContextInput = {
 };
 
 type QuickCreateRoutingResult = {
+  projectId: string;
   projectPath: string;
   reasoningEffort: ReasoningEffort;
   reason: string;
@@ -71,6 +75,7 @@ type QuickCreateRoutingResult = {
 type QuickCreateExecutionSuccess = {
   status: 'succeeded';
   sessionId: string;
+  projectId: string;
   projectPath: string;
   draftId?: string;
 };
@@ -113,6 +118,7 @@ type QuickCreateDependencies = {
   ) => Promise<{
     success: boolean;
     sessionName?: string;
+    workspaceFolders?: SessionWorkspaceFolder[];
     workspaceMode?: SessionWorkspaceMode;
     gitRepos?: SessionGitRepoContext[];
     error?: string;
@@ -213,9 +219,8 @@ function validateQuickCreateInput(input: QuickCreateTaskInput): {
 }
 
 function computeDisplayName(project: Project, config: Config): string {
-  const alias = config.projectSettings[project.path]?.alias?.trim();
-  const displayName = project.displayName?.trim();
-  return alias || displayName || project.name || getBaseName(project.path);
+  const alias = config.projectSettings[project.id]?.alias?.trim();
+  return alias || project.name || getBaseName(getProjectPrimaryFolderPath(project) || project.id);
 }
 
 function isExistingDirectory(projectPath: string): boolean {
@@ -231,15 +236,22 @@ function resolveQuickCreateProjectCandidates(
   config: Config,
 ): QuickCreateProjectCandidate[] {
   const recentIndexes = new Map(
-    (config.recentProjects ?? []).map((projectPath, index) => [projectPath, index] as const),
+    (config.recentProjects ?? []).flatMap((projectEntry, index) => {
+      const keys = [projectEntry];
+      return keys.map((key) => [key, index] as const);
+    }),
   );
 
   const candidates = projects
-    .filter((project) => Boolean(project.path?.trim()) && isExistingDirectory(project.path))
+    .filter((project) => {
+      const primaryFolderPath = getProjectPrimaryFolderPath(project);
+      return Boolean(primaryFolderPath?.trim()) && isExistingDirectory(primaryFolderPath!);
+    })
     .map((project) => ({
-      path: project.path,
+      projectId: project.id,
+      path: getProjectPrimaryFolderPath(project)!,
       displayName: computeDisplayName(project, config),
-      recentIndex: recentIndexes.get(project.path) ?? null,
+      recentIndex: recentIndexes.get(project.id) ?? recentIndexes.get(getProjectPrimaryFolderPath(project)!) ?? null,
     }));
 
   return candidates.sort((left, right) => {
@@ -255,6 +267,7 @@ function resolveQuickCreateProjectCandidates(
 function formatRoutingCandidates(candidates: QuickCreateProjectCandidate[]) {
   return candidates.map((candidate, index) => ({
     index: index + 1,
+    projectId: candidate.projectId,
     projectPath: candidate.path,
     displayName: candidate.displayName,
     recent: candidate.recentIndex !== null,
@@ -280,7 +293,7 @@ function buildQuickCreateRoutingPrompt(input: {
     'You are routing a new Palx task to the best project.',
     'Choose exactly one project from the provided candidate list.',
     'Recent projects are only a soft hint. Choose the project that best matches the task.',
-    `Return JSON only with this shape: {"projectPath":"...","reasoningEffort":"...","reason":"..."}.`,
+    `Return JSON only with this shape: {"projectId":"...","projectPath":"...","reasoningEffort":"...","reason":"..."}.`,
     `reasoningEffort must be one of: ${KNOWN_QUICK_CREATE_REASONING_EFFORTS.join(', ')}.`,
     'Do not wrap the JSON in markdown fences. Do not include any extra text.',
     '',
@@ -378,10 +391,11 @@ async function runRoutingAgent(input: {
     await input.deps.waitForAgentSessionRun(routingSessionId);
     const hydratedView = await input.deps.hydrateAgentSessionHistory(routingSessionId, { force: true });
     const assistantText = getLatestAssistantText(hydratedView.history);
-    const validProjectPaths = new Set(input.candidates.map((candidate) => candidate.path));
-    const parsed = parseQuickCreateRoutingSelection(assistantText, validProjectPaths);
+    const validProjectIds = new Set(input.candidates.map((candidate) => candidate.projectId));
+    const parsed = parseQuickCreateRoutingSelection(assistantText, validProjectIds);
 
     return {
+      projectId: parsed.projectId,
       projectPath: parsed.projectPath,
       reasoningEffort: normalizeRoutingReasoningEffort(input.settings.provider, parsed.reasoningEffort),
       reason: parsed.reason,
@@ -465,11 +479,11 @@ async function removeQuickCreateDraftIfPresent(draftId: string | null | undefine
   db.prepare(`DELETE FROM quick_create_drafts WHERE id = ?`).run(normalizedDraftId);
 }
 
-async function moveProjectToRecent(projectPath: string, deps: QuickCreateDependencies): Promise<void> {
+async function moveProjectToRecent(projectId: string, deps: QuickCreateDependencies): Promise<void> {
   const config = await deps.getConfig();
   const nextRecentProjects = [
-    projectPath,
-    ...config.recentProjects.filter((existingPath) => existingPath !== projectPath),
+    projectId,
+    ...config.recentProjects.filter((existingProjectId) => existingProjectId !== projectId),
   ];
   await deps.updateConfig({ recentProjects: nextRecentProjects });
 }
@@ -557,14 +571,14 @@ export async function executeQuickCreateTaskJob(
       deps: resolvedDeps,
     });
 
-    const sessionGitContext = await resolveSessionGitContexts(routingResult.projectPath, resolvedDeps);
+    const sessionGitContext = await resolveSessionGitContexts(routingResult.projectId, resolvedDeps);
     const attachmentMetadata = buildAttachmentMetadata(normalizedInput.attachmentPaths);
     const title = deriveQuickCreateTitle(normalizedInput.message);
 
-    await moveProjectToRecent(routingResult.projectPath, resolvedDeps);
+    await moveProjectToRecent(routingResult.projectId, resolvedDeps);
 
     const sessionResult = await resolvedDeps.createSession(
-      routingResult.projectPath,
+      routingResult.projectId,
       sessionGitContext.gitContexts,
       {
         agent: routingSettings.provider,
@@ -605,6 +619,7 @@ export async function executeQuickCreateTaskJob(
       attachmentPaths: attachmentMetadata.attachmentPaths,
       sessionMode: 'plan',
       workspaceMode: sessionResult.workspaceMode || 'folder',
+      workspaceFolders: sessionResult.workspaceFolders,
       gitRepos: sessionResult.gitRepos,
       discoveredRepoRelativePaths: sessionGitContext.projectRepoRelativePaths,
     });
@@ -629,6 +644,7 @@ export async function executeQuickCreateTaskJob(
     return {
       status: 'succeeded',
       sessionId: sessionResult.sessionName,
+      projectId: routingResult.projectId,
       projectPath: routingResult.projectPath,
       draftId: normalizedInput.draftId || undefined,
     };
@@ -758,6 +774,7 @@ export async function startQuickCreateTask(input: QuickCreateTaskInput): Promise
         activeCount: nextActiveCount,
         sourceTabId: normalizedInput.sourceTabId,
         sessionId: result.status === 'succeeded' ? result.sessionId : undefined,
+        projectId: result.status === 'succeeded' ? result.projectId : undefined,
         projectPath: result.status === 'succeeded' ? result.projectPath : undefined,
         draftId: result.draftId,
         error: result.status === 'failed' ? result.error : undefined,

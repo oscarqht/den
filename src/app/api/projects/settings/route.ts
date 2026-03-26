@@ -4,6 +4,7 @@ import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import type { AgentProvider } from '@/lib/types';
 
 type UpdateProjectSettingsRequest = {
+  projectId?: unknown;
   projectPath?: unknown;
   updates?: {
     agentProvider?: unknown;
@@ -27,9 +28,11 @@ function normalizeOptionalString(value: unknown): string | undefined {
 export async function PUT(request: Request) {
   try {
     const body = await request.json() as UpdateProjectSettingsRequest;
+    const projectId = normalizeOptionalString(body.projectId);
     const projectPath = normalizeOptionalString(body.projectPath);
-    if (!projectPath) {
-      return NextResponse.json({ error: 'projectPath is required.' }, { status: 400 });
+    const projectReference = projectId || projectPath;
+    if (!projectReference) {
+      return NextResponse.json({ error: 'projectId or projectPath is required.' }, { status: 400 });
     }
 
     const agentProvider = normalizeProvider(body.updates?.agentProvider);
@@ -39,7 +42,7 @@ export async function PUT(request: Request) {
       normalizeOptionalString(body.updates?.agentReasoningEffort),
     );
 
-    const config = await updateProjectSettings(projectPath, {
+    const config = await updateProjectSettings(projectReference, {
       agentProvider,
       agentModel,
       agentReasoningEffort,

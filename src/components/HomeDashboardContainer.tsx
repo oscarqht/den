@@ -1,20 +1,19 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useQueryClient } from '@tanstack/react-query';
 import { Monitor, Moon, Sun, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { getConfig, updateConfig, updateProjectSettings, type Config } from '@/app/actions/config';
 import { listCredentials } from '@/app/actions/credentials';
 import { listDrafts, type DraftMetadata } from '@/app/actions/draft';
-import { resolveRepoCardIcon } from '@/app/actions/git';
 import { cloneRemoteProject, discoverProjectGitRepos } from '@/app/actions/project';
 import {
   deleteQuickCreateDraft,
@@ -30,8 +29,18 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
+import {
+  omitRecordKeys,
+  toHomeProjectGitRepos,
+  type HomeProjectGitRepo,
+} from '@/lib/home-project-git';
 import type { Credential } from '@/lib/credentials';
-import { getBaseName } from '@/lib/path';
+import {
+  findClientProjectByReference,
+  getClientProjectCompatibilityKeys,
+  resolveClientProjectReference,
+  resolveClientRecentProjects,
+} from '@/lib/project-client';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getQuickCreateTabId, subscribeToQuickCreateJobUpdates } from '@/lib/quick-create-updates';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
@@ -40,12 +49,17 @@ import {
   THEME_MODE_STORAGE_KEY,
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
+import type { Project } from '@/lib/types';
+import { useProjects } from '@/hooks/use-git';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
 import type { RepoCredentialSelection } from './git-repo-selector/types';
 
 const FileBrowser = dynamic(() => import('./FileBrowser'));
 const RepoSettingsDialog = dynamic(() =>
   import('./git-repo-selector/RepoSettingsDialog').then((module) => module.RepoSettingsDialog),
+);
+const CreateProjectDialog = dynamic(() =>
+  import('./git-repo-selector/CreateProjectDialog').then((module) => module.CreateProjectDialog),
 );
 const CloneRemoteDialog = dynamic(() =>
   import('./git-repo-selector/CloneRemoteDialog').then((module) => module.CloneRemoteDialog),
@@ -107,6 +121,8 @@ export default function HomeDashboardContainer({
 }: HomeDashboardContainerProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: projects = [] } = useProjects();
   const [config, setConfig] = useState<Config | null>(null);
   const [allSessions, setAllSessions] = useState<SessionMetadata[]>([]);
   const [allDrafts, setAllDrafts] = useState<DraftMetadata[]>([]);
@@ -122,17 +138,20 @@ export default function HomeDashboardContainer({
   const [isDarkThemeActive, setIsDarkThemeActive] = useState(false);
   const [isHomePageForegrounded, setIsHomePageForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
 
-  const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
   const [isRepoSettingsDialogOpen, setIsRepoSettingsDialogOpen] = useState(false);
-  const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
-  const [repoAlias, setRepoAlias] = useState('');
+  const [projectForSettingsId, setProjectForSettingsId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [projectFolderPaths, setProjectFolderPaths] = useState<string[]>([]);
   const [repoStartupCommand, setRepoStartupCommand] = useState(DEFAULT_PROJECT_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
   const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
   const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
+  const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
 
   const [isCloneRemoteDialogOpen, setIsCloneRemoteDialogOpen] = useState(false);
   const [remoteRepoUrl, setRemoteRepoUrl] = useState('');
@@ -143,21 +162,18 @@ export default function HomeDashboardContainer({
   const [isCloningRemote, setIsCloningRemote] = useState(false);
   const [isLoadingCloneCredentialOptions, setIsLoadingCloneCredentialOptions] = useState(false);
 
-  const [repoCardIconByRepo, setRepoCardIconByRepo] = useState<Record<string, string | null>>({});
   const [brokenRepoCardIcons, setBrokenRepoCardIcons] = useState<Record<string, boolean>>({});
-  const [projectGitReposByPath, setProjectGitReposByPath] = useState<Record<string, string[]>>({});
+  const [projectGitReposByPath, setProjectGitReposByPath] = useState<Record<string, HomeProjectGitRepo[]>>({});
   const [discoveringHomeProjectGitRepos, setDiscoveringHomeProjectGitRepos] = useState<Record<string, boolean>>({});
   const [homeProjectGitSelector, setHomeProjectGitSelector] = useState<{
-    projectPath: string;
-    repos: string[];
+    projectKey: string;
+    projectLabel: string;
+    repos: HomeProjectGitRepo[];
   } | null>(null);
-  const [projectPendingDelete, setProjectPendingDelete] = useState<string | null>(null);
-  const [deleteProjectLocalFolder, setDeleteProjectLocalFolder] = useState(false);
+  const [projectPendingDeleteId, setProjectPendingDeleteId] = useState<string | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = useState(false);
   const [quickCreateDraftForEdit, setQuickCreateDraftForEdit] = useState<QuickCreateDraft | null>(null);
-
-  const repoCardIconResolutionsInFlightRef = useRef<Set<string>>(new Set());
 
   const refreshQuickCreateState = useCallback(async () => {
     try {
@@ -178,6 +194,14 @@ export default function HomeDashboardContainer({
       console.error('Failed to refresh home activity:', refreshError);
     }
   }, []);
+
+  const resolveProjectEntry = useCallback((projectReference: string) => (
+    resolveClientProjectReference(projects, projectReference)
+  ), [projects]);
+
+  const getProjectByReference = useCallback((projectReference: string): Project | null => (
+    findClientProjectByReference(projects, projectReference)
+  ), [projects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -294,57 +318,52 @@ export default function HomeDashboardContainer({
     };
   }, [refreshActivity]);
 
-  const ensureProjectRegistered = useCallback(async (projectPath: string) => {
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: projectPath, name: getBaseName(projectPath) }),
-      });
+  const dismissCreateProjectDialog = useCallback(() => {
+    if (isCreatingProject) return;
+    setIsCreateProjectDialogOpen(false);
+    setCreateProjectError(null);
+  }, [isCreatingProject]);
 
-      if (response.ok) return;
-
-      const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-      const errorMessage = typeof payload?.error === 'string' ? payload.error : '';
-      if (/already exists/i.test(errorMessage)) return;
-      if (response.status === 500 && !errorMessage) return;
-
-      console.warn('Failed to ensure project registration:', errorMessage || response.statusText);
-    } catch (registrationError) {
-      console.warn('Failed to ensure project registration:', registrationError);
-    }
+  const openCreateProjectDialog = useCallback(() => {
+    setCreateProjectError(null);
+    setIsCreateProjectDialogOpen(true);
   }, []);
 
   const handleSelectProject = useCallback(async (
-    path: string,
+    projectReference: string,
     options?: { navigateToNewInHome?: boolean },
   ) => {
     setError(null);
 
     try {
-      await ensureProjectRegistered(path);
+      const resolvedProject = resolveProjectEntry(projectReference);
+      if (!resolvedProject.isOpenable || !resolvedProject.primaryPath) {
+        setError('Add at least one associated folder before starting a session.');
+        return false;
+      }
 
       const currentConfig = config ?? await getConfig();
       if (!config) {
         setConfig(currentConfig);
       }
 
-      let nextRecentProjects = [...currentConfig.recentProjects];
-      if (!nextRecentProjects.includes(path)) {
-        nextRecentProjects.unshift(path);
-      } else {
-        nextRecentProjects = [path, ...nextRecentProjects.filter((project) => project !== path)];
-      }
+      const nextRecentKey = resolvedProject.project?.id ?? resolvedProject.primaryPath;
+      const compatibilityKeys = resolvedProject.project
+        ? getClientProjectCompatibilityKeys(resolvedProject.project)
+        : [resolvedProject.primaryPath];
+      const nextRecentProjects = [
+        nextRecentKey,
+        ...currentConfig.recentProjects.filter((projectEntry) => !compatibilityKeys.includes(projectEntry)),
+      ];
 
       const nextConfig = arePathListsEqual(nextRecentProjects, currentConfig.recentProjects)
         ? currentConfig
         : await updateConfig({ recentProjects: nextRecentProjects });
 
       setConfig(nextConfig);
-      setIsBrowsing(false);
 
       if (options?.navigateToNewInHome !== false) {
-        router.push(`/new?project=${encodeURIComponent(path)}`);
+        router.push(`/new?project=${encodeURIComponent(resolvedProject.project?.id ?? resolvedProject.primaryPath)}`);
       }
 
       return true;
@@ -353,13 +372,14 @@ export default function HomeDashboardContainer({
       setError('Failed to open project.');
       return false;
     }
-  }, [config, ensureProjectRegistered, router]);
+  }, [config, resolveProjectEntry, router]);
 
   const dismissRepoSettingsDialog = useCallback(() => {
     if (isSavingRepoSettings) return;
     setIsRepoSettingsDialogOpen(false);
-    setRepoForSettings(null);
-    setRepoAlias('');
+    setProjectForSettingsId(null);
+    setProjectName('');
+    setProjectFolderPaths([]);
     setRepoStartupCommand(DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
     setProjectIconPathForSettings(null);
@@ -369,23 +389,35 @@ export default function HomeDashboardContainer({
 
   const handleOpenRepoSettings = useCallback(async (
     event: ReactMouseEvent,
-    repo: string,
+    projectReference: string,
   ) => {
     event.stopPropagation();
-    await ensureProjectRegistered(repo);
+    const resolvedProject = resolveProjectEntry(projectReference);
+    if (!resolvedProject.project) {
+      setError('Project metadata could not be loaded.');
+      return;
+    }
 
-    const settings = config?.projectSettings?.[repo];
-    setRepoForSettings(repo);
-    setRepoAlias(settings?.alias?.trim() || '');
+    const settings = config?.projectSettings?.[resolvedProject.project.id]
+      || (resolvedProject.primaryPath ? config?.projectSettings?.[resolvedProject.primaryPath] : undefined);
+    setProjectForSettingsId(resolvedProject.project.id);
+    setProjectName(resolvedProject.project.name);
+    setProjectFolderPaths(resolvedProject.project.folderPaths);
     setRepoStartupCommand(settings?.startupScript ?? DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
-    setProjectIconPathForSettings(repoCardIconByRepo[repo] ?? null);
+    setProjectIconPathForSettings(resolvedProject.project.iconPath ?? null);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
-  }, [config?.projectSettings, ensureProjectRegistered, repoCardIconByRepo]);
+  }, [config?.projectSettings, resolveProjectEntry]);
 
   const handleSaveRepoSettings = useCallback(async () => {
-    if (!repoForSettings) return;
+    if (!projectForSettingsId) return;
+
+    const trimmedProjectName = projectName.trim();
+    if (!trimmedProjectName) {
+      setRepoSettingsError('Project name is required.');
+      return;
+    }
 
     const startupCommandToSave = repoStartupCommand.trim() || DEFAULT_PROJECT_STARTUP_COMMAND;
     const devServerCommandToSave =
@@ -394,41 +426,55 @@ export default function HomeDashboardContainer({
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
     try {
-      const aliasToSave = repoAlias.trim() || null;
-      const nextConfig = await updateProjectSettings(repoForSettings, {
-        startupScript: startupCommandToSave,
-        devServerScript: devServerCommandToSave,
-        alias: aliasToSave,
+      const projectResponse = await fetch('/api/projects', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: projectForSettingsId,
+          updates: {
+            name: trimmedProjectName,
+            folderPaths: projectFolderPaths,
+          },
+        }),
       });
-      setConfig(nextConfig);
-
-      try {
-        await fetch('/api/projects', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: repoForSettings, updates: { displayName: aliasToSave } }),
-        });
-      } catch {
-        // Non-critical if the project registry is temporarily unavailable.
+      const projectPayload = await projectResponse.json().catch(() => null) as { error?: string } | null;
+      if (!projectResponse.ok) {
+        throw new Error(projectPayload?.error || 'Failed to save project.');
       }
 
+      const nextConfig = await updateProjectSettings(projectForSettingsId, {
+        startupScript: startupCommandToSave,
+        devServerScript: devServerCommandToSave,
+        alias: null,
+      });
+      setConfig(nextConfig);
+      setProjectGitReposByPath((previous) => omitRecordKeys(previous, [projectForSettingsId]));
+      setDiscoveringHomeProjectGitRepos((previous) => omitRecordKeys(previous, [projectForSettingsId]));
+      setHomeProjectGitSelector((current) => (
+        current?.projectKey === projectForSettingsId ? null : current
+      ));
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
       dismissRepoSettingsDialog();
     } catch (saveError) {
       console.error(saveError);
-      setRepoSettingsError('Failed to save project settings.');
+      setRepoSettingsError(
+        saveError instanceof Error ? saveError.message : 'Failed to save project settings.',
+      );
     } finally {
       setIsSavingRepoSettings(false);
     }
   }, [
     dismissRepoSettingsDialog,
-    repoAlias,
     repoDevServerCommand,
-    repoForSettings,
     repoStartupCommand,
+    projectFolderPaths,
+    projectForSettingsId,
+    projectName,
+    queryClient,
   ]);
 
   const handleUploadProjectIcon = useCallback(async (iconPath: string) => {
-    if (!repoForSettings || isUploadingProjectIcon) return;
+    if (!projectForSettingsId || isUploadingProjectIcon) return;
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(true);
 
@@ -437,7 +483,7 @@ export default function HomeDashboardContainer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectPath: repoForSettings,
+          projectId: projectForSettingsId,
           iconPath,
         }),
       });
@@ -448,8 +494,8 @@ export default function HomeDashboardContainer({
 
       const uploadedIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
       setProjectIconPathForSettings(uploadedIconPath);
-      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: uploadedIconPath }));
-      setBrokenRepoCardIcons((previous) => ({ ...previous, [repoForSettings]: false }));
+      setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (uploadError) {
       console.error(uploadError);
       setRepoSettingsError(
@@ -458,10 +504,10 @@ export default function HomeDashboardContainer({
     } finally {
       setIsUploadingProjectIcon(false);
     }
-  }, [isUploadingProjectIcon, repoForSettings]);
+  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
 
   const handleRemoveProjectIcon = useCallback(async () => {
-    if (!repoForSettings || isUploadingProjectIcon) return;
+    if (!projectForSettingsId || isUploadingProjectIcon) return;
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(true);
 
@@ -469,7 +515,7 @@ export default function HomeDashboardContainer({
       const response = await fetch('/api/projects/icon', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: repoForSettings }),
+        body: JSON.stringify({ projectId: projectForSettingsId }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -477,8 +523,8 @@ export default function HomeDashboardContainer({
       }
 
       setProjectIconPathForSettings(null);
-      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: null }));
-      setBrokenRepoCardIcons((previous) => ({ ...previous, [repoForSettings]: false }));
+      setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (removeError) {
       console.error(removeError);
       setRepoSettingsError(
@@ -487,7 +533,7 @@ export default function HomeDashboardContainer({
     } finally {
       setIsUploadingProjectIcon(false);
     }
-  }, [isUploadingProjectIcon, repoForSettings]);
+  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
 
   const openCloneRemoteDialog = useCallback(() => {
     setIsCloneRemoteDialogOpen(true);
@@ -525,9 +571,52 @@ export default function HomeDashboardContainer({
 
   const dismissDeleteProjectDialog = useCallback(() => {
     if (isDeletingProject) return;
-    setProjectPendingDelete(null);
-    setDeleteProjectLocalFolder(false);
+    setProjectPendingDeleteId(null);
   }, [isDeletingProject]);
+
+  const handleCreateProject = useCallback(async (payload: {
+    name: string;
+    folderPaths: string[];
+    createDefaultFolder?: {
+      enabled: boolean;
+      folderName?: string;
+    };
+  }) => {
+    setCreateProjectError(null);
+    setIsCreatingProject(true);
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await response.json().catch(() => null) as {
+        id?: string;
+        error?: string;
+      } | null;
+      if (!response.ok || !responsePayload?.id) {
+        throw new Error(responsePayload?.error || 'Failed to create project.');
+      }
+
+      const nextConfig = await updateConfig({
+        recentProjects: [
+          responsePayload.id,
+          ...(config?.recentProjects ?? []).filter((projectEntry) => projectEntry !== responsePayload.id),
+        ],
+      });
+      setConfig(nextConfig);
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setIsCreateProjectDialogOpen(false);
+    } catch (createError) {
+      console.error(createError);
+      setCreateProjectError(
+        createError instanceof Error ? createError.message : 'Failed to create project.',
+      );
+    } finally {
+      setIsCreatingProject(false);
+    }
+  }, [config?.recentProjects, queryClient]);
 
   const handleCloneRemoteRepo = useCallback(async () => {
     if (isCloningRemote) return;
@@ -548,12 +637,13 @@ export default function HomeDashboardContainer({
         cloneCredentialSelection === 'auto' ? null : cloneCredentialSelection,
       );
 
-      if (!result.success || !result.projectPath) {
+      if (!result.success || !result.projectId || !result.projectPath) {
         setCloneRemoteError(result.error || 'Failed to clone project.');
         return;
       }
 
-      const opened = await handleSelectProject(result.projectPath, {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      const opened = await handleSelectProject(result.projectId, {
         navigateToNewInHome: false,
       });
       if (!opened) {
@@ -573,6 +663,7 @@ export default function HomeDashboardContainer({
     dismissCloneRemoteDialog,
     handleSelectProject,
     isCloningRemote,
+    queryClient,
     remoteRepoUrl,
   ]);
 
@@ -582,60 +673,50 @@ export default function HomeDashboardContainer({
     setIsSelectingRoot(false);
   }, []);
 
-  const handleRemoveRecent = useCallback((event: ReactMouseEvent, repo: string) => {
+  const handleRemoveRecent = useCallback((event: ReactMouseEvent, projectReference: string) => {
     event.stopPropagation();
     if (isDeletingProject) return;
-    setProjectPendingDelete(repo);
-    setDeleteProjectLocalFolder(false);
-  }, [isDeletingProject]);
+    const resolvedProject = resolveProjectEntry(projectReference);
+    if (!resolvedProject.project) {
+      setError('Project not found.');
+      return;
+    }
+    setProjectPendingDeleteId(resolvedProject.project.id);
+  }, [isDeletingProject, resolveProjectEntry]);
 
   const handleDeleteProjectConfirm = useCallback(async () => {
-    if (!projectPendingDelete || !config || isDeletingProject) return;
+    if (!projectPendingDeleteId || !config || isDeletingProject) return;
 
     setError(null);
     setIsDeletingProject(true);
     try {
+      const pendingProject = getProjectByReference(projectPendingDeleteId);
       const response = await fetch('/api/projects', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: projectPendingDelete,
-          deleteLocalFolder: deleteProjectLocalFolder,
-        }),
+        body: JSON.stringify({ projectId: projectPendingDeleteId }),
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) {
         throw new Error(payload?.error || 'Failed to delete project.');
       }
 
-      const nextRecentProjects = config.recentProjects.filter((project) => project !== projectPendingDelete);
+      const compatibilityKeys = pendingProject
+        ? getClientProjectCompatibilityKeys(pendingProject)
+        : [projectPendingDeleteId];
+      const nextRecentProjects = config.recentProjects.filter((projectEntry) => !compatibilityKeys.includes(projectEntry));
       const nextConfig = await updateConfig({ recentProjects: nextRecentProjects });
       setConfig(nextConfig);
-      setProjectGitReposByPath((previous) => {
-        const next = { ...previous };
-        delete next[projectPendingDelete];
-        return next;
-      });
-      setDiscoveringHomeProjectGitRepos((previous) => {
-        const next = { ...previous };
-        delete next[projectPendingDelete];
-        return next;
-      });
-      setRepoCardIconByRepo((previous) => {
-        const next = { ...previous };
-        delete next[projectPendingDelete];
-        return next;
-      });
-      setBrokenRepoCardIcons((previous) => {
-        const next = { ...previous };
-        delete next[projectPendingDelete];
-        return next;
-      });
+      const stateKeysToRemove = pendingProject
+        ? [pendingProject.id, ...pendingProject.folderPaths]
+        : [projectPendingDeleteId];
+      setProjectGitReposByPath((previous) => omitRecordKeys(previous, stateKeysToRemove));
+      setDiscoveringHomeProjectGitRepos((previous) => omitRecordKeys(previous, stateKeysToRemove));
       setHomeProjectGitSelector((current) => (
-        current?.projectPath === projectPendingDelete ? null : current
+        current?.projectKey === projectPendingDeleteId ? null : current
       ));
-      setProjectPendingDelete(null);
-      setDeleteProjectLocalFolder(false);
+      setProjectPendingDeleteId(null);
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (deleteError) {
       console.error(deleteError);
       setError(
@@ -646,37 +727,44 @@ export default function HomeDashboardContainer({
     }
   }, [
     config,
-    deleteProjectLocalFolder,
+    getProjectByReference,
     isDeletingProject,
-    projectPendingDelete,
+    projectPendingDeleteId,
+    queryClient,
   ]);
 
   const discoverHomeProjectRepos = useCallback(async (
-    projectPath: string,
+    projectReference: string,
     options: { force?: boolean } = {},
-  ): Promise<string[]> => {
-    const cached = projectGitReposByPath[projectPath];
+  ): Promise<HomeProjectGitRepo[]> => {
+    const resolvedProject = resolveProjectEntry(projectReference);
+    const projectKey = resolvedProject.key;
+    if (!resolvedProject.isOpenable) {
+      return [];
+    }
+
+    const cached = projectGitReposByPath[projectKey];
     if (cached && !options.force) {
       return cached;
     }
 
-    setDiscoveringHomeProjectGitRepos((previous) => ({ ...previous, [projectPath]: true }));
+    setDiscoveringHomeProjectGitRepos((previous) => ({ ...previous, [projectKey]: true }));
     try {
-      const discovery = await discoverProjectGitRepos(projectPath);
-      const repos = discovery.repos.map((entry) => entry.repoPath);
-      setProjectGitReposByPath((previous) => ({ ...previous, [projectPath]: repos }));
+      const discovery = await discoverProjectGitRepos(resolvedProject.project?.id ?? resolvedProject.primaryPath!);
+      const repos = toHomeProjectGitRepos(discovery.repos);
+      setProjectGitReposByPath((previous) => ({ ...previous, [projectKey]: repos }));
       return repos;
     } catch (discoverError) {
       console.error('Failed to discover project git repos:', discoverError);
-      setProjectGitReposByPath((previous) => ({ ...previous, [projectPath]: [] }));
+      setProjectGitReposByPath((previous) => ({ ...previous, [projectKey]: [] }));
       return [];
     } finally {
-      setDiscoveringHomeProjectGitRepos((previous) => ({ ...previous, [projectPath]: false }));
+      setDiscoveringHomeProjectGitRepos((previous) => ({ ...previous, [projectKey]: false }));
     }
-  }, [projectGitReposByPath]);
+  }, [projectGitReposByPath, resolveProjectEntry]);
 
   const handleOpenProjectGitWorkspace = useCallback(async (
-    projectPath: string,
+    projectReference: string,
     sourceRepoPath?: string,
   ) => {
     setError(null);
@@ -686,21 +774,30 @@ export default function HomeDashboardContainer({
       return;
     }
 
-    const repos = await discoverHomeProjectRepos(projectPath);
+    const resolvedProject = resolveProjectEntry(projectReference);
+    const repos = await discoverHomeProjectRepos(projectReference);
     if (repos.length === 0) {
       setError('No Git repositories were found in this project.');
       return;
     }
     if (repos.length === 1) {
-      router.push(`/git?path=${encodeURIComponent(repos[0])}`);
+      router.push(`/git?path=${encodeURIComponent(repos[0].repoPath)}`);
       return;
     }
-    setHomeProjectGitSelector({ projectPath, repos });
-  }, [discoverHomeProjectRepos, router]);
+    setHomeProjectGitSelector({
+      projectKey: resolvedProject.key,
+      projectLabel: resolvedProject.displayName,
+      repos,
+    });
+  }, [discoverHomeProjectRepos, resolveProjectEntry, router]);
+
+  const recentProjects = useMemo(() => config?.recentProjects ?? [], [config?.recentProjects]);
+  const resolvedRecentProjects = useMemo(() => (
+    resolveClientRecentProjects(projects, recentProjects)
+  ), [projects, recentProjects]);
 
   useEffect(() => {
-    const recentProjects = config?.recentProjects ?? [];
-    if (!isHomePageForegrounded || recentProjects.length === 0) return;
+    if (!isHomePageForegrounded || resolvedRecentProjects.length === 0) return;
 
     const runtimeWindow = window as Window & {
       requestIdleCallback?: (
@@ -709,9 +806,9 @@ export default function HomeDashboardContainer({
       ) => number;
       cancelIdleCallback?: (handle: number) => void;
     };
-    const projectsToDiscover = recentProjects.filter(
-      (projectPath) => !(projectPath in projectGitReposByPath),
-    );
+    const projectsToDiscover = resolvedRecentProjects
+      .filter((projectEntry) => projectEntry.isOpenable && !(projectEntry.key in projectGitReposByPath))
+      .map((projectEntry) => projectEntry.key);
     if (projectsToDiscover.length === 0) return;
 
     let cancelled = false;
@@ -760,58 +857,10 @@ export default function HomeDashboardContainer({
       cancelled = true;
       clearScheduledWork();
     };
-  }, [config?.recentProjects, discoverHomeProjectRepos, isHomePageForegrounded, projectGitReposByPath]);
-
-  useEffect(() => {
-    const recentProjects = config?.recentProjects ?? [];
-    const inFlightResolutions = repoCardIconResolutionsInFlightRef.current;
-    const reposToResolve = recentProjects.filter((repo) => (
-      !(repo in repoCardIconByRepo) && !inFlightResolutions.has(repo)
-    ));
-
-    if (reposToResolve.length === 0) return;
-
-    let cancelled = false;
-    reposToResolve.forEach((repo) => {
-      inFlightResolutions.add(repo);
-    });
-
-    void (async () => {
-      const resolutionEntries = await Promise.all(reposToResolve.map(async (repo) => {
-        try {
-          const result = await resolveRepoCardIcon(repo);
-          return [repo, result.success ? result.iconPath : null] as const;
-        } catch (resolveError) {
-          console.error('Failed to resolve project icon:', resolveError);
-          return [repo, null] as const;
-        }
-      }));
-
-      if (!cancelled) {
-        setRepoCardIconByRepo((previous) => {
-          const next = { ...previous };
-          for (const [repo, iconPath] of resolutionEntries) {
-            next[repo] = iconPath;
-          }
-          return next;
-        });
-      }
-
-      reposToResolve.forEach((repo) => {
-        inFlightResolutions.delete(repo);
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      reposToResolve.forEach((repo) => {
-        inFlightResolutions.delete(repo);
-      });
-    };
-  }, [config?.recentProjects, repoCardIconByRepo]);
+  }, [discoverHomeProjectRepos, isHomePageForegrounded, projectGitReposByPath, resolvedRecentProjects]);
 
   useDialogKeyboardShortcuts({
-    enabled: isRepoSettingsDialogOpen && !!repoForSettings,
+    enabled: isRepoSettingsDialogOpen && !!projectForSettingsId,
     onConfirm: handleSaveRepoSettings,
     onDismiss: dismissRepoSettingsDialog,
     canConfirm: !isSavingRepoSettings,
@@ -825,7 +874,7 @@ export default function HomeDashboardContainer({
   });
 
   useDialogKeyboardShortcuts({
-    enabled: !!projectPendingDelete,
+    enabled: !!projectPendingDeleteId,
     onConfirm: handleDeleteProjectConfirm,
     onDismiss: dismissDeleteProjectDialog,
     canConfirm: !isDeletingProject,
@@ -834,29 +883,38 @@ export default function HomeDashboardContainer({
   const runningSessionCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const session of allSessions) {
-      const projectKey = session.projectPath || session.repoPath;
+      const projectKey = session.projectId
+        || (session.projectPath ? resolveProjectEntry(session.projectPath).key : '')
+        || session.repoPath;
       if (!projectKey) continue;
       counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
     }
     return counts;
-  }, [allSessions]);
+  }, [allSessions, resolveProjectEntry]);
 
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const draft of allDrafts) {
-      const projectKey = draft.projectPath || draft.repoPath;
+      const projectKey = draft.projectId
+        || (draft.projectPath ? resolveProjectEntry(draft.projectPath).key : '')
+        || draft.repoPath;
       if (!projectKey) continue;
       counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
     }
     return counts;
-  }, [allDrafts]);
+  }, [allDrafts, resolveProjectEntry]);
 
-  const recentProjects = useMemo(() => config?.recentProjects ?? [], [config?.recentProjects]);
+  const getProjectDisplayName = useCallback((projectReference: string): string => (
+    resolveProjectEntry(projectReference).displayName
+  ), [resolveProjectEntry]);
 
-  const getProjectDisplayName = useCallback((projectPath: string): string => {
-    const alias = config?.projectSettings?.[projectPath]?.alias?.trim();
-    return alias || getBaseName(projectPath);
-  }, [config?.projectSettings]);
+  const getProjectSecondaryLabel = useCallback((projectReference: string): string => (
+    resolveProjectEntry(projectReference).secondaryLabel
+  ), [resolveProjectEntry]);
+
+  const isProjectOpenable = useCallback((projectReference: string): boolean => (
+    resolveProjectEntry(projectReference).isOpenable
+  ), [resolveProjectEntry]);
 
   useEffect(() => {
     const unsubscribe = subscribeToQuickCreateJobUpdates((payload) => {
@@ -902,21 +960,26 @@ export default function HomeDashboardContainer({
   }, [getProjectDisplayName, refreshQuickCreateState, router, toast]);
 
   const sortedRecentProjects = useMemo(() => (
-    sortHomeProjects(recentProjects, homeProjectSort, getProjectDisplayName)
-  ), [getProjectDisplayName, homeProjectSort, recentProjects]);
+    sortHomeProjects(
+      resolvedRecentProjects.map((projectEntry) => projectEntry.key),
+      homeProjectSort,
+      getProjectDisplayName,
+    )
+  ), [getProjectDisplayName, homeProjectSort, resolvedRecentProjects]);
 
   const filteredRecentProjects = useMemo(() => {
     const normalizedQuery = homeSearchQuery.trim().toLowerCase();
     if (!normalizedQuery) return sortedRecentProjects;
 
-    return sortedRecentProjects.filter((projectPath) => {
-      const displayName = getProjectDisplayName(projectPath).toLowerCase();
+    return sortedRecentProjects.filter((projectReference) => {
+      const displayName = getProjectDisplayName(projectReference).toLowerCase();
+      const secondaryLabel = getProjectSecondaryLabel(projectReference).toLowerCase();
       return (
         displayName.includes(normalizedQuery)
-        || projectPath.toLowerCase().includes(normalizedQuery)
+        || secondaryLabel.includes(normalizedQuery)
       );
     });
-  }, [getProjectDisplayName, homeSearchQuery, sortedRecentProjects]);
+  }, [getProjectDisplayName, getProjectSecondaryLabel, homeSearchQuery, sortedRecentProjects]);
 
   const handleHomeProjectSortChange = useCallback(async (nextSort: HomeProjectSort) => {
     writeStoredHomeProjectSort(nextSort);
@@ -929,6 +992,14 @@ export default function HomeDashboardContainer({
       console.error('Failed to save home project sort:', sortError);
     }
   }, []);
+
+  const projectCardIconByKey = useMemo(() => {
+    const nextIcons: Record<string, string | null> = {};
+    resolvedRecentProjects.forEach((projectEntry) => {
+      nextIcons[projectEntry.key] = projectEntry.project?.iconPath ?? null;
+    });
+    return nextIcons;
+  }, [resolvedRecentProjects]);
 
   const currentThemeModeIndex = THEME_MODE_SEQUENCE.indexOf(themeMode);
   const nextThemeMode =
@@ -1071,11 +1142,13 @@ export default function HomeDashboardContainer({
         isDarkThemeActive={isDarkThemeActive}
         runningSessionCountByProject={runningSessionCountByProject}
         draftCountByProject={draftCountByProject}
-        projectCardIconByPath={repoCardIconByRepo}
+        projectCardIconByPath={projectCardIconByKey}
         brokenProjectCardIcons={brokenRepoCardIcons}
         projectGitReposByPath={projectGitReposByPath}
         discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
         getProjectDisplayName={getProjectDisplayName}
+        getProjectSecondaryLabel={getProjectSecondaryLabel}
+        isProjectOpenable={isProjectOpenable}
         onHomeSearchQueryChange={setHomeSearchQuery}
         onHomeProjectSortChange={handleHomeProjectSortChange}
         onOpenCredentials={() => router.push('/settings')}
@@ -1090,14 +1163,17 @@ export default function HomeDashboardContainer({
         onProjectIconError={handleRepoIconError}
         onRepoCardMouseMove={handleRepoCardMouseMove}
         onRepoCardMouseLeave={handleRepoCardMouseLeave}
-        onAddProject={openCloneRemoteDialog}
+        onAddProject={openCreateProjectDialog}
       />
 
       <RepoSettingsDialog
-        key={`${repoForSettings ?? 'none'}:${isRepoSettingsDialogOpen ? 'open' : 'closed'}`}
+        key={`${projectForSettingsId ?? 'none'}:${isRepoSettingsDialogOpen ? 'open' : 'closed'}`}
         isOpen={isRepoSettingsDialogOpen}
-        projectForSettings={repoForSettings}
-        projectAlias={repoAlias}
+        projectId={projectForSettingsId}
+        projectForSettings={projectFolderPaths[0] ?? null}
+        projectName={projectName}
+        projectFolderPaths={projectFolderPaths}
+        defaultRoot={config?.defaultRoot || undefined}
         projectStartupCommand={repoStartupCommand}
         projectDevServerCommand={repoDevServerCommand}
         defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
@@ -1106,7 +1182,15 @@ export default function HomeDashboardContainer({
         isSavingProjectSettings={isSavingRepoSettings}
         isUploadingProjectIcon={isUploadingProjectIcon}
         projectSettingsError={repoSettingsError}
-        onAliasChange={setRepoAlias}
+        onNameChange={setProjectName}
+        onAddFolderPath={(folderPath) => {
+          setProjectFolderPaths((previous) => (
+            previous.includes(folderPath) ? previous : [...previous, folderPath]
+          ));
+        }}
+        onRemoveFolderPath={(folderPath) => {
+          setProjectFolderPaths((previous) => previous.filter((currentPath) => currentPath !== folderPath));
+        }}
         onStartupCommandChange={setRepoStartupCommand}
         onDevServerCommandChange={setRepoDevServerCommand}
         onUploadIcon={(iconPath) => {
@@ -1118,6 +1202,19 @@ export default function HomeDashboardContainer({
         onClose={dismissRepoSettingsDialog}
         onSave={() => {
           void handleSaveRepoSettings();
+        }}
+      />
+
+      <CreateProjectDialog
+        isOpen={isCreateProjectDialogOpen}
+        defaultRoot={config?.defaultRoot || undefined}
+        isSubmitting={isCreatingProject}
+        error={createProjectError}
+        onClose={dismissCreateProjectDialog}
+        onCreate={handleCreateProject}
+        onCloneRemote={() => {
+          dismissCreateProjectDialog();
+          openCloneRemoteDialog();
         }}
       />
 
@@ -1135,7 +1232,7 @@ export default function HomeDashboardContainer({
         onCloneCredentialSelectionChange={setCloneCredentialSelection}
         onBrowseLocalFolder={() => {
           dismissCloneRemoteDialog();
-          setIsBrowsing(true);
+          openCreateProjectDialog();
         }}
         onSetDefaultFolder={() => {
           dismissCloneRemoteDialog();
@@ -1171,21 +1268,21 @@ export default function HomeDashboardContainer({
             </div>
             <div className="space-y-3 p-5">
               <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">
-                {homeProjectGitSelector.projectPath}
+                {homeProjectGitSelector.projectLabel}
               </p>
               <div className="max-h-80 space-y-2 overflow-y-auto">
-                {homeProjectGitSelector.repos.map((repoPath) => (
+                {homeProjectGitSelector.repos.map((repoEntry) => (
                   <button
-                    key={repoPath}
+                    key={repoEntry.repoPath}
                     type="button"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:text-slate-200 dark:hover:bg-[#30363d]/60"
                     onClick={() => {
                       setHomeProjectGitSelector(null);
-                      router.push(`/git?path=${encodeURIComponent(repoPath)}`);
+                      router.push(`/git?path=${encodeURIComponent(repoEntry.repoPath)}`);
                     }}
-                    title={repoPath}
+                    title={repoEntry.repoPath}
                   >
-                    <span className="block truncate font-mono text-xs">{repoPath}</span>
+                    <span className="block truncate font-mono text-xs">{repoEntry.label}</span>
                   </button>
                 ))}
               </div>
@@ -1194,7 +1291,7 @@ export default function HomeDashboardContainer({
         </div>
       )}
 
-      {projectPendingDelete && (
+      {projectPendingDeleteId && (
         <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
@@ -1211,25 +1308,10 @@ export default function HomeDashboardContainer({
             </div>
             <div className="space-y-4 p-5">
               <p className="text-sm text-slate-700 dark:text-slate-200">
-                Remove this project from the home page.
+                Delete this project from Palx. Associated folders on disk will not be removed.
               </p>
               <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">
-                {projectPendingDelete}
-              </p>
-              <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700 dark:border-white/10 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 dark:border-slate-600 dark:bg-slate-900"
-                  checked={deleteProjectLocalFolder}
-                  onChange={(event) => setDeleteProjectLocalFolder(event.target.checked)}
-                  disabled={isDeletingProject}
-                />
-                <span>
-                  Delete local folder too
-                </span>
-              </label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Leave this unchecked to remove the project from Palx only and keep the local files on disk.
+                {resolveProjectEntry(projectPendingDeleteId).displayName}
               </p>
               <div className="flex justify-end gap-2">
                 <button
@@ -1254,14 +1336,6 @@ export default function HomeDashboardContainer({
             </div>
           </div>
         </div>
-      )}
-
-      {isBrowsing && (
-        <FileBrowser
-          initialPath={config?.defaultRoot || undefined}
-          onSelect={(path) => handleSelectProject(path, { navigateToNewInHome: false })}
-          onCancel={() => setIsBrowsing(false)}
-        />
       )}
 
       {isSelectingRoot && (

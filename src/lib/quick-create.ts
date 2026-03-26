@@ -14,6 +14,7 @@ export const KNOWN_QUICK_CREATE_REASONING_EFFORTS = [
 ] as const satisfies readonly ReasoningEffort[];
 
 export type QuickCreateRoutingSelection = {
+  projectId: string;
   projectPath: string;
   reasoningEffort: ReasoningEffort;
   reason: string;
@@ -48,7 +49,7 @@ export function extractJsonObject(text: string): string | null {
 
 export function parseQuickCreateRoutingSelection(
   responseText: string,
-  validProjectPaths: Set<string>,
+  validProjectIds: Set<string>,
 ): QuickCreateRoutingSelection {
   const jsonObject = extractJsonObject(responseText);
   if (!jsonObject) {
@@ -67,8 +68,9 @@ export function parseQuickCreateRoutingSelection(
   }
 
   const payload = parsed as Record<string, unknown>;
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId.trim() : '';
   const projectPath = typeof payload.projectPath === 'string' ? payload.projectPath.trim() : '';
-  if (!projectPath || !validProjectPaths.has(projectPath)) {
+  if (!projectId || !validProjectIds.has(projectId)) {
     throw new Error('Routing agent selected a project that is not available.');
   }
 
@@ -90,6 +92,7 @@ export function parseQuickCreateRoutingSelection(
   }
 
   return {
+    projectId,
     projectPath,
     reasoningEffort: normalizedReasoningEffort as ReasoningEffort,
     reason,

@@ -41,6 +41,10 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
+import {
+  toHomeProjectGitRepos,
+  type HomeProjectGitRepo,
+} from '@/lib/home-project-git';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
@@ -474,11 +478,11 @@ export default function GitRepoSelector({
   const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
   const [repoCardIconByRepo, setRepoCardIconByRepo] = useState<Record<string, string | null>>({});
   const [brokenRepoCardIcons, setBrokenRepoCardIcons] = useState<Record<string, boolean>>({});
-  const [projectGitReposByPath, setProjectGitReposByPath] = useState<Record<string, string[]>>({});
+  const [projectGitReposByPath, setProjectGitReposByPath] = useState<Record<string, HomeProjectGitRepo[]>>({});
   const [discoveringHomeProjectGitRepos, setDiscoveringHomeProjectGitRepos] = useState<Record<string, boolean>>({});
   const [homeProjectGitSelector, setHomeProjectGitSelector] = useState<{
     projectPath: string;
-    repos: string[];
+    repos: HomeProjectGitRepo[];
   } | null>(null);
   const repoCardIconResolutionsInFlightRef = useRef<Set<string>>(new Set());
   const selectedProjectLoadRequestRef = useRef(0);
@@ -2630,6 +2634,7 @@ export default function GitRepoSelector({
           attachmentPaths: allAttachmentPaths,
           sessionMode,
           workspaceMode: wtResult.workspaceMode || 'folder',
+          workspaceFolders: wtResult.workspaceFolders,
           gitRepos: wtResult.gitRepos,
           discoveredRepoRelativePaths: projectGitRepos.map((repoPath) => toProjectRelativeRepoPath(selectedRepo, repoPath)),
         });
@@ -2875,6 +2880,9 @@ export default function GitRepoSelector({
     return alias || getBaseName(projectPath);
   }, [config?.projectSettings]);
 
+  const getProjectSecondaryLabel = useCallback((projectPath: string): string => projectPath, []);
+  const isProjectOpenable = useCallback((): boolean => true, []);
+
   const sortedRecentProjects = useMemo(() => (
     sortHomeProjects(recentProjects, homeProjectSort, getProjectDisplayName)
   ), [getProjectDisplayName, homeProjectSort, recentProjects]);
@@ -2908,7 +2916,7 @@ export default function GitRepoSelector({
   const discoverHomeProjectRepos = useCallback(async (
     projectPath: string,
     options: { force?: boolean } = {},
-  ): Promise<string[]> => {
+  ): Promise<HomeProjectGitRepo[]> => {
     const cached = projectGitReposByPath[projectPath];
     if (cached && !options.force) {
       return cached;
@@ -2917,7 +2925,7 @@ export default function GitRepoSelector({
     setDiscoveringHomeProjectGitRepos((previous) => ({ ...previous, [projectPath]: true }));
     try {
       const discovery = await discoverProjectGitRepos(projectPath);
-      const repos = discovery.repos.map((entry) => entry.repoPath);
+      const repos = toHomeProjectGitRepos(discovery.repos);
       setProjectGitReposByPath((previous) => ({ ...previous, [projectPath]: repos }));
       return repos;
     } catch (discoverError) {
@@ -2941,7 +2949,7 @@ export default function GitRepoSelector({
       return;
     }
     if (repos.length === 1) {
-      router.push(`/git?path=${encodeURIComponent(repos[0])}`);
+      router.push(`/git?path=${encodeURIComponent(repos[0].repoPath)}`);
       return;
     }
     setHomeProjectGitSelector({ projectPath, repos });
@@ -3163,6 +3171,8 @@ export default function GitRepoSelector({
           onRemoveRecent={handleRemoveRecent}
           onEditQuickCreateDraft={() => {}}
           onDeleteQuickCreateDraft={async () => {}}
+          getProjectSecondaryLabel={getProjectSecondaryLabel}
+          isProjectOpenable={isProjectOpenable}
           onProjectIconError={handleRepoIconError}
           onRepoCardMouseMove={handleRepoCardMouseMove}
           onRepoCardMouseLeave={handleRepoCardMouseLeave}
@@ -3174,8 +3184,11 @@ export default function GitRepoSelector({
         <RepoSettingsDialog
           key={`${repoForSettings ?? 'none'}:${isRepoSettingsDialogOpen ? 'open' : 'closed'}`}
           isOpen={isRepoSettingsDialogOpen}
+          projectId={repoForSettings}
           projectForSettings={repoForSettings}
-          projectAlias={repoAlias}
+          projectName={repoAlias || (repoForSettings ? getProjectDisplayName(repoForSettings) : '')}
+          projectFolderPaths={repoForSettings ? [repoForSettings] : []}
+          defaultRoot={config?.defaultRoot || undefined}
           projectStartupCommand={repoStartupCommand}
           projectDevServerCommand={repoDevServerCommand}
           defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
@@ -3184,7 +3197,9 @@ export default function GitRepoSelector({
           isSavingProjectSettings={isSavingRepoSettings}
           isUploadingProjectIcon={isUploadingProjectIcon}
           projectSettingsError={repoSettingsError}
-          onAliasChange={setRepoAlias}
+          onNameChange={setRepoAlias}
+          onAddFolderPath={() => {}}
+          onRemoveFolderPath={() => {}}
           onStartupCommandChange={setRepoStartupCommand}
           onDevServerCommandChange={setRepoDevServerCommand}
           onUploadIcon={(iconPath) => {
@@ -3244,18 +3259,18 @@ export default function GitRepoSelector({
                 {homeProjectGitSelector.projectPath}
               </p>
               <div className="max-h-80 space-y-2 overflow-y-auto">
-                {homeProjectGitSelector.repos.map((repoPath) => (
+                {homeProjectGitSelector.repos.map((repoEntry) => (
                   <button
-                    key={repoPath}
+                    key={repoEntry.repoPath}
                     type="button"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:text-slate-200 dark:hover:bg-[#30363d]/60"
                     onClick={() => {
                       setHomeProjectGitSelector(null);
-                      router.push(`/git?path=${encodeURIComponent(repoPath)}`);
+                      router.push(`/git?path=${encodeURIComponent(repoEntry.repoPath)}`);
                     }}
-                    title={repoPath}
+                    title={repoEntry.repoPath}
                   >
-                    <span className="block truncate font-mono text-xs">{repoPath}</span>
+                    <span className="block truncate font-mono text-xs">{repoEntry.label}</span>
                   </button>
                 ))}
               </div>

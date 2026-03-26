@@ -1,10 +1,12 @@
 'use server';
 
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import simpleGit from 'simple-git';
 import { resolveRepositoryPathByName } from '@/lib/repo-resolver';
+import { addProject, findProjectByFolderPath, getProjectById, getProjects } from '@/lib/store';
+import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '@/lib/project-folders';
 import { getAllCredentials, getCredentialById, getCredentialToken } from '@/lib/credentials';
 import type { Credential } from '@/lib/credentials';
 import { detectGitRemoteProvider, parseGitRemoteHost } from '@/lib/terminal-session';
@@ -18,12 +20,14 @@ type GitBranch = {
 
 export type ResolveProjectResult = {
   success: boolean;
+  projectId: string | null;
   projectPath: string | null;
   error?: string;
 };
 
 export type CloneRemoteProjectResult = {
   success: boolean;
+  projectId: string | null;
   projectPath: string | null;
   error?: string;
 };
@@ -83,13 +87,13 @@ function hasOverlappingRepoRoots(repoPaths: string[]): boolean {
       repoPaths
         .map((repoPath) => repoPath.trim())
         .filter(Boolean)
-        .map((repoPath) => normalizeAbsolutePath(repoPath))
-    )
-  ).sort((a, b) => a.localeCompare(b));
+        .map((repoPath) => normalizeAbsolutePath(repoPath)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
 
-  for (let i = 0; i < normalized.length; i += 1) {
-    for (let j = i + 1; j < normalized.length; j += 1) {
-      if (pathContainsPath(normalized[i], normalized[j])) {
+  for (let index = 0; index < normalized.length; index += 1) {
+    for (let compareIndex = index + 1; compareIndex < normalized.length; compareIndex += 1) {
+      if (pathContainsPath(normalized[index], normalized[compareIndex])) {
         return true;
       }
     }
@@ -121,19 +125,53 @@ async function listRepoBranches(repoPath: string): Promise<GitBranch[]> {
   }
 }
 
-export async function discoverProjectGitRepos(projectPath: string): Promise<DiscoverProjectGitReposResult> {
-  const normalizedProjectPath = projectPath.trim();
-  if (!normalizedProjectPath) {
-    throw new Error('Project path is required.');
+async function resolveProjectReference(projectIdOrPath: string): Promise<{
+  projectId: string | null;
+  projectPath: string | null;
+  folderPaths: string[];
+}> {
+  const trimmedValue = projectIdOrPath.trim();
+  if (!trimmedValue) {
+    throw new Error('Project is required.');
   }
 
-  const absoluteProjectPath = normalizeAbsolutePath(normalizedProjectPath);
-  const projectStats = await fs.stat(absoluteProjectPath);
-  if (!projectStats.isDirectory()) {
+  const projectById = getProjectById(trimmedValue);
+  if (projectById) {
+    return {
+      projectId: projectById.id,
+      projectPath: getProjectPrimaryFolderPath(projectById),
+      folderPaths: projectById.folderPaths,
+    };
+  }
+
+  const normalizedPath = normalizeProjectFolderPath(trimmedValue);
+  const projectByFolderPath = findProjectByFolderPath(normalizedPath);
+  if (projectByFolderPath) {
+    return {
+      projectId: projectByFolderPath.id,
+      projectPath: getProjectPrimaryFolderPath(projectByFolderPath),
+      folderPaths: projectByFolderPath.folderPaths,
+    };
+  }
+
+  const stat = await fs.stat(normalizedPath);
+  if (!stat.isDirectory()) {
     throw new Error('Project path must be a directory.');
   }
 
-  const queue: Array<{ dirPath: string; depth: number }> = [{ dirPath: absoluteProjectPath, depth: 0 }];
+  return {
+    projectId: null,
+    projectPath: normalizedPath,
+    folderPaths: [normalizedPath],
+  };
+}
+
+async function discoverGitReposInFolder(folderPath: string): Promise<{
+  repos: string[];
+  scannedDirs: number;
+  truncated: boolean;
+}> {
+  const queue: Array<{ dirPath: string; depth: number }> = [{ dirPath: folderPath, depth: 0 }];
   const visited = new Set<string>();
   const discoveredRepos: string[] = [];
   let scannedDirs = 0;
@@ -157,7 +195,7 @@ export async function discoverProjectGitRepos(projectPath: string): Promise<Disc
       discoveredRepos.push(normalizedCurrentDir);
     }
 
-    let entries: Array<import('fs').Dirent>;
+    let entries: Array<import('node:fs').Dirent>;
     try {
       entries = await fs.readdir(normalizedCurrentDir, { withFileTypes: true });
     } catch {
@@ -167,33 +205,83 @@ export async function discoverProjectGitRepos(projectPath: string): Promise<Disc
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (DISCOVERY_SKIP_DIRS.has(entry.name)) continue;
-
-      const childPath = path.join(normalizedCurrentDir, entry.name);
-      queue.push({ dirPath: childPath, depth: current.depth + 1 });
+      queue.push({ dirPath: path.join(normalizedCurrentDir, entry.name), depth: current.depth + 1 });
     }
   }
 
-  const uniqueRepos = Array.from(new Set(discoveredRepos)).sort((a, b) => a.localeCompare(b));
-  const repos: DiscoveredProjectGitRepo[] = uniqueRepos.map((repoPath) => {
-    const relativePath = path.relative(absoluteProjectPath, repoPath);
-    return {
-      repoPath,
-      relativePath: relativePath === '.' ? '' : relativePath,
-    };
-  });
-
   return {
-    repos,
-    truncated,
+    repos: Array.from(new Set(discoveredRepos)).sort((left, right) => left.localeCompare(right)),
     scannedDirs,
-    overlapDetected: hasOverlappingRepoRoots(uniqueRepos),
+    truncated,
   };
 }
 
-export async function discoverProjectGitReposWithBranches(projectPath: string): Promise<DiscoverProjectGitReposWithBranchesResult> {
-  const discovery = await discoverProjectGitRepos(projectPath);
+function toDiscoveredRepoRelativePath(
+  folderPath: string,
+  repoPath: string,
+  folderEntryName: string,
+  hasMultipleFolders: boolean,
+): string {
+  const relativePath = path.relative(folderPath, repoPath);
+  if (!hasMultipleFolders) {
+    return relativePath === '.' ? '' : relativePath;
+  }
+  return relativePath === '.'
+    ? folderEntryName
+    : path.join(folderEntryName, relativePath);
+}
+
+export async function discoverProjectGitRepos(projectIdOrPath: string): Promise<DiscoverProjectGitReposResult> {
+  const resolvedProject = await resolveProjectReference(projectIdOrPath);
+  if (resolvedProject.folderPaths.length === 0) {
+    return {
+      repos: [],
+      truncated: false,
+      scannedDirs: 0,
+      overlapDetected: false,
+    };
+  }
+
+  const folderEntries = buildProjectFolderEntries(resolvedProject.folderPaths);
+  const hasMultipleFolders = folderEntries.length > 1;
+  const repos: DiscoveredProjectGitRepo[] = [];
+  const seenRepoPaths = new Set<string>();
+  let scannedDirs = 0;
+  let truncated = false;
+
+  for (const folderEntry of folderEntries) {
+    const discovery = await discoverGitReposInFolder(folderEntry.sourcePath);
+    scannedDirs += discovery.scannedDirs;
+    truncated = truncated || discovery.truncated;
+
+    for (const repoPath of discovery.repos) {
+      if (seenRepoPaths.has(repoPath)) continue;
+      seenRepoPaths.add(repoPath);
+      repos.push({
+        repoPath,
+        relativePath: toDiscoveredRepoRelativePath(
+          folderEntry.sourcePath,
+          repoPath,
+          folderEntry.entryName,
+          hasMultipleFolders,
+        ),
+      });
+    }
+  }
+
+  const sortedRepos = repos.sort((left, right) => left.repoPath.localeCompare(right.repoPath));
+  return {
+    repos: sortedRepos,
+    truncated,
+    scannedDirs,
+    overlapDetected: hasOverlappingRepoRoots(sortedRepos.map((repo) => repo.repoPath)),
+  };
+}
+
+export async function discoverProjectGitReposWithBranches(projectIdOrPath: string): Promise<DiscoverProjectGitReposWithBranchesResult> {
+  const discovery = await discoverProjectGitRepos(projectIdOrPath);
   const branchEntries = await Promise.all(
-    discovery.repos.map(async (repo) => [repo.repoPath, await listRepoBranches(repo.repoPath)] as const)
+    discovery.repos.map(async (repo) => [repo.repoPath, await listRepoBranches(repo.repoPath)] as const),
   );
 
   return {
@@ -202,29 +290,64 @@ export async function discoverProjectGitReposWithBranches(projectPath: string): 
   };
 }
 
-export async function getProjectActivity(projectPath: string): Promise<ProjectActivityResult> {
+export async function getProjectActivity(projectIdOrPath: string): Promise<ProjectActivityResult> {
+  const resolvedProject = await resolveProjectReference(projectIdOrPath);
+
   const [sessions, drafts] = await Promise.all([
-    listSessions(projectPath),
-    listDrafts(projectPath),
+    resolvedProject.projectId ? listSessions(resolvedProject.projectId) : listSessions(resolvedProject.projectPath ?? undefined),
+    resolvedProject.projectId ? listDrafts(resolvedProject.projectId) : listDrafts(resolvedProject.projectPath ?? undefined),
   ]);
 
-  return {
-    sessions,
-    drafts,
-  };
+  return { sessions, drafts };
 }
 
 export async function resolveProjectByName(projectName: string): Promise<ResolveProjectResult> {
+  const trimmedName = projectName.trim();
+  if (!trimmedName) {
+    return { success: false, projectId: null, projectPath: null, error: 'Project name is required.' };
+  }
+
   try {
-    const resolvedPath = await resolveRepositoryPathByName(projectName);
+    const normalizedQuery = trimmedName.toLowerCase();
+    const matchingProject = getProjects().find((project) => (
+      project.name.toLowerCase() === normalizedQuery
+      || project.folderPaths.some((folderPath) => path.basename(folderPath).toLowerCase() === normalizedQuery)
+    ));
+    if (matchingProject) {
+      return {
+        success: true,
+        projectId: matchingProject.id,
+        projectPath: getProjectPrimaryFolderPath(matchingProject) ?? matchingProject.folderPaths[0] ?? null,
+      };
+    }
+
+    const resolvedPath = await resolveRepositoryPathByName(trimmedName);
+    if (!resolvedPath) {
+      throw new Error('Project not found.');
+    }
+    const existingProject = findProjectByFolderPath(resolvedPath);
+    if (existingProject) {
+      return {
+        success: true,
+        projectId: existingProject.id,
+        projectPath: getProjectPrimaryFolderPath(existingProject) ?? existingProject.folderPaths[0] ?? null,
+      };
+    }
+
+    const project = addProject({
+      name: path.basename(resolvedPath),
+      folderPaths: [resolvedPath],
+    });
     return {
       success: true,
+      projectId: project.id,
       projectPath: resolvedPath,
     };
   } catch (error) {
     console.error('Failed to resolve project by name:', error);
     return {
       success: false,
+      projectId: null,
       projectPath: null,
       error: 'Failed to search projects. Please try again.',
     };
@@ -272,11 +395,7 @@ function getProjectNameFromRemoteUrl(remoteUrl: string): string | null {
     rawPath = parsed.pathname;
   } catch {
     const scpLikeMatch = trimmed.match(/^([^@]+@)?([^:]+):(.+)$/);
-    if (scpLikeMatch) {
-      rawPath = scpLikeMatch[3];
-    } else {
-      rawPath = trimmed;
-    }
+    rawPath = scpLikeMatch ? scpLikeMatch[3] : trimmed;
   }
 
   const normalized = rawPath.replace(/\/+$/, '');
@@ -407,12 +526,12 @@ export async function cloneRemoteProject(
 ): Promise<CloneRemoteProjectResult> {
   const trimmedRemoteUrl = remoteUrl.trim();
   if (!trimmedRemoteUrl) {
-    return { success: false, projectPath: null, error: 'Please enter a remote project URL.' };
+    return { success: false, projectId: null, projectPath: null, error: 'Please enter a remote project URL.' };
   }
 
   const projectName = getProjectNameFromRemoteUrl(trimmedRemoteUrl);
   if (!projectName) {
-    return { success: false, projectPath: null, error: 'Could not determine project name from URL.' };
+    return { success: false, projectId: null, projectPath: null, error: 'Could not determine project name from URL.' };
   }
 
   const cloneRoot = path.join(os.homedir(), '.viba', 'projects');
@@ -423,6 +542,7 @@ export async function cloneRemoteProject(
     await fs.access(targetPath);
     return {
       success: false,
+      projectId: null,
       projectPath: null,
       error: `Project already exists at ${targetPath}.`,
     };
@@ -432,7 +552,7 @@ export async function cloneRemoteProject(
 
   const credentialResolution = await resolveCloneCredential(trimmedRemoteUrl, credentialId);
   if (!credentialResolution.success) {
-    return { success: false, projectPath: null, error: credentialResolution.error };
+    return { success: false, projectId: null, projectPath: null, error: credentialResolution.error };
   }
 
   const cloneUrl = (credentialResolution.credential && credentialResolution.token)
@@ -449,8 +569,14 @@ export async function cloneRemoteProject(
       await clonedRepoGit.remote(['set-url', 'origin', trimmedRemoteUrl]);
     }
 
+    const project = addProject({
+      name: projectName,
+      folderPaths: [targetPath],
+    });
+
     return {
       success: true,
+      projectId: project.id,
       projectPath: targetPath,
     };
   } catch (error) {
@@ -460,14 +586,13 @@ export async function cloneRemoteProject(
       credentialResolution.token ?? '',
     ]);
 
-    try {
-      await fs.rm(targetPath, { recursive: true, force: true });
-    } catch {
+    await fs.rm(targetPath, { recursive: true, force: true }).catch(() => {
       // Ignore cleanup errors.
-    }
+    });
 
     return {
       success: false,
+      projectId: null,
       projectPath: null,
       error: safeMessage || 'Failed to clone project.',
     };

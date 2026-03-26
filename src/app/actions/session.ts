@@ -36,6 +36,8 @@ import {
   stopTrackedSessionProcess,
   terminateProcessGracefully,
 } from '@/lib/session-processes';
+import { findProjectByFolderPath, getProjectById } from '@/lib/store';
+import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '@/lib/project-folders';
 import type {
   AgentProvider,
   HistoryEntry,
@@ -45,14 +47,17 @@ import type {
   SessionAgentRunState,
   SessionAgentRuntimeState,
   SessionGitRepoContext,
+  SessionWorkspaceFolder,
   SessionWorkspaceMode,
   SessionWorkspacePreference,
 } from '@/lib/types';
 
 export type SessionMetadata = {
   sessionName: string;
+  projectId?: string;
   projectPath: string;
   workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
   workspaceMode: SessionWorkspaceMode;
   activeRepoPath?: string;
   gitRepos: SessionGitRepoContext[];
@@ -96,6 +101,7 @@ export type SessionLaunchContext = {
 
 export type SessionPrefillContext = {
   sourceSessionName: string;
+  projectId?: string;
   projectPath: string;
   title?: string;
   initialMessage?: string;
@@ -150,7 +156,9 @@ export type SessionCreateMetadata = {
 export type SessionCreateResult = {
   success: boolean;
   sessionName?: string;
+  projectId?: string;
   workspacePath?: string;
+  workspaceFolders?: SessionWorkspaceFolder[];
   workspaceMode?: SessionWorkspaceMode;
   activeRepoPath?: string;
   gitRepos?: SessionGitRepoContext[];
@@ -162,9 +170,11 @@ export type SessionCreateResult = {
 export type SessionWorkspacePreparation = {
   preparationId: string;
   sessionName: string;
+  projectId?: string;
   projectPath: string;
   contextFingerprint: string;
   workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
   workspaceMode: SessionWorkspaceMode;
   activeRepoPath?: string;
   gitRepos: SessionGitRepoContext[];
@@ -174,8 +184,10 @@ export type SessionWorkspacePreparation = {
 
 type SessionRow = {
   session_name: string;
+  project_id: string | null;
   project_path: string | null;
   workspace_path: string | null;
+  workspace_folders_json: string | null;
   workspace_mode: string | null;
   active_repo_path: string | null;
   repo_path: string | null;
@@ -225,6 +237,7 @@ type SessionLaunchContextRow = {
 
 type SessionWorkspacePreparationRow = {
   preparation_id: string;
+  project_id: string | null;
   project_path: string;
   context_fingerprint: string;
   session_name: string;
@@ -259,6 +272,43 @@ function parseStringArray(value: string | null): string[] | undefined {
     return parsed.filter((entry): entry is string => typeof entry === 'string');
   } catch {
     return undefined;
+  }
+}
+
+function parseWorkspaceFolders(value: string | null): SessionWorkspaceFolder[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+      .map((entry) => {
+        const sourcePath = typeof entry.sourcePath === 'string' ? entry.sourcePath.trim() : '';
+        const workspaceRelativePath = typeof entry.workspaceRelativePath === 'string'
+          ? entry.workspaceRelativePath.trim()
+          : '';
+        const workspacePath = typeof entry.workspacePath === 'string' ? entry.workspacePath.trim() : '';
+        const provisioning = entry.provisioning === 'direct'
+          || entry.provisioning === 'link'
+          || entry.provisioning === 'copy'
+          || entry.provisioning === 'worktree'
+          ? entry.provisioning
+          : null;
+
+        if (!sourcePath || !workspaceRelativePath || !workspacePath || !provisioning) {
+          return null;
+        }
+
+        return {
+          sourcePath,
+          workspaceRelativePath,
+          workspacePath,
+          provisioning,
+        } satisfies SessionWorkspaceFolder;
+      })
+      .filter((entry): entry is SessionWorkspaceFolder => Boolean(entry));
+  } catch {
+    return [];
   }
 }
 
@@ -330,6 +380,7 @@ async function getSessionGitRepos(sessionName: string): Promise<SessionGitRepoCo
 async function rowToSessionMetadata(row: SessionRow): Promise<SessionMetadata> {
   const projectPath = row.project_path?.trim() || row.repo_path?.trim() || '';
   const workspacePath = row.workspace_path?.trim() || row.worktree_path?.trim() || projectPath;
+  const workspaceFolders = parseWorkspaceFolders(row.workspace_folders_json);
   const gitRepos = await getSessionGitRepos(row.session_name);
 
   const fallbackRepo = row.repo_path?.trim();
@@ -349,8 +400,10 @@ async function rowToSessionMetadata(row: SessionRow): Promise<SessionMetadata> {
 
   const metadata: SessionMetadata = {
     sessionName: row.session_name,
+    projectId: normalizeOptionalText(row.project_id) ?? undefined,
     projectPath,
     workspacePath,
+    workspaceFolders,
     workspaceMode: normalizeSessionWorkspaceMode(row.workspace_mode),
     activeRepoPath: row.active_repo_path?.trim() || undefined,
     gitRepos,
@@ -368,6 +421,17 @@ async function rowToSessionMetadata(row: SessionRow): Promise<SessionMetadata> {
     initialized: row.initialized === null ? undefined : Boolean(row.initialized),
     timestamp: row.timestamp,
   };
+
+  if (metadata.workspaceFolders.length === 0 && projectPath && workspacePath) {
+    metadata.workspaceFolders = [
+      buildLocalWorkspaceFolderMapping(
+        projectPath,
+        workspacePath,
+        '.',
+        metadata.workspaceMode === 'local_source' ? 'direct' : 'copy',
+      ),
+    ];
+  }
 
   return {
     ...metadata,
@@ -457,6 +521,29 @@ function normalizePath(value: string): string {
   return path.resolve(value.trim());
 }
 
+function normalizeRelativeWorkspacePath(value: string): string {
+  const trimmed = value.trim().replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+$/, '');
+  return trimmed || '.';
+}
+
+function buildLocalWorkspaceFolderMapping(
+  sourcePath: string,
+  workspacePath: string,
+  workspaceRelativePath: string,
+  provisioning: SessionWorkspaceFolder['provisioning'],
+): SessionWorkspaceFolder {
+  return {
+    sourcePath: normalizePath(sourcePath),
+    workspaceRelativePath: normalizeRelativeWorkspacePath(workspaceRelativePath),
+    workspacePath: normalizePath(workspacePath),
+    provisioning,
+  };
+}
+
+function getSessionProjectKey(projectId: string | undefined, projectPath: string): string {
+  return projectId?.trim() || projectPath;
+}
+
 function isPathInside(parentPath: string, candidatePath: string): boolean {
   const normalizedParent = normalizePath(parentPath);
   const normalizedCandidate = normalizePath(candidatePath);
@@ -484,8 +571,10 @@ const SESSION_WORKSPACE_PREPARATION_TTL_MS = 15 * 60 * 1000;
 
 type ProvisionedSessionWorkspace = {
   sessionName: string;
+  projectId?: string;
   projectPath: string;
   workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
   workspaceMode: SessionWorkspaceMode;
   activeRepoPath?: string;
   gitRepos: SessionGitRepoContext[];
@@ -497,8 +586,10 @@ type ProvisionedSessionWorkspace = {
 
 type SessionWorkspacePreparationPayload = {
   sessionName: string;
+  projectId?: string;
   projectPath: string;
   workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
   workspaceMode: SessionWorkspaceMode;
   activeRepoPath?: string;
   gitRepos: SessionGitRepoContext[];
@@ -509,8 +600,11 @@ type SessionWorkspacePreparationPayload = {
 };
 
 type ResolvedSessionWorkspaceContextInput = {
+  projectId?: string;
   normalizedProjectPath: string;
+  normalizedFolderPaths: string[];
   discoveredRepoPaths: string[];
+  repoRelativePathByRepoPath: Record<string, string>;
   hasOverlap: boolean;
   normalizedContexts: SessionCreateGitContextInput[];
   workspacePreference: SessionWorkspacePreference;
@@ -528,16 +622,69 @@ function toCanonicalGitContexts(
     .sort((left, right) => left.repoPath.localeCompare(right.repoPath));
 }
 
+async function resolveSessionProjectContext(projectIdOrPath: string): Promise<{
+  projectId?: string;
+  normalizedProjectPath: string;
+  normalizedFolderPaths: string[];
+}> {
+  const trimmedValue = projectIdOrPath.trim();
+  if (!trimmedValue) {
+    throw new Error('Project is required.');
+  }
+
+  const projectById = getProjectById(trimmedValue);
+  if (projectById) {
+    const primaryFolderPath = getProjectPrimaryFolderPath(projectById);
+    if (!primaryFolderPath) {
+      throw new Error('Project does not have any associated folders.');
+    }
+    return {
+      projectId: projectById.id,
+      normalizedProjectPath: normalizeProjectFolderPath(primaryFolderPath),
+      normalizedFolderPaths: projectById.folderPaths.map((folderPath) => normalizeProjectFolderPath(folderPath)),
+    };
+  }
+
+  const normalizedPath = normalizeProjectFolderPath(trimmedValue);
+  const projectByFolderPath = findProjectByFolderPath(normalizedPath);
+  if (projectByFolderPath) {
+    const primaryFolderPath = getProjectPrimaryFolderPath(projectByFolderPath);
+    if (!primaryFolderPath) {
+      throw new Error('Project does not have any associated folders.');
+    }
+    return {
+      projectId: projectByFolderPath.id,
+      normalizedProjectPath: normalizeProjectFolderPath(primaryFolderPath),
+      normalizedFolderPaths: projectByFolderPath.folderPaths.map((folderPath) => normalizeProjectFolderPath(folderPath)),
+    };
+  }
+
+  const projectStats = await fs.stat(normalizedPath);
+  if (!projectStats.isDirectory()) {
+    throw new Error('Project path must be a directory.');
+  }
+
+  return {
+    normalizedProjectPath: normalizedPath,
+    normalizedFolderPaths: [normalizedPath],
+  };
+}
+
 function buildSessionWorkspaceContextFingerprint(
-  projectPath: string,
+  projectContext: {
+    projectId?: string;
+    normalizedProjectPath: string;
+    normalizedFolderPaths: string[];
+  },
   contexts: SessionCreateGitContextInput[],
   workspacePreference: SessionWorkspacePreference,
 ): string {
-  const normalizedProjectPath = normalizePath(projectPath);
   const canonicalContexts = toCanonicalGitContexts(contexts);
   return createHash('sha1')
     .update(JSON.stringify({
-      projectPath: normalizedProjectPath,
+      projectId: projectContext.projectId ?? null,
+      projectPath: projectContext.normalizedProjectPath,
+      folderPaths: projectContext.normalizedFolderPaths,
       workspacePreference,
       contexts: canonicalContexts,
     }))
@@ -632,8 +779,10 @@ function toSessionWorkspacePreparationPayload(
 ): SessionWorkspacePreparationPayload {
   return {
     sessionName: provision.sessionName,
+    projectId: provision.projectId,
     projectPath: provision.projectPath,
     workspacePath: provision.workspacePath,
+    workspaceFolders: provision.workspaceFolders,
     workspaceMode: provision.workspaceMode,
     activeRepoPath: provision.activeRepoPath,
     gitRepos: provision.gitRepos,
@@ -653,6 +802,7 @@ function parseSessionWorkspacePreparationPayload(
     const payload = parsed as Partial<SessionWorkspacePreparationPayload>;
     if (
       typeof payload.sessionName !== 'string'
+      || (payload.projectId !== undefined && payload.projectId !== null && typeof payload.projectId !== 'string')
       || typeof payload.projectPath !== 'string'
       || typeof payload.workspacePath !== 'string'
       || typeof payload.workspaceMode !== 'string'
@@ -680,8 +830,12 @@ function parseSessionWorkspacePreparationPayload(
 
     return {
       sessionName: payload.sessionName.trim(),
+      projectId: normalizeOptionalText(payload.projectId),
       projectPath: normalizePath(payload.projectPath),
       workspacePath: normalizePath(payload.workspacePath),
+      workspaceFolders: Array.isArray(payload.workspaceFolders)
+        ? parseWorkspaceFolders(JSON.stringify(payload.workspaceFolders))
+        : [],
       workspaceMode: normalizedWorkspaceMode,
       activeRepoPath: normalizeOptionalText(payload.activeRepoPath),
       gitRepos,
@@ -792,35 +946,36 @@ function resolveRequestedGitContexts(
 }
 
 async function resolveSessionWorkspaceContextInput(
-  projectPath: string,
+  projectIdOrPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
   workspacePreference: SessionWorkspacePreference = 'workspace',
 ): Promise<ResolvedSessionWorkspaceContextInput> {
-  const normalizedProjectPath = normalizePath(projectPath);
-  const projectStats = await fs.stat(normalizedProjectPath);
-  if (!projectStats.isDirectory()) {
-    throw new Error('Project path must be a directory.');
-  }
-
-  const discovery = await discoverProjectGitRepos(normalizedProjectPath);
+  const projectContext = await resolveSessionProjectContext(projectIdOrPath);
+  const discovery = await discoverProjectGitRepos(projectContext.projectId ?? projectContext.normalizedProjectPath);
   const discoveredRepoPaths = discovery.repos.map((repo) => repo.repoPath);
+  const repoRelativePathByRepoPath = Object.fromEntries(
+    discovery.repos.map((repo) => [repo.repoPath, repo.relativePath]),
+  );
   const hasOverlap = hasOverlappingRepoRoots(discoveredRepoPaths);
-  const requestedContexts = resolveRequestedGitContexts(normalizedProjectPath, gitContextsOrBaseBranch);
+  const requestedContexts = resolveRequestedGitContexts(projectContext.normalizedProjectPath, gitContextsOrBaseBranch);
   const normalizedContexts = normalizeGitContextInput(
-    normalizedProjectPath,
+    projectContext.normalizedProjectPath,
     discoveredRepoPaths,
     requestedContexts,
   );
   const normalizedWorkspacePreference = normalizeSessionWorkspacePreference(workspacePreference);
   const contextFingerprint = buildSessionWorkspaceContextFingerprint(
-    normalizedProjectPath,
+    projectContext,
     normalizedContexts,
     normalizedWorkspacePreference,
   );
 
   return {
-    normalizedProjectPath,
+    projectId: projectContext.projectId,
+    normalizedProjectPath: projectContext.normalizedProjectPath,
+    normalizedFolderPaths: projectContext.normalizedFolderPaths,
     discoveredRepoPaths,
+    repoRelativePathByRepoPath,
     hasOverlap,
     normalizedContexts,
     workspacePreference: normalizedWorkspacePreference,
@@ -828,28 +983,58 @@ async function resolveSessionWorkspaceContextInput(
   };
 }
 
+function getWorkspaceRelativeRepoPath(
+  repoRelativePathByRepoPath: Record<string, string>,
+  projectPath: string,
+  repoPath: string,
+): string {
+  const mappedRelativePath = repoRelativePathByRepoPath[repoPath];
+  if (mappedRelativePath !== undefined) {
+    return mappedRelativePath;
+  }
+
+  const relativeRepoPath = path.relative(projectPath, repoPath);
+  return relativeRepoPath === '.' ? '' : relativeRepoPath;
+}
+
+async function ensureWorkspaceParent(workspacePath: string): Promise<void> {
+  await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+}
+
+async function linkWorkspaceFolder(sourcePath: string, targetPath: string): Promise<void> {
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.symlink(sourcePath, targetPath, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
 async function createSingleRepoSession(
+  projectKey: string,
   projectPath: string,
   sessionName: string,
   context: SessionCreateGitContextInput,
-): Promise<{ workspacePath: string; gitRepos: SessionGitRepoContext[]; activeRepoPath: string }> {
-  const sessionRootPath = getSessionRootPath(projectPath, sessionName);
+): Promise<{
+  workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
+  gitRepos: SessionGitRepoContext[];
+  activeRepoPath: string;
+}> {
+  const sessionRootPath = getSessionRootPath(projectKey, sessionName);
   const workspacePath = path.join(sessionRootPath, 'workspace');
-  await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+  await ensureWorkspaceParent(workspacePath);
 
   const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
   const branchName = buildSessionBranchName(sessionName, context.repoPath);
   const git = simpleGit(context.repoPath);
   await git.raw(['worktree', 'add', '-b', branchName, workspacePath, baseBranch]);
 
-  const relativeRepoPath = path.relative(projectPath, context.repoPath);
-
   return {
     workspacePath,
+    workspaceFolders: [
+      buildLocalWorkspaceFolderMapping(projectPath, workspacePath, '.', 'worktree'),
+    ],
     activeRepoPath: context.repoPath,
     gitRepos: [{
       sourceRepoPath: context.repoPath,
-      relativeRepoPath: relativeRepoPath === '.' ? '' : relativeRepoPath,
+      relativeRepoPath: '',
       worktreePath: workspacePath,
       branchName,
       baseBranch,
@@ -857,25 +1042,70 @@ async function createSingleRepoSession(
   };
 }
 
-async function createMultiRepoSession(
+async function copyFolderWithoutGitRepos(
+  sourcePath: string,
+  destinationPath: string,
+  gitRepoPaths: string[],
+): Promise<void> {
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await copyProjectWithoutGitRepos(sourcePath, destinationPath, gitRepoPaths);
+}
+
+async function createWorkspaceModeSession(
+  projectKey: string,
   projectPath: string,
   sessionName: string,
+  folderPaths: string[],
   contexts: SessionCreateGitContextInput[],
-): Promise<{ workspacePath: string; gitRepos: SessionGitRepoContext[]; activeRepoPath: string }> {
-  const sessionRootPath = getSessionRootPath(projectPath, sessionName);
+  repoRelativePathByRepoPath: Record<string, string>,
+): Promise<{
+  workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
+  gitRepos: SessionGitRepoContext[];
+  activeRepoPath?: string;
+}> {
+  const sessionRootPath = getSessionRootPath(projectKey, sessionName);
   const workspacePath = path.join(sessionRootPath, 'workspace');
   await fs.mkdir(workspacePath, { recursive: true });
 
-  const sourceRepoPaths = contexts.map((context) => context.repoPath);
-  await copyProjectWithoutGitRepos(projectPath, workspacePath, sourceRepoPaths);
-
+  const folderEntries = buildProjectFolderEntries(folderPaths);
+  const hasMultipleFolders = folderEntries.length > 1;
+  const workspaceFolders: SessionWorkspaceFolder[] = [];
   const gitRepos: SessionGitRepoContext[] = [];
+  const sourceRepoPaths = contexts.map((context) => context.repoPath);
+
+  for (const folderEntry of folderEntries) {
+    const folderWorkspaceRelativePath = hasMultipleFolders ? folderEntry.entryName : '.';
+    const folderWorkspacePath = hasMultipleFolders
+      ? path.join(workspacePath, folderEntry.entryName)
+      : workspacePath;
+    const nestedRepoPaths = sourceRepoPaths.filter((repoPath) => (
+      isPathInside(folderEntry.sourcePath, repoPath)
+    ));
+
+    await copyFolderWithoutGitRepos(folderEntry.sourcePath, folderWorkspacePath, nestedRepoPaths);
+    workspaceFolders.push(buildLocalWorkspaceFolderMapping(
+      folderEntry.sourcePath,
+      folderWorkspacePath,
+      folderWorkspaceRelativePath,
+      'copy',
+    ));
+  }
 
   for (const context of contexts) {
-    const relativeRepoPath = path.relative(projectPath, context.repoPath);
-    const normalizedRelativeRepoPath = relativeRepoPath === '.' ? '' : relativeRepoPath;
-    const targetWorktreePath = path.join(workspacePath, normalizedRelativeRepoPath);
+    const relativeRepoPath = getWorkspaceRelativeRepoPath(
+      repoRelativePathByRepoPath,
+      projectPath,
+      context.repoPath,
+    );
+    const normalizedRelativeRepoPath = normalizeRelativeWorkspacePath(relativeRepoPath === '' ? '.' : relativeRepoPath);
+    const targetWorktreePath = normalizedRelativeRepoPath === '.'
+      ? workspacePath
+      : path.join(workspacePath, normalizedRelativeRepoPath);
 
+    await fs.rm(targetWorktreePath, { recursive: true, force: true }).catch(() => {
+      // Ignore cleanup before worktree creation.
+    });
     await fs.mkdir(path.dirname(targetWorktreePath), { recursive: true });
 
     const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
@@ -885,95 +1115,181 @@ async function createMultiRepoSession(
 
     gitRepos.push({
       sourceRepoPath: context.repoPath,
-      relativeRepoPath: normalizedRelativeRepoPath,
+      relativeRepoPath: normalizedRelativeRepoPath === '.' ? '' : normalizedRelativeRepoPath,
       worktreePath: targetWorktreePath,
       branchName,
       baseBranch,
     });
+
+    const existingWorkspaceFolderIndex = workspaceFolders.findIndex((workspaceFolder) => (
+      workspaceFolder.workspacePath === targetWorktreePath
+    ));
+    const workspaceFolderMapping = buildLocalWorkspaceFolderMapping(
+      context.repoPath,
+      targetWorktreePath,
+      normalizedRelativeRepoPath,
+      'worktree',
+    );
+    if (existingWorkspaceFolderIndex >= 0) {
+      workspaceFolders[existingWorkspaceFolderIndex] = workspaceFolderMapping;
+    } else {
+      workspaceFolders.push(workspaceFolderMapping);
+    }
   }
 
   return {
     workspacePath,
-    activeRepoPath: contexts[0]?.repoPath || '',
+    workspaceFolders,
+    activeRepoPath: contexts[0]?.repoPath,
     gitRepos,
   };
 }
 
 async function createLocalSourceSession(
+  projectKey: string,
   projectPath: string,
+  sessionName: string,
+  folderPaths: string[],
   contexts: SessionCreateGitContextInput[],
-): Promise<{ workspacePath: string; gitRepos: SessionGitRepoContext[]; activeRepoPath?: string }> {
+  repoRelativePathByRepoPath: Record<string, string>,
+): Promise<{
+  workspacePath: string;
+  workspaceFolders: SessionWorkspaceFolder[];
+  gitRepos: SessionGitRepoContext[];
+  activeRepoPath?: string;
+}> {
+  const folderEntries = buildProjectFolderEntries(folderPaths);
+  const hasMultipleFolders = folderEntries.length > 1;
+  let workspacePath = projectPath;
+  const workspaceFolders: SessionWorkspaceFolder[] = [];
+
+  if (hasMultipleFolders) {
+    const sessionRootPath = getSessionRootPath(projectKey, sessionName);
+    workspacePath = path.join(sessionRootPath, 'workspace');
+    await fs.mkdir(workspacePath, { recursive: true });
+
+    for (const folderEntry of folderEntries) {
+      const targetPath = path.join(workspacePath, folderEntry.entryName);
+      await linkWorkspaceFolder(folderEntry.sourcePath, targetPath);
+      workspaceFolders.push(buildLocalWorkspaceFolderMapping(
+        folderEntry.sourcePath,
+        targetPath,
+        folderEntry.entryName,
+        'link',
+      ));
+    }
+  } else {
+    workspaceFolders.push(buildLocalWorkspaceFolderMapping(projectPath, projectPath, '.', 'direct'));
+  }
+
   const gitRepos = await Promise.all(contexts.map(async (context) => {
-    const relativeRepoPath = path.relative(projectPath, context.repoPath);
+    const relativeRepoPath = getWorkspaceRelativeRepoPath(
+      repoRelativePathByRepoPath,
+      projectPath,
+      context.repoPath,
+    );
     const normalizedRelativeRepoPath = relativeRepoPath === '.' ? '' : relativeRepoPath;
     const branchName = await resolveRepoHeadBranch(context.repoPath);
     const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
+    const worktreePath = hasMultipleFolders
+      ? path.join(workspacePath, normalizeRelativeWorkspacePath(normalizedRelativeRepoPath || '.'))
+      : context.repoPath;
 
     return {
       sourceRepoPath: context.repoPath,
       relativeRepoPath: normalizedRelativeRepoPath,
-      worktreePath: context.repoPath,
+      worktreePath,
       branchName,
       baseBranch,
     } satisfies SessionGitRepoContext;
   }));
 
   return {
-    workspacePath: projectPath,
+    workspacePath,
+    workspaceFolders,
     activeRepoPath: contexts[0]?.repoPath,
     gitRepos,
   };
 }
 
 async function provisionSessionWorkspace(
-  projectPath: string,
+  projectIdOrPath: string,
   gitContextsOrBaseBranch: string | SessionCreateGitContextInput[],
   options: { sessionName?: string; resolvedInput?: ResolvedSessionWorkspaceContextInput } = {},
 ): Promise<ProvisionedSessionWorkspace> {
   const resolvedInput = options.resolvedInput
-    ?? await resolveSessionWorkspaceContextInput(projectPath, gitContextsOrBaseBranch);
+    ?? await resolveSessionWorkspaceContextInput(projectIdOrPath, gitContextsOrBaseBranch);
 
   const sessionName = normalizeOptionalText(options.sessionName) || buildSessionName();
+  const projectKey = getSessionProjectKey(resolvedInput.projectId, resolvedInput.normalizedProjectPath);
   let workspaceMode: SessionWorkspaceMode = 'folder';
   let workspacePath = resolvedInput.normalizedProjectPath;
+  let workspaceFolders: SessionWorkspaceFolder[] = [
+    buildLocalWorkspaceFolderMapping(
+      resolvedInput.normalizedProjectPath,
+      resolvedInput.normalizedProjectPath,
+      '.',
+      'direct',
+    ),
+  ];
   let activeRepoPath: string | undefined;
   let gitRepos: SessionGitRepoContext[] = [];
 
   if (resolvedInput.workspacePreference === 'local') {
     workspaceMode = 'local_source';
     const localResult = await createLocalSourceSession(
+      projectKey,
       resolvedInput.normalizedProjectPath,
+      sessionName,
+      resolvedInput.normalizedFolderPaths,
       resolvedInput.normalizedContexts,
+      resolvedInput.repoRelativePathByRepoPath,
     );
     workspacePath = localResult.workspacePath;
+    workspaceFolders = localResult.workspaceFolders;
     activeRepoPath = localResult.activeRepoPath;
     gitRepos = localResult.gitRepos;
-  } else if (resolvedInput.discoveredRepoPaths.length === 1 && !resolvedInput.hasOverlap) {
+  } else if (
+    resolvedInput.normalizedFolderPaths.length === 1
+    && resolvedInput.discoveredRepoPaths.length === 1
+    && !resolvedInput.hasOverlap
+    && (resolvedInput.repoRelativePathByRepoPath[resolvedInput.discoveredRepoPaths[0]] ?? '') === ''
+  ) {
     workspaceMode = 'single_worktree';
     const singleResult = await createSingleRepoSession(
+      projectKey,
       resolvedInput.normalizedProjectPath,
       sessionName,
       resolvedInput.normalizedContexts[0] ?? { repoPath: resolvedInput.discoveredRepoPaths[0] },
     );
     workspacePath = singleResult.workspacePath;
+    workspaceFolders = singleResult.workspaceFolders;
     activeRepoPath = singleResult.activeRepoPath;
     gitRepos = singleResult.gitRepos;
-  } else if (resolvedInput.discoveredRepoPaths.length > 1 && !resolvedInput.hasOverlap) {
-    workspaceMode = 'multi_repo_worktree';
-    const multiResult = await createMultiRepoSession(
+  } else {
+    const workspaceResult = await createWorkspaceModeSession(
+      projectKey,
       resolvedInput.normalizedProjectPath,
       sessionName,
+      resolvedInput.normalizedFolderPaths,
       resolvedInput.normalizedContexts,
+      resolvedInput.repoRelativePathByRepoPath,
     );
-    workspacePath = multiResult.workspacePath;
-    activeRepoPath = multiResult.activeRepoPath;
-    gitRepos = multiResult.gitRepos;
+    workspaceMode = resolvedInput.discoveredRepoPaths.length > 0 && !resolvedInput.hasOverlap
+      ? 'multi_repo_worktree'
+      : 'folder';
+    workspacePath = workspaceResult.workspacePath;
+    workspaceFolders = workspaceResult.workspaceFolders;
+    activeRepoPath = workspaceResult.activeRepoPath;
+    gitRepos = workspaceResult.gitRepos;
   }
 
   return {
     sessionName,
+    projectId: resolvedInput.projectId,
     projectPath: resolvedInput.normalizedProjectPath,
     workspacePath,
+    workspaceFolders,
     workspaceMode,
     activeRepoPath,
     gitRepos,
@@ -987,8 +1303,10 @@ async function persistSessionMetadataFromProvision(
 ): Promise<SessionMetadata> {
   const sessionData: SessionMetadata = {
     sessionName: provision.sessionName,
+    projectId: provision.projectId,
     projectPath: provision.projectPath,
     workspacePath: provision.workspacePath,
+    workspaceFolders: provision.workspaceFolders,
     workspaceMode: provision.workspaceMode,
     activeRepoPath: provision.activeRepoPath,
     gitRepos: provision.gitRepos,
@@ -1017,7 +1335,9 @@ function toSessionCreateResult(metadata: SessionMetadata): SessionCreateResult {
   return {
     success: true,
     sessionName: metadata.sessionName,
+    projectId: metadata.projectId,
     workspacePath: metadata.workspacePath,
+    workspaceFolders: metadata.workspaceFolders,
     workspaceMode: metadata.workspaceMode,
     activeRepoPath: metadata.activeRepoPath,
     gitRepos: metadata.gitRepos,
@@ -1038,18 +1358,19 @@ function getProvisionRepoPaths(
 async function terminateProvisionedStartupCommand(
   provision: Pick<
     ProvisionedSessionWorkspace,
-    'projectPath' | 'sessionName' | 'startupCommandMode' | 'startupCommandProcessPid'
+    'projectId' | 'projectPath' | 'sessionName' | 'startupCommandMode' | 'startupCommandProcessPid'
   >,
 ): Promise<void> {
+  const projectKey = getSessionProjectKey(provision.projectId, provision.projectPath);
   if (provision.startupCommandMode === 'tmux') {
     await terminateSessionTerminalSessions(provision.sessionName);
-    await clearTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
+    await clearTrackedSessionProcess(projectKey, provision.sessionName, 'startup-script');
     return;
   }
 
-  const trackedProcess = await getTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
+  const trackedProcess = await getTrackedSessionProcess(projectKey, provision.sessionName, 'startup-script');
   if (trackedProcess) {
-    await stopTrackedSessionProcess(provision.projectPath, provision.sessionName, 'startup-script');
+    await stopTrackedSessionProcess(projectKey, provision.sessionName, 'startup-script');
     return;
   }
 
@@ -1133,7 +1454,7 @@ async function launchStartupCommandForProvision(
     role: 'startup-script',
     source: 'startup-script',
     sessionName: provision.sessionName,
-    projectPath: provision.projectPath,
+    projectPath: getSessionProjectKey(provision.projectId, provision.projectPath),
     workspacePath: provision.workspacePath,
     command: startupScript,
     shellCommand,
@@ -1186,10 +1507,15 @@ async function cleanupWorkspaceRoot(
   workspacePath: string,
   workspaceMode: SessionWorkspaceMode,
 ): Promise<void> {
-  if (workspaceMode === 'folder' || workspaceMode === 'local_source') return;
-
   const sessionRootPath = path.dirname(workspacePath);
-  if (sessionRootPath && sessionRootPath.startsWith(path.join(os.homedir(), '.viba', 'projects'))) {
+  const managedProjectsRoot = path.join(os.homedir(), '.viba', 'projects');
+  if (workspaceMode === 'folder' || workspaceMode === 'local_source') {
+    if (!sessionRootPath || !sessionRootPath.startsWith(managedProjectsRoot)) {
+      return;
+    }
+  }
+
+  if (sessionRootPath && sessionRootPath.startsWith(managedProjectsRoot)) {
     try {
       await fs.rm(sessionRootPath, { recursive: true, force: true });
     } catch {
@@ -1201,7 +1527,7 @@ async function cleanupWorkspaceRoot(
 async function cleanupProvisionedSessionWorkspace(
   provision: Pick<
     ProvisionedSessionWorkspace,
-    'projectPath' | 'sessionName' | 'workspaceMode' | 'workspacePath' | 'gitRepos' | 'startupCommandMode' | 'startupCommandProcessPid'
+    'projectId' | 'projectPath' | 'sessionName' | 'workspaceMode' | 'workspacePath' | 'gitRepos' | 'startupCommandMode' | 'startupCommandProcessPid'
   >,
 ): Promise<void> {
   await terminateProvisionedStartupCommand(provision);
@@ -1230,9 +1556,11 @@ function rowToSessionWorkspacePreparation(
   return {
     preparationId: row.preparation_id,
     sessionName: payload.sessionName,
+    projectId: payload.projectId,
     projectPath: payload.projectPath,
     contextFingerprint: row.context_fingerprint,
     workspacePath: payload.workspacePath,
+    workspaceFolders: payload.workspaceFolders,
     workspaceMode: payload.workspaceMode,
     activeRepoPath: payload.activeRepoPath,
     gitRepos: payload.gitRepos,
@@ -1264,6 +1592,7 @@ async function sweepExpiredSessionWorkspacePreparations(): Promise<void> {
     if (payload) {
       try {
         await cleanupProvisionedSessionWorkspace({
+          projectId: payload.projectId,
           projectPath: payload.projectPath,
           sessionName: payload.sessionName,
           workspaceMode: payload.workspaceMode,
@@ -1321,20 +1650,22 @@ export async function saveSessionMetadata(metadata: SessionMetadata): Promise<vo
     );
     db.prepare(`
       INSERT OR REPLACE INTO sessions (
-        session_name, project_path, workspace_path, workspace_mode, active_repo_path,
+        session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
         repo_path, worktree_path, branch_name, base_branch,
         agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
         last_error, last_activity_at, title, dev_server_script, initialized, timestamp
       ) VALUES (
-        @sessionName, @projectPath, @workspacePath, @workspaceMode, @activeRepoPath,
+        @sessionName, @projectId, @projectPath, @workspacePath, @workspaceFoldersJson, @workspaceMode, @activeRepoPath,
         @repoPath, @worktreePath, @branchName, @baseBranch,
         @agent, @model, @reasoningEffort, @threadId, @activeTurnId, @runState,
         @lastError, @lastActivityAt, @title, @devServerScript, @initialized, @timestamp
       )
     `).run({
       sessionName: nextMetadata.sessionName,
+      projectId: nextMetadata.projectId ?? null,
       projectPath: nextMetadata.projectPath,
       workspacePath: nextMetadata.workspacePath,
+      workspaceFoldersJson: JSON.stringify(nextMetadata.workspaceFolders ?? []),
       workspaceMode: nextMetadata.workspaceMode,
       activeRepoPath: nextMetadata.activeRepoPath ?? null,
       repoPath: compatibility.repoPath ?? null,
@@ -1518,6 +1849,7 @@ export async function getSessionPrefillContext(
 
   const prefill: SessionPrefillContext = {
     sourceSessionName: sessionName,
+    projectId: metadata.projectId,
     projectPath: metadata.projectPath,
     repoPath: metadata.repoPath,
     title: launchContext?.title || metadata.title,
@@ -1597,7 +1929,7 @@ export async function getSessionMetadata(sessionName: string): Promise<SessionMe
     const db = getLocalDb();
     const row = db.prepare(`
       SELECT
-        session_name, project_path, workspace_path, workspace_mode, active_repo_path,
+        session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
         repo_path, worktree_path, branch_name, base_branch,
         agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
         last_error, last_activity_at, title, dev_server_script, initialized, timestamp
@@ -1615,20 +1947,22 @@ export async function getSessionMetadata(sessionName: string): Promise<SessionMe
 export async function listSessions(projectPath?: string): Promise<SessionMetadata[]> {
   try {
     const db = getLocalDb();
+    const projectId = projectPath ? getProjectById(projectPath)?.id ?? null : null;
+    const filterColumn = projectPath ? (projectId ? 'project_id' : 'project_path') : null;
     const query = projectPath
       ? `
         SELECT
-          session_name, project_path, workspace_path, workspace_mode, active_repo_path,
+          session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
           repo_path, worktree_path, branch_name, base_branch,
           agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
           last_error, last_activity_at, title, dev_server_script, initialized, timestamp
         FROM sessions
-        WHERE project_path = ?
+        WHERE ${filterColumn} = ?
         ORDER BY timestamp DESC
       `
       : `
         SELECT
-          session_name, project_path, workspace_path, workspace_mode, active_repo_path,
+          session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
           repo_path, worktree_path, branch_name, base_branch,
           agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
           last_error, last_activity_at, title, dev_server_script, initialized, timestamp
@@ -1637,7 +1971,7 @@ export async function listSessions(projectPath?: string): Promise<SessionMetadat
       `;
 
     const rows = projectPath
-      ? (db.prepare(query).all(projectPath) as SessionRow[])
+      ? (db.prepare(query).all(projectId ?? projectPath) as SessionRow[])
       : (db.prepare(query).all() as SessionRow[]);
 
     return Promise.all(rows.map((row) => rowToSessionMetadata(row)));
@@ -2073,7 +2407,7 @@ async function getSessionWorkspacePreparationRow(
   const db = getLocalDb();
   const row = db.prepare(`
     SELECT
-      preparation_id, project_path, context_fingerprint, session_name, payload_json,
+      preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
       status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
     FROM session_workspace_preparations
     WHERE preparation_id = ?
@@ -2086,8 +2420,10 @@ function toProvisionedSessionWorkspaceFromPreparationPayload(
 ): ProvisionedSessionWorkspace {
   return {
     sessionName: payload.sessionName,
+    projectId: payload.projectId,
     projectPath: payload.projectPath,
     workspacePath: payload.workspacePath,
+    workspaceFolders: payload.workspaceFolders,
     workspaceMode: payload.workspaceMode,
     activeRepoPath: payload.activeRepoPath,
     gitRepos: payload.gitRepos,
@@ -2131,19 +2467,35 @@ export async function prepareSessionWorkspace(
     );
     const db = getLocalDb();
     const nowIso = new Date().toISOString();
-    const existing = db.prepare(`
-      SELECT
-        preparation_id, project_path, context_fingerprint, session_name, payload_json,
-        status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-      FROM session_workspace_preparations
-      WHERE
-        project_path = @projectPath
-        AND context_fingerprint = @contextFingerprint
-        AND status = @readyStatus
-        AND expires_at > @now
-      ORDER BY created_at DESC
-      LIMIT 1
-    `).get({
+    const existingQuery = resolvedInput.projectId
+      ? `
+        SELECT
+          preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
+          status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
+        FROM session_workspace_preparations
+        WHERE
+          project_id = @projectId
+          AND context_fingerprint = @contextFingerprint
+          AND status = @readyStatus
+          AND expires_at > @now
+        ORDER BY created_at DESC
+        LIMIT 1
+      `
+      : `
+        SELECT
+          preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
+          status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
+        FROM session_workspace_preparations
+        WHERE
+          project_path = @projectPath
+          AND context_fingerprint = @contextFingerprint
+          AND status = @readyStatus
+          AND expires_at > @now
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+    const existing = db.prepare(existingQuery).get({
+      projectId: resolvedInput.projectId ?? null,
       projectPath: resolvedInput.normalizedProjectPath,
       contextFingerprint: resolvedInput.contextFingerprint,
       readyStatus: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
@@ -2167,14 +2519,15 @@ export async function prepareSessionWorkspace(
 
     db.prepare(`
       INSERT INTO session_workspace_preparations (
-        preparation_id, project_path, context_fingerprint, session_name, payload_json,
+        preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
         status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
       ) VALUES (
-        @preparationId, @projectPath, @contextFingerprint, @sessionName, @payloadJson,
+        @preparationId, @projectId, @projectPath, @contextFingerprint, @sessionName, @payloadJson,
         @status, 0, @now, @now, @expiresAt, NULL, NULL
       )
     `).run({
       preparationId,
+      projectId: provision.projectId ?? null,
       projectPath: provision.projectPath,
       contextFingerprint: provision.contextFingerprint,
       sessionName: provision.sessionName,
@@ -2189,9 +2542,11 @@ export async function prepareSessionWorkspace(
       preparation: {
         preparationId,
         sessionName: provision.sessionName,
+        projectId: provision.projectId,
         projectPath: provision.projectPath,
         contextFingerprint: provision.contextFingerprint,
         workspacePath: provision.workspacePath,
+        workspaceFolders: provision.workspaceFolders,
         workspaceMode: provision.workspaceMode,
         activeRepoPath: provision.activeRepoPath,
         gitRepos: provision.gitRepos,
@@ -2261,6 +2616,7 @@ export async function releasePreparedSessionWorkspace(
     const payload = parseSessionWorkspacePreparationPayload(row.payload_json);
     if (payload) {
       await cleanupProvisionedSessionWorkspace({
+        projectId: payload.projectId,
         projectPath: payload.projectPath,
         sessionName: payload.sessionName,
         workspaceMode: payload.workspaceMode,
@@ -2331,7 +2687,8 @@ export async function consumePreparedSessionWorkspace(
       workspacePreference,
     );
     if (
-      parsedPreparation.projectPath !== resolvedInput.normalizedProjectPath
+      ((parsedPreparation.projectId ?? null) !== (resolvedInput.projectId ?? null))
+      || parsedPreparation.projectPath !== resolvedInput.normalizedProjectPath
       || parsedPreparation.contextFingerprint !== resolvedInput.contextFingerprint
     ) {
       return { success: true, consumed: false, mismatch: true };
@@ -2396,8 +2753,10 @@ export async function createSession(
         const prepared = consumedPreparedWorkspace.preparation;
         provision = {
           sessionName: prepared.sessionName,
+          projectId: prepared.projectId,
           projectPath: prepared.projectPath,
           workspacePath: prepared.workspacePath,
+          workspaceFolders: prepared.workspaceFolders,
           workspaceMode: prepared.workspaceMode,
           activeRepoPath: prepared.activeRepoPath,
           gitRepos: prepared.gitRepos,
@@ -2495,7 +2854,8 @@ export async function getSessionDevServerState(sessionName: string): Promise<{
       return { success: false, error: 'Session metadata not found' };
     }
 
-    const state = await readTrackedDevServerState(metadata.projectPath, sessionName);
+    const projectKey = getSessionProjectKey(metadata.projectId, metadata.projectPath);
+    const state = await readTrackedDevServerState(projectKey, sessionName);
     return {
       success: true,
       running: state.running,
@@ -2528,7 +2888,8 @@ export async function startSessionDevServer(sessionName: string): Promise<{
       return { success: false, error: 'Dev server script is not configured for this session.' };
     }
 
-    const currentState = await readTrackedDevServerState(metadata.projectPath, sessionName);
+    const projectKey = getSessionProjectKey(metadata.projectId, metadata.projectPath);
+    const currentState = await readTrackedDevServerState(projectKey, sessionName);
     if (currentState.running) {
       return {
         success: true,
@@ -2553,7 +2914,7 @@ export async function startSessionDevServer(sessionName: string): Promise<{
       role: 'dev-server',
       source: 'ui-dev-button',
       sessionName,
-      projectPath: metadata.projectPath,
+      projectPath: projectKey,
       workspacePath: metadata.workspacePath,
       command: script,
       shellCommand: getStartupShellCommand(),
@@ -2587,7 +2948,8 @@ export async function stopSessionDevServer(sessionName: string): Promise<{
       return { success: false, error: 'Session metadata not found' };
     }
 
-    const result = await stopTrackedSessionProcess(metadata.projectPath, sessionName, 'dev-server');
+    const projectKey = getSessionProjectKey(metadata.projectId, metadata.projectPath);
+    const result = await stopTrackedSessionProcess(projectKey, sessionName, 'dev-server');
     return {
       success: true,
       stopped: result.stopped || !result.process,
@@ -2608,8 +2970,10 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
       return { success: false, error: 'Session metadata not found' };
     }
 
-    await stopAllTrackedSessionProcesses(metadata.projectPath, sessionName);
+    const projectKey = getSessionProjectKey(metadata.projectId, metadata.projectPath);
+    await stopAllTrackedSessionProcesses(projectKey, sessionName);
     await terminateProvisionedStartupCommand({
+      projectId: metadata.projectId,
       projectPath: metadata.projectPath,
       sessionName,
       startupCommandMode: 'shell',

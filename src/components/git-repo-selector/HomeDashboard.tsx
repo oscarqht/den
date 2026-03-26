@@ -1,5 +1,6 @@
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
+import type { HomeProjectGitRepo } from '@/lib/home-project-git';
 import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
@@ -23,9 +24,11 @@ export type HomeDashboardProps = {
   draftCountByProject: Map<string, number>;
   projectCardIconByPath: Record<string, string | null>;
   brokenProjectCardIcons: Record<string, boolean>;
-  projectGitReposByPath: Record<string, string[]>;
+  projectGitReposByPath: Record<string, HomeProjectGitRepo[]>;
   discoveringProjectGitRepos: Record<string, boolean>;
   getProjectDisplayName: (project: string) => string;
+  getProjectSecondaryLabel: (project: string) => string;
+  isProjectOpenable: (project: string) => boolean;
   onHomeSearchQueryChange: (value: string) => void;
   onHomeProjectSortChange: (value: HomeProjectSort) => void;
   onOpenCredentials: () => void;
@@ -64,6 +67,8 @@ export function HomeDashboard({
   projectGitReposByPath,
   discoveringProjectGitRepos,
   getProjectDisplayName,
+  getProjectSecondaryLabel,
+  isProjectOpenable,
   onHomeSearchQueryChange,
   onHomeProjectSortChange,
   onOpenCredentials,
@@ -260,6 +265,8 @@ export function HomeDashboard({
                 key={project}
                 project={project}
                 projectDisplayName={getProjectDisplayName(project)}
+                projectSecondaryLabel={getProjectSecondaryLabel(project)}
+                isProjectOpenable={isProjectOpenable(project)}
                 isDarkThemeActive={isDarkThemeActive}
                 runningSessionCount={runningSessionCountByProject.get(project) ?? 0}
                 draftCount={draftCountByProject.get(project) ?? 0}

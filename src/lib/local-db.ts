@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,8 +17,10 @@ let dbInstance: Database.Database | null = null;
 
 const SESSION_TABLE_COLUMN_SQL = `
   session_name TEXT PRIMARY KEY,
+  project_id TEXT,
   project_path TEXT NOT NULL DEFAULT '',
   workspace_path TEXT NOT NULL DEFAULT '',
+  workspace_folders_json TEXT,
   workspace_mode TEXT NOT NULL DEFAULT 'folder',
   active_repo_path TEXT,
   repo_path TEXT,
@@ -40,8 +43,10 @@ const SESSION_TABLE_COLUMN_SQL = `
 
 const SESSION_TABLE_COLUMN_NAMES = [
   'session_name',
+  'project_id',
   'project_path',
   'workspace_path',
+  'workspace_folders_json',
   'workspace_mode',
   'active_repo_path',
   'repo_path',
@@ -105,6 +110,23 @@ function createSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS project_entities (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      icon_path TEXT,
+      last_opened_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS project_entity_folders (
+      project_id TEXT NOT NULL,
+      folder_path TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (project_id, folder_path),
+      UNIQUE (project_id, position)
+    );
+
     CREATE TABLE IF NOT EXISTS repositories (
       path TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -146,6 +168,11 @@ function createSchema(db: Database.Database): void {
       project_path TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_config_recent_project_entities (
+      position INTEGER PRIMARY KEY,
+      project_id TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS app_config_pinned_folder_shortcuts (
       position INTEGER PRIMARY KEY,
       folder_path TEXT NOT NULL
@@ -166,6 +193,16 @@ function createSchema(db: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS app_config_project_settings (
       project_path TEXT PRIMARY KEY,
+      agent_provider TEXT,
+      agent_model TEXT,
+      agent_reasoning_effort TEXT,
+      startup_script TEXT,
+      dev_server_script TEXT,
+      alias TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS app_config_project_entity_settings (
+      project_id TEXT PRIMARY KEY,
       agent_provider TEXT,
       agent_model TEXT,
       agent_reasoning_effort TEXT,
@@ -229,6 +266,7 @@ function createSchema(db: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS session_workspace_preparations (
       preparation_id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL DEFAULT '',
       project_path TEXT NOT NULL,
       context_fingerprint TEXT NOT NULL,
       session_name TEXT NOT NULL,
@@ -244,6 +282,7 @@ function createSchema(db: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS drafts (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       project_path TEXT,
       repo_path TEXT,
       branch_name TEXT,
@@ -828,6 +867,148 @@ function normalizeRelativePath(absolutePath: string, basePath: string | null): s
   return relativePath === '.' ? '' : relativePath;
 }
 
+function getProjectEntityIdByFolderPath(db: Database.Database, folderPath: string | null | undefined): string | null {
+  const normalizedFolderPath = folderPath?.trim();
+  if (!normalizedFolderPath || !tableExists(db, 'project_entity_folders')) return null;
+  const row = db.prepare(`
+    SELECT project_id
+    FROM project_entity_folders
+    WHERE folder_path = ?
+    LIMIT 1
+  `).get(path.resolve(normalizedFolderPath)) as { project_id: string } | undefined;
+  return row?.project_id ?? null;
+}
+
+function getLegacyProjectMetadataByPath(
+  db: Database.Database,
+  folderPath: string,
+): {
+  name: string;
+  iconPath: string | null;
+  lastOpenedAt: string | null;
+} | null {
+  if (!tableExists(db, 'projects')) return null;
+  const row = db.prepare(`
+    SELECT COALESCE(NULLIF(display_name, ''), name) AS name, icon_path, last_opened_at
+    FROM projects
+    WHERE path = ?
+  `).get(folderPath) as { name: string; icon_path: string | null; last_opened_at: string | null } | undefined;
+
+  if (!row?.name?.trim()) return null;
+  return {
+    name: row.name.trim(),
+    iconPath: row.icon_path ?? null,
+    lastOpenedAt: row.last_opened_at ?? null,
+  };
+}
+
+function createProjectEntityForFolderPath(
+  db: Database.Database,
+  folderPath: string,
+  nameOverride?: string | null,
+): string {
+  const normalizedFolderPath = path.resolve(folderPath);
+  const legacyMetadata = getLegacyProjectMetadataByPath(db, normalizedFolderPath);
+  const projectId = randomUUID();
+  const projectName = nameOverride?.trim()
+    || legacyMetadata?.name?.trim()
+    || path.basename(normalizedFolderPath);
+
+  db.prepare(`
+    INSERT INTO project_entities (
+      id, name, icon_path, last_opened_at, created_at, updated_at
+    ) VALUES (
+      @id, @name, @iconPath, @lastOpenedAt, datetime('now'), datetime('now')
+    )
+  `).run({
+    id: projectId,
+    name: projectName,
+    iconPath: legacyMetadata?.iconPath ?? null,
+    lastOpenedAt: legacyMetadata?.lastOpenedAt ?? null,
+  });
+
+  db.prepare(`
+    INSERT INTO project_entity_folders (project_id, folder_path, position)
+    VALUES (?, ?, 0)
+  `).run(projectId, normalizedFolderPath);
+
+  return projectId;
+}
+
+function ensureProjectEntityIdForFolderPath(
+  db: Database.Database,
+  folderPath: string | null | undefined,
+  nameOverride?: string | null,
+): string | null {
+  const normalizedFolderPath = folderPath?.trim();
+  if (!normalizedFolderPath) return null;
+  const existingProjectId = getProjectEntityIdByFolderPath(db, normalizedFolderPath);
+  if (existingProjectId) return existingProjectId;
+  return createProjectEntityForFolderPath(db, normalizedFolderPath, nameOverride);
+}
+
+function migrateProjectEntities(db: Database.Database): void {
+  if (!tableExists(db, 'project_entities') || !tableExists(db, 'project_entity_folders')) return;
+
+  if (tableExists(db, 'projects')) {
+    const legacyProjectRows = db.prepare(`
+      SELECT path, name
+      FROM projects
+      ORDER BY created_at ASC, updated_at ASC, path ASC
+    `).all() as Array<{ path: string; name: string }>;
+
+    for (const row of legacyProjectRows) {
+      ensureProjectEntityIdForFolderPath(db, row.path, row.name);
+    }
+  }
+
+  if (tableExists(db, 'projects') && tableExists(db, 'repositories')) {
+    const legacyProjectPreferenceRows = db.prepare(`
+      SELECT path, name, display_name, last_opened_at, expanded_folders_json, visibility_map_json,
+             local_group_expanded, remotes_group_expanded, worktrees_group_expanded
+      FROM projects
+      ORDER BY path ASC
+    `).all() as Array<{
+      path: string;
+      name: string;
+      display_name: string | null;
+      last_opened_at: string | null;
+      expanded_folders_json: string | null;
+      visibility_map_json: string | null;
+      local_group_expanded: number | null;
+      remotes_group_expanded: number | null;
+      worktrees_group_expanded: number | null;
+    }>;
+
+    const upsertRepository = db.prepare(`
+      INSERT OR REPLACE INTO repositories (
+        path, name, display_name, last_opened_at, credential_id,
+        expanded_folders_json, visibility_map_json, local_group_expanded,
+        remotes_group_expanded, worktrees_group_expanded
+      ) VALUES (
+        @path, @name, @displayName, @lastOpenedAt,
+        COALESCE((SELECT credential_id FROM repositories WHERE path = @path), NULL),
+        @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
+        @remotesGroupExpanded, @worktreesGroupExpanded
+      )
+    `);
+
+    for (const row of legacyProjectPreferenceRows) {
+      upsertRepository.run({
+        path: row.path,
+        name: row.name,
+        displayName: row.display_name,
+        lastOpenedAt: row.last_opened_at,
+        expandedFoldersJson: row.expanded_folders_json,
+        visibilityMapJson: row.visibility_map_json,
+        localGroupExpanded: row.local_group_expanded,
+        remotesGroupExpanded: row.remotes_group_expanded,
+        worktreesGroupExpanded: row.worktrees_group_expanded,
+      });
+    }
+  }
+}
+
 function rebuildSessionsTableIfLegacyBranchNameIsRequired(db: Database.Database): void {
   if (!tableExists(db, 'sessions')) return;
 
@@ -867,8 +1048,10 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'projects', 'created_at TEXT');
   addColumnIfMissing(db, 'projects', 'updated_at TEXT');
 
+  addColumnIfMissing(db, 'sessions', 'project_id TEXT');
   addColumnIfMissing(db, 'sessions', 'project_path TEXT');
   addColumnIfMissing(db, 'sessions', 'workspace_path TEXT');
+  addColumnIfMissing(db, 'sessions', 'workspace_folders_json TEXT');
   addColumnIfMissing(db, 'sessions', 'workspace_mode TEXT');
   addColumnIfMissing(db, 'sessions', 'active_repo_path TEXT');
   addColumnIfMissing(db, 'sessions', 'reasoning_effort TEXT');
@@ -880,6 +1063,7 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'session_launch_contexts', 'reasoning_effort TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_paths_json TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_relative_paths_json TEXT');
+  addColumnIfMissing(db, 'drafts', 'project_id TEXT');
   addColumnIfMissing(db, 'drafts', 'project_path TEXT');
   addColumnIfMissing(db, 'drafts', 'git_contexts_json TEXT');
   addColumnIfMissing(db, 'drafts', 'reasoning_effort TEXT');
@@ -888,8 +1072,10 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
   addColumnIfMissing(db, 'app_config', "home_project_sort TEXT NOT NULL DEFAULT 'last-update'");
   addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
+  addColumnIfMissing(db, 'session_workspace_preparations', 'project_id TEXT');
 
   rebuildSessionsTableIfLegacyBranchNameIsRequired(db);
+  migrateProjectEntities(db);
 
   if (tableExists(db, 'repositories') && getRowCount(db, 'projects') === 0) {
     db.prepare(`
@@ -971,6 +1157,33 @@ function runSchemaMigrations(db: Database.Database): void {
         END,
         active_repo_path = COALESCE(NULLIF(active_repo_path, ''), repo_path)
     `).run();
+
+    const sessionRowsMissingProjectId = db.prepare(`
+      SELECT session_name, project_path, repo_path
+      FROM sessions
+      WHERE project_id IS NULL OR TRIM(project_id) = ''
+    `).all() as Array<{
+      session_name: string;
+      project_path: string | null;
+      repo_path: string | null;
+    }>;
+
+    const updateSessionProjectId = db.prepare(`
+      UPDATE sessions
+      SET project_id = @projectId
+      WHERE session_name = @sessionName
+    `);
+    for (const row of sessionRowsMissingProjectId) {
+      const projectId = ensureProjectEntityIdForFolderPath(
+        db,
+        row.project_path?.trim() || row.repo_path?.trim() || '',
+      );
+      if (!projectId) continue;
+      updateSessionProjectId.run({
+        sessionName: row.session_name,
+        projectId,
+      });
+    }
   }
 
   if (tableExists(db, 'session_git_repos') && getRowCount(db, 'session_git_repos') === 0 && tableExists(db, 'sessions')) {
@@ -1020,6 +1233,33 @@ function runSchemaMigrations(db: Database.Database): void {
       SET project_path = COALESCE(NULLIF(project_path, ''), repo_path)
     `).run();
 
+    const draftRowsMissingProjectId = db.prepare(`
+      SELECT id, project_path, repo_path
+      FROM drafts
+      WHERE project_id IS NULL OR TRIM(project_id) = ''
+    `).all() as Array<{
+      id: string;
+      project_path: string | null;
+      repo_path: string | null;
+    }>;
+
+    const updateDraftProjectId = db.prepare(`
+      UPDATE drafts
+      SET project_id = @projectId
+      WHERE id = @id
+    `);
+    for (const row of draftRowsMissingProjectId) {
+      const projectId = ensureProjectEntityIdForFolderPath(
+        db,
+        row.project_path?.trim() || row.repo_path?.trim() || '',
+      );
+      if (!projectId) continue;
+      updateDraftProjectId.run({
+        id: row.id,
+        projectId,
+      });
+    }
+
     const rows = db.prepare(`
       SELECT id, project_path, repo_path, branch_name, git_contexts_json
       FROM drafts
@@ -1056,12 +1296,102 @@ function runSchemaMigrations(db: Database.Database): void {
     }
   }
 
+  if (tableExists(db, 'session_workspace_preparations')) {
+    const preparationRowsMissingProjectId = db.prepare(`
+      SELECT preparation_id, project_path
+      FROM session_workspace_preparations
+      WHERE project_id IS NULL OR TRIM(project_id) = ''
+    `).all() as Array<{
+      preparation_id: string;
+      project_path: string | null;
+    }>;
+
+    const updatePreparationProjectId = db.prepare(`
+      UPDATE session_workspace_preparations
+      SET project_id = @projectId
+      WHERE preparation_id = @preparationId
+    `);
+    for (const row of preparationRowsMissingProjectId) {
+      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path?.trim() || '');
+      if (!projectId) continue;
+      updatePreparationProjectId.run({
+        preparationId: row.preparation_id,
+        projectId,
+      });
+    }
+  }
+
+  if (tableExists(db, 'app_config_recent_project_entities') && getRowCount(db, 'app_config_recent_project_entities') === 0 && tableExists(db, 'app_config_recent_projects')) {
+    const recentProjectRows = db.prepare(`
+      SELECT position, project_path
+      FROM app_config_recent_projects
+      ORDER BY position ASC
+    `).all() as Array<{ position: number; project_path: string }>;
+
+    const insertRecentProjectEntity = db.prepare(`
+      INSERT OR REPLACE INTO app_config_recent_project_entities (position, project_id)
+      VALUES (?, ?)
+    `);
+    for (const row of recentProjectRows) {
+      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path);
+      if (!projectId) continue;
+      insertRecentProjectEntity.run(row.position, projectId);
+    }
+  }
+
+  if (tableExists(db, 'app_config_project_entity_settings') && getRowCount(db, 'app_config_project_entity_settings') === 0 && tableExists(db, 'app_config_project_settings')) {
+    const projectSettingRows = db.prepare(`
+      SELECT
+        project_path, agent_provider, agent_model, agent_reasoning_effort,
+        startup_script, dev_server_script, alias
+      FROM app_config_project_settings
+    `).all() as Array<{
+      project_path: string;
+      agent_provider: string | null;
+      agent_model: string | null;
+      agent_reasoning_effort: string | null;
+      startup_script: string | null;
+      dev_server_script: string | null;
+      alias: string | null;
+    }>;
+
+    const insertProjectEntitySettings = db.prepare(`
+      INSERT OR REPLACE INTO app_config_project_entity_settings (
+        project_id, agent_provider, agent_model, agent_reasoning_effort,
+        startup_script, dev_server_script, alias
+      ) VALUES (
+        @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
+        @startupScript, @devServerScript, @alias
+      )
+    `);
+
+    for (const row of projectSettingRows) {
+      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path, row.alias);
+      if (!projectId) continue;
+      insertProjectEntitySettings.run({
+        projectId,
+        agentProvider: row.agent_provider,
+        agentModel: row.agent_model,
+        agentReasoningEffort: row.agent_reasoning_effort,
+        startupScript: row.startup_script,
+        devServerScript: row.dev_server_script,
+        alias: row.alias,
+      });
+    }
+  }
+
   createIndexIfColumnsExist(db, 'sessions', 'sessions_repo_path_idx', ['repo_path']);
+  createIndexIfColumnsExist(db, 'sessions', 'sessions_project_id_idx', ['project_id']);
   createIndexIfColumnsExist(db, 'sessions', 'sessions_project_path_idx', ['project_path']);
   createIndexIfColumnsExist(db, 'sessions', 'sessions_timestamp_idx', ['timestamp']);
   createIndexIfColumnsExist(db, 'drafts', 'drafts_repo_path_idx', ['repo_path']);
+  createIndexIfColumnsExist(db, 'drafts', 'drafts_project_id_idx', ['project_id']);
   createIndexIfColumnsExist(db, 'drafts', 'drafts_project_path_idx', ['project_path']);
   createIndexIfColumnsExist(db, 'drafts', 'drafts_timestamp_idx', ['timestamp']);
+  createIndexIfColumnsExist(db, 'project_entity_folders', 'project_entity_folders_path_idx', ['folder_path']);
+  createIndexIfColumnsExist(db, 'project_entity_folders', 'project_entity_folders_project_idx', ['project_id', 'position']);
+  createIndexIfColumnsExist(db, 'app_config_recent_project_entities', 'app_config_recent_project_entities_project_idx', ['project_id']);
+  createIndexIfColumnsExist(db, 'app_config_project_entity_settings', 'app_config_project_entity_settings_project_idx', ['project_id']);
   createIndexIfColumnsExist(db, 'quick_create_drafts', 'quick_create_drafts_updated_at_idx', ['updated_at']);
   createIndexIfColumnsExist(db, 'session_git_repos', 'session_git_repos_session_idx', ['session_name']);
   createIndexIfColumnsExist(
@@ -1081,6 +1411,12 @@ function runSchemaMigrations(db: Database.Database): void {
     'session_workspace_preparations',
     'session_workspace_preparations_fingerprint_idx',
     ['project_path', 'context_fingerprint', 'status'],
+  );
+  createIndexIfColumnsExist(
+    db,
+    'session_workspace_preparations',
+    'session_workspace_preparations_project_id_idx',
+    ['project_id', 'context_fingerprint', 'status'],
   );
   createIndexIfColumnsExist(db, 'session_agent_history_items', 'session_agent_history_session_idx', ['session_name']);
   createIndexIfColumnsExist(db, 'session_agent_history_items', 'session_agent_history_thread_idx', ['session_name', 'thread_id']);

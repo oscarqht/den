@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { ImagePlus, Trash2, X } from 'lucide-react';
+import { ImagePlus, Plus, Trash2, X } from 'lucide-react';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
+import FileBrowser from '@/components/FileBrowser';
 
 export type RepoSettingsDialogProps = {
   isOpen: boolean;
+  projectId: string | null;
   projectForSettings: string | null;
-  projectAlias: string;
+  projectName: string;
+  projectFolderPaths: string[];
+  defaultRoot?: string;
   projectStartupCommand: string;
   projectDevServerCommand: string;
   defaultProjectStartupCommand: string;
@@ -14,7 +18,9 @@ export type RepoSettingsDialogProps = {
   isSavingProjectSettings: boolean;
   isUploadingProjectIcon: boolean;
   projectSettingsError: string | null;
-  onAliasChange: (value: string) => void;
+  onNameChange: (value: string) => void;
+  onAddFolderPath: (path: string) => void;
+  onRemoveFolderPath: (path: string) => void;
   onStartupCommandChange: (value: string) => void;
   onDevServerCommandChange: (value: string) => void;
   onUploadIcon: (iconPath: string) => void;
@@ -25,8 +31,11 @@ export type RepoSettingsDialogProps = {
 
 export function RepoSettingsDialog({
   isOpen,
+  projectId,
   projectForSettings,
-  projectAlias,
+  projectName,
+  projectFolderPaths,
+  defaultRoot,
   projectStartupCommand,
   projectDevServerCommand,
   defaultProjectStartupCommand,
@@ -35,7 +44,9 @@ export function RepoSettingsDialog({
   isSavingProjectSettings,
   isUploadingProjectIcon,
   projectSettingsError,
-  onAliasChange,
+  onNameChange,
+  onAddFolderPath,
+  onRemoveFolderPath,
   onStartupCommandChange,
   onDevServerCommandChange,
   onUploadIcon,
@@ -44,16 +55,19 @@ export function RepoSettingsDialog({
   onSave,
 }: RepoSettingsDialogProps) {
   const [isIconBrowserOpen, setIsIconBrowserOpen] = useState(false);
+  const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false);
 
-  if (!isOpen || !projectForSettings) return null;
+  if (!isOpen || !projectId) return null;
 
   const iconPreviewUrl = projectIconPath
     ? `/api/file-thumbnail?path=${encodeURIComponent(projectIconPath)}`
     : null;
+  const iconBrowserInitialPath = projectFolderPaths[0] || projectForSettings || defaultRoot;
 
   return (
-    <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+    <>
+      <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Project Settings</h3>
           <button
@@ -65,27 +79,77 @@ export function RepoSettingsDialog({
           </button>
         </div>
 
-        <div className="space-y-4 p-5 md:p-6">
+        <div className="space-y-5 p-5 md:p-6">
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project ID</label>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200">
-              {projectForSettings}
+              {projectId}
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Alias</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Name</label>
             <input
               className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
-              value={projectAlias}
-              onChange={(event) => onAliasChange(event.target.value)}
-              placeholder="Optional display name for this project"
+              value={projectName}
+              onChange={(event) => onNameChange(event.target.value)}
+              placeholder="Project name"
               disabled={isSavingProjectSettings || isUploadingProjectIcon}
             />
           </div>
 
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Associated Folders</label>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Add or remove folders linked to this project.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm gap-2"
+                onClick={() => setIsFolderBrowserOpen(true)}
+                disabled={isSavingProjectSettings || isUploadingProjectIcon}
+              >
+                <Plus className="h-4 w-4" />
+                Add Folder
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-[#1e2532]/70">
+              {projectFolderPaths.length === 0 ? (
+                <div className="text-sm text-amber-700 dark:text-amber-200">
+                  No folders are associated yet. Add at least one folder before starting a session.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {projectFolderPaths.map((folderPath) => (
+                    <div
+                      key={folderPath}
+                      className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-[#151b26]"
+                    >
+                      <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700 dark:text-slate-200">
+                        {folderPath}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs text-red-600 dark:text-red-300"
+                        onClick={() => onRemoveFolderPath(folderPath)}
+                        disabled={isSavingProjectSettings || isUploadingProjectIcon}
+                        title="Remove associated folder"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Icon</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Icon</label>
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-[#1e2532]">
                 {iconPreviewUrl ? (
@@ -181,12 +245,13 @@ export function RepoSettingsDialog({
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       {isIconBrowserOpen && (
         <SessionFileBrowser
           title="Choose Project Icon"
-          initialPath={projectForSettings}
+          initialPath={iconBrowserInitialPath}
           onConfirm={async (paths) => {
             const selectedPath = paths[0];
             if (!selectedPath) return;
@@ -202,6 +267,19 @@ export function RepoSettingsDialog({
           zIndexClassName="z-[1003]"
         />
       )}
-    </div>
+
+      {isFolderBrowserOpen ? (
+        <FileBrowser
+          title="Choose Associated Folder"
+          initialPath={projectFolderPaths[0] || defaultRoot}
+          onSelect={async (folderPath) => {
+            onAddFolderPath(folderPath);
+            setIsFolderBrowserOpen(false);
+          }}
+          onCancel={() => setIsFolderBrowserOpen(false)}
+          zIndexClassName="z-[1003]"
+        />
+      ) : null}
+    </>
   );
 }

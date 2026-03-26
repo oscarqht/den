@@ -1,75 +1,74 @@
-import { NextResponse } from 'next/server';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { addProject, getProjects, updateProject } from '@/lib/store';
+import { NextResponse } from 'next/server';
+import { addProject, findProjectByFolderPath, getProjectById, updateProject } from '@/lib/store';
+import { normalizeProjectFolderPath } from '@/lib/project-folders';
 import { buildManagedProjectIconPath } from '@/lib/project-icon-path';
 
 const MAX_ICON_BYTES = 2 * 1024 * 1024;
 const ICON_DIR = path.join(os.homedir(), '.viba', 'project-icons');
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']);
+
 type ParsedIconUpload = {
-  projectPath: string;
+  projectId?: string;
+  projectPath?: string;
   extension: string;
   fileBuffer: Buffer;
 };
 
 function sanitizeExtension(fileName: string): string | null {
   const extension = path.extname(fileName).toLowerCase();
-  if (!extension || !ALLOWED_EXTENSIONS.has(extension)) return null;
-  return extension;
-}
-
-function findProjectByAbsolutePath(projectPath: string) {
-  const normalizedProjectPath = path.resolve(projectPath);
-  return getProjects().find((project) => path.resolve(project.path) === normalizedProjectPath) || null;
-}
-
-async function ensureProjectExists(projectPath: string) {
-  const normalizedProjectPath = path.resolve(projectPath);
-  const existingProject = findProjectByAbsolutePath(normalizedProjectPath);
-  if (existingProject) return existingProject;
-
-  let projectStats;
-  try {
-    projectStats = await fs.stat(normalizedProjectPath);
-  } catch {
-    throw new Error('Project not found.');
-  }
-
-  if (!projectStats.isDirectory()) {
-    throw new Error('Project path must be a directory.');
-  }
-
-  try {
-    addProject(normalizedProjectPath, path.basename(normalizedProjectPath));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    if (!/already exists/i.test(message)) {
-      throw error;
-    }
-  }
-
-  const ensuredProject = findProjectByAbsolutePath(normalizedProjectPath);
-  if (!ensuredProject) {
-    throw new Error('Project not found.');
-  }
-  return ensuredProject;
+  return extension && ALLOWED_EXTENSIONS.has(extension) ? extension : null;
 }
 
 function isManagedIconPath(iconPath: string | null | undefined): boolean {
   if (!iconPath) return false;
   const normalized = path.resolve(iconPath);
-  return normalized.startsWith(path.resolve(ICON_DIR) + path.sep) || normalized === path.resolve(ICON_DIR);
+  const normalizedIconDir = path.resolve(ICON_DIR);
+  return normalized === normalizedIconDir || normalized.startsWith(`${normalizedIconDir}${path.sep}`);
 }
 
 async function removeExistingManagedIcon(iconPath: string | null | undefined): Promise<void> {
   if (!iconPath || !isManagedIconPath(iconPath)) return;
-  try {
-    await fs.rm(iconPath, { force: true });
-  } catch {
+  await fs.rm(iconPath, { force: true }).catch(() => {
     // Ignore cleanup failures.
+  });
+}
+
+async function ensureProjectDirectory(folderPath: string): Promise<void> {
+  const stats = await fs.stat(folderPath);
+  if (!stats.isDirectory()) {
+    throw new Error('Project path must be a directory.');
   }
+}
+
+async function resolveProjectReference(projectId?: string, projectPath?: string) {
+  const normalizedProjectId = projectId?.trim();
+  if (normalizedProjectId) {
+    const existingById = getProjectById(normalizedProjectId);
+    if (!existingById) {
+      throw new Error('Project not found.');
+    }
+    return existingById;
+  }
+
+  const normalizedProjectPath = projectPath?.trim();
+  if (!normalizedProjectPath) {
+    throw new Error('projectId or projectPath is required.');
+  }
+
+  const absoluteProjectPath = normalizeProjectFolderPath(normalizedProjectPath);
+  const existingByPath = findProjectByFolderPath(absoluteProjectPath);
+  if (existingByPath) {
+    return existingByPath;
+  }
+
+  await ensureProjectDirectory(absoluteProjectPath);
+  return addProject({
+    name: path.basename(absoluteProjectPath),
+    folderPaths: [absoluteProjectPath],
+  });
 }
 
 async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
@@ -77,12 +76,9 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData();
+    const projectIdValue = formData.get('projectId');
     const projectPathValue = formData.get('projectPath');
     const iconFileValue = formData.get('iconFile');
-
-    if (typeof projectPathValue !== 'string' || !projectPathValue.trim()) {
-      throw new Error('projectPath is required.');
-    }
 
     if (!(iconFileValue instanceof File)) {
       throw new Error('iconFile is required.');
@@ -92,26 +88,26 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
     if (!extension) {
       throw new Error('Unsupported icon type. Use png, jpg, jpeg, webp, svg, or ico.');
     }
-
     if (iconFileValue.size > MAX_ICON_BYTES) {
       throw new Error('Icon file must be 2MB or smaller.');
     }
 
     return {
-      projectPath: path.resolve(projectPathValue.trim()),
+      projectId: typeof projectIdValue === 'string' ? projectIdValue.trim() : undefined,
+      projectPath: typeof projectPathValue === 'string' ? projectPathValue.trim() : undefined,
       extension,
       fileBuffer: Buffer.from(await iconFileValue.arrayBuffer()),
     };
   }
 
   const body = await request.json().catch(() => null);
+  const projectIdValue = typeof body?.projectId === 'string' ? body.projectId.trim() : '';
   const projectPathValue = typeof body?.projectPath === 'string' ? body.projectPath.trim() : '';
   const iconPathValue = typeof body?.iconPath === 'string' ? body.iconPath.trim() : '';
 
-  if (!projectPathValue) {
-    throw new Error('projectPath is required.');
+  if (!projectIdValue && !projectPathValue) {
+    throw new Error('projectId or projectPath is required.');
   }
-
   if (!iconPathValue) {
     throw new Error('iconPath is required.');
   }
@@ -122,23 +118,20 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
     throw new Error('Unsupported icon type. Use png, jpg, jpeg, webp, svg, or ico.');
   }
 
-  let iconStats;
-  try {
-    iconStats = await fs.stat(resolvedIconPath);
-  } catch {
+  const iconStats = await fs.stat(resolvedIconPath).catch(() => null);
+  if (!iconStats) {
     throw new Error('Icon file not found.');
   }
-
   if (!iconStats.isFile()) {
     throw new Error('Icon path must be a file.');
   }
-
   if (iconStats.size > MAX_ICON_BYTES) {
     throw new Error('Icon file must be 2MB or smaller.');
   }
 
   return {
-    projectPath: path.resolve(projectPathValue),
+    projectId: projectIdValue || undefined,
+    projectPath: projectPathValue || undefined,
     extension,
     fileBuffer: await fs.readFile(resolvedIconPath),
   };
@@ -146,64 +139,44 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
 
 export async function POST(request: Request) {
   try {
-    const { projectPath, extension, fileBuffer } = await parseIconUpload(request);
-    const existingProject = await ensureProjectExists(projectPath);
+    const parsedUpload = await parseIconUpload(request);
+    const project = await resolveProjectReference(parsedUpload.projectId, parsedUpload.projectPath);
 
     await fs.mkdir(ICON_DIR, { recursive: true });
+    const destinationPath = buildManagedProjectIconPath(ICON_DIR, project.id, parsedUpload.extension, parsedUpload.fileBuffer);
+    await removeExistingManagedIcon(project.iconPath);
+    await fs.writeFile(destinationPath, parsedUpload.fileBuffer);
 
-    const destinationPath = buildManagedProjectIconPath(ICON_DIR, projectPath, extension, fileBuffer);
-    await removeExistingManagedIcon(existingProject.iconPath);
-
-    await fs.writeFile(destinationPath, fileBuffer);
-
-    const updatedProject = updateProject(existingProject.path, { iconPath: destinationPath });
+    const updatedProject = updateProject(project.id, { iconPath: destinationPath });
     return NextResponse.json({ success: true, iconPath: updatedProject.iconPath ?? null });
   } catch (error) {
-    const message = (error as Error).message || 'Failed to upload project icon.';
-    if (message === 'Project not found.') {
-      return NextResponse.json({ error: message }, { status: 404 });
-    }
-    if (
-      message === 'Project path must be a directory.'
-      || message === 'projectPath is required.'
-      || message === 'iconFile is required.'
-      || message === 'iconPath is required.'
-      || message === 'Unsupported icon type. Use png, jpg, jpeg, webp, svg, or ico.'
-      || message === 'Icon file must be 2MB or smaller.'
-      || message === 'Icon file not found.'
-      || message === 'Icon path must be a file.'
-    ) {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-    console.error('Failed to upload project icon:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to upload project icon.';
+    const status = message === 'Project not found.'
+      ? 404
+      : /required|Unsupported|smaller|not found|must be a file|must be a directory/i.test(message)
+        ? 400
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
-    const projectPath = typeof body?.projectPath === 'string' ? body.projectPath.trim() : '';
-    if (!projectPath) {
-      return NextResponse.json({ error: 'projectPath is required.' }, { status: 400 });
-    }
+    const body = await request.json().catch(() => null);
+    const projectId = typeof body?.projectId === 'string' ? body.projectId.trim() : undefined;
+    const projectPath = typeof body?.projectPath === 'string' ? body.projectPath.trim() : undefined;
+    const project = await resolveProjectReference(projectId, projectPath);
 
-    const normalizedProjectPath = path.resolve(projectPath);
-    const existingProject = await ensureProjectExists(normalizedProjectPath);
-
-    await removeExistingManagedIcon(existingProject.iconPath);
-    updateProject(existingProject.path, { iconPath: null });
-
+    await removeExistingManagedIcon(project.iconPath);
+    updateProject(project.id, { iconPath: null });
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = (error as Error).message || 'Failed to remove project icon.';
-    if (message === 'Project not found.') {
-      return NextResponse.json({ error: message }, { status: 404 });
-    }
-    if (message === 'Project path must be a directory.') {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-    console.error('Failed to remove project icon:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to remove project icon.';
+    const status = message === 'Project not found.'
+      ? 404
+      : /required|must be a directory/i.test(message)
+        ? 400
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

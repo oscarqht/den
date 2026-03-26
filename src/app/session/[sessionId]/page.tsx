@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import SessionPageClient from './SessionPageClient';
 import { resolveRepoCardIcon } from '@/app/actions/git';
 import { getLocalDb } from '@/lib/local-db';
+import { getProjectById } from '@/lib/store';
 
 type SessionRouteProps = {
   params: Promise<{ sessionId: string }>;
@@ -9,6 +10,7 @@ type SessionRouteProps = {
 
 type SessionRouteContext = {
   title?: string;
+  projectId?: string;
   projectPath?: string;
 };
 
@@ -18,16 +20,22 @@ async function readSessionRouteContext(sessionId: string): Promise<SessionRouteC
   try {
     const db = getLocalDb();
     const row = db.prepare(`
-      SELECT title, project_path
+      SELECT title, project_id, project_path
       FROM sessions
       WHERE session_name = ?
-    `).get(sessionId) as { title: string | null; project_path: string | null } | undefined;
+    `).get(sessionId) as {
+      title: string | null;
+      project_id: string | null;
+      project_path: string | null;
+    } | undefined;
 
     const trimmedTitle = row?.title?.trim();
+    const trimmedProjectId = row?.project_id?.trim();
     const trimmedProjectPath = row?.project_path?.trim();
 
     return {
       title: trimmedTitle || undefined,
+      projectId: trimmedProjectId || undefined,
       projectPath: trimmedProjectPath || undefined,
     };
   } catch {
@@ -35,7 +43,14 @@ async function readSessionRouteContext(sessionId: string): Promise<SessionRouteC
   }
 }
 
-async function resolveSessionFavicon(projectPath?: string): Promise<string> {
+async function resolveSessionFavicon(projectId?: string, projectPath?: string): Promise<string> {
+  if (projectId) {
+    const project = getProjectById(projectId);
+    if (project?.iconPath) {
+      return `/api/file-thumbnail?path=${encodeURIComponent(project.iconPath)}`;
+    }
+  }
+
   if (!projectPath) {
     return SESSION_FALLBACK_FAVICON_PATH;
   }
@@ -55,7 +70,7 @@ async function resolveSessionFavicon(projectPath?: string): Promise<string> {
 export async function generateMetadata({ params }: SessionRouteProps): Promise<Metadata> {
   const { sessionId } = await params;
   const sessionContext = await readSessionRouteContext(sessionId);
-  const sessionFavicon = await resolveSessionFavicon(sessionContext.projectPath);
+  const sessionFavicon = await resolveSessionFavicon(sessionContext.projectId, sessionContext.projectPath);
 
   const metadata: Metadata = {
     icons: {

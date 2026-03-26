@@ -23,6 +23,10 @@ function getProjectPath() {
   return path.join(getWorkspaceRoot(), 'project-a');
 }
 
+function getProjectId() {
+  return 'project-a-id';
+}
+
 function getSessionWorkspacePath() {
   return path.join(getWorkspaceRoot(), '.palx', 'session-1', 'workspace');
 }
@@ -44,7 +48,7 @@ beforeEach(async () => {
   const db = localDbModule.getLocalDb();
   db.prepare('DELETE FROM quick_create_drafts').run();
   await configModule.updateConfig({
-    recentProjects: [getProjectPath()],
+    recentProjects: [getProjectId()],
     defaultRoot: getWorkspaceRoot(),
     defaultAgentProvider: 'codex',
     defaultAgentModel: 'gpt-5.4',
@@ -70,9 +74,9 @@ function createWorkflowDependencies(overrides: Record<string, unknown> = {}) {
       return nextConfig;
     }),
     getProjects: mock.fn(() => [{
-      path: getProjectPath(),
+      id: getProjectId(),
       name: 'project-a',
-      displayName: 'Project A',
+      folderPaths: [getProjectPath()],
     }]),
     getDefaultAgentProvider: mock.fn(async () => 'codex'),
     loadAgentStatus: mock.fn(async () => ({
@@ -123,6 +127,7 @@ function createWorkflowDependencies(overrides: Record<string, unknown> = {}) {
         kind: 'assistant',
         id: 'assistant-1',
         text: JSON.stringify({
+          projectId: getProjectId(),
           projectPath: getProjectPath(),
           reasoningEffort: 'minimal',
           reason: 'Closest project match.',
@@ -149,13 +154,15 @@ describe('executeQuickCreateTaskJob', () => {
     assert.deepStrictEqual(result, {
       status: 'succeeded',
       sessionId: 'session-1',
+      projectId: getProjectId(),
       projectPath: getProjectPath(),
       draftId: undefined,
     });
 
     assert.equal(dependencies.createSession.mock.callCount(), 1);
     const createSessionCall = dependencies.createSession.mock.calls[0];
-    assert.equal(createSessionCall.arguments[2]?.reasoningEffort, 'low');
+    const createSessionArgs = (createSessionCall?.arguments ?? []) as unknown as [string, unknown, { reasoningEffort?: string }?];
+    assert.equal(createSessionArgs[2]?.reasoningEffort, 'low');
 
     assert.equal(dependencies.startSessionTurn.mock.callCount(), 1);
     assert.equal(dependencies.deleteSession.mock.callCount(), 0);

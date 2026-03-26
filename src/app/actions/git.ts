@@ -23,7 +23,7 @@ import {
   isSkillInstalled,
   listInstalledSkillsForProvider,
 } from '@/lib/agent-skills';
-import { getProjects } from '@/lib/store';
+import { findProjectsContainingPath } from '@/lib/store';
 import type { AgentProvider } from '@/lib/types';
 
 export type FileSystemItem = {
@@ -1189,8 +1189,8 @@ export async function resolveRepoCardIcon(repoPath: string): Promise<ResolveRepo
   }
 
   try {
-    const projects = getProjects();
-    const project = projects.find((entry) => path.resolve(entry.path) === path.resolve(repoPath));
+    const project = findProjectsContainingPath(repoPath)
+      .sort((left, right) => left.folderPaths.length - right.folderPaths.length)[0];
     const iconPath = project?.iconPath?.trim() || null;
     if (!iconPath) return { success: true, iconPath: null };
 

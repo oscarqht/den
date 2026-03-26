@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import NewSessionComposer from '@/components/NewSessionComposer';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { findProjectByFolderPath, getProjectById } from '@/lib/store';
+import { getProjectPrimaryFolderPath } from '@/lib/project-folders';
 
 export const metadata: Metadata = {
   title: 'New Session',
@@ -126,10 +128,28 @@ async function loadJulesPredefinedPrompts(): Promise<PredefinedPrompt[]> {
 type NewSessionPageProps = {
   searchParams: Promise<{
     project?: string | string[];
+    projectId?: string | string[];
     from?: string | string[];
     prefillFromSession?: string | string[];
   }>;
 };
+
+function resolveProjectParamToPath(projectReference?: string | null): string | null {
+  const trimmedReference = projectReference?.trim();
+  if (!trimmedReference) return null;
+
+  const projectById = getProjectById(trimmedReference);
+  if (projectById) {
+    return getProjectPrimaryFolderPath(projectById);
+  }
+
+  const projectByFolder = findProjectByFolderPath(trimmedReference);
+  if (projectByFolder) {
+    return getProjectPrimaryFolderPath(projectByFolder);
+  }
+
+  return trimmedReference;
+}
 
 export default async function NewSessionPage({
   searchParams,
@@ -137,14 +157,16 @@ export default async function NewSessionPage({
   const params = await searchParams;
   const predefinedPrompts = await loadJulesPredefinedPrompts();
   const projectParam = params.project;
+  const projectIdParam = params.projectId;
   const fromParam = params.from;
   const prefillParam = params.prefillFromSession;
   const projectPathFromParam = Array.isArray(projectParam) ? projectParam[0] : projectParam;
+  const projectIdFromParam = Array.isArray(projectIdParam) ? projectIdParam[0] : projectIdParam;
   const fromName = Array.isArray(fromParam) ? fromParam[0] : fromParam;
   const prefillFromSession = Array.isArray(prefillParam)
     ? prefillParam[0]
     : prefillParam;
-  const projectPath = projectPathFromParam;
+  const projectPath = resolveProjectParamToPath(projectIdFromParam ?? projectPathFromParam);
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-[#f6f6f8] p-4 md:p-8 dark:bg-[#0d1117]">

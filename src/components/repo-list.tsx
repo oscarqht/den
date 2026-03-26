@@ -1,16 +1,17 @@
 'use client';
 
-import { useRepositories, useAddRepository, useDeleteRepository, useCloneRepository } from '@/hooks/use-git';
+import { useProjects, useAddProject, useDeleteProject, useCloneRepository } from '@/hooks/use-git';
 import { useCredentials, useGitHubRepositories, type Credential } from '@/hooks/use-credentials';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileSystemBrowser } from './fs-browser';
 import { toast } from '@/hooks/use-toast';
-import { getRepositoryDisplayName } from '@/lib/utils';
-import { Repository } from '@/lib/types';
+import { getProjectDisplayName } from '@/lib/utils';
+import { Project } from '@/lib/types';
 import { Credential as GitCredential } from '@/lib/credentials';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
+import { getProjectPrimaryFolderPath } from '@/lib/project-folders';
 
 function getRemoteHostname(url: string): string | null {
     try {
@@ -46,11 +47,11 @@ function formatCredentialLabel(credential: Credential): string {
 }
 
 export function RepoList() {
-    const { data: repos, isLoading } = useRepositories();
+    const { data: repos, isLoading } = useProjects();
     const { data: credentials } = useCredentials();
-    const addRepo = useAddRepository();
+    const addRepo = useAddProject();
     const cloneRepo = useCloneRepository();
-    const deleteRepo = useDeleteRepository();
+    const deleteRepo = useDeleteProject();
     const [browserOpen, setBrowserOpen] = useState(false);
     const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
     const [cloneFolderBrowserOpen, setCloneFolderBrowserOpen] = useState(false);
@@ -124,7 +125,7 @@ export function RepoList() {
     const handleAdd = async (path: string) => {
         if (!path) return;
         try {
-            await addRepo.mutateAsync({ path });
+            await addRepo.mutateAsync({ name: path.split(/[\\/]/).filter(Boolean).pop() || 'New Project', folderPaths: [path] });
             // Navigate to workspace page after successfully adding repository
             router.push(`/git?path=${encodeURIComponent(path)}`);
         } catch (error) {
@@ -161,7 +162,10 @@ export function RepoList() {
         if (!selectedNonRepoPath) return;
 
         try {
-            await addRepo.mutateAsync({ path: selectedNonRepoPath });
+            await addRepo.mutateAsync({
+                name: selectedNonRepoPath.split(/[\\/]/).filter(Boolean).pop() || 'New Project',
+                folderPaths: [selectedNonRepoPath],
+            });
             setInitRepoDialogOpen(false);
             setSelectedNonRepoPath(null);
             router.push(`/git?path=${encodeURIComponent(selectedNonRepoPath)}`);
@@ -248,7 +252,7 @@ export function RepoList() {
             });
             setCloneDialogOpen(false);
             setCloneFolderBrowserOpen(false);
-            router.push(`/git?path=${encodeURIComponent(clonedRepo.path)}`);
+            router.push(`/git?path=${encodeURIComponent(clonedRepo.projectPath)}`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             toast({
@@ -268,7 +272,11 @@ export function RepoList() {
     const handleDeleteConfirm = async (deleteLocalFolder: boolean) => {
         if (!repoToDelete) return;
         try {
-            await deleteRepo.mutateAsync({ path: repoToDelete.path, deleteLocalFolder });
+            const matchingProject = repos?.find((project) => getProjectPrimaryFolderPath(project) === repoToDelete.path);
+            if (!matchingProject) {
+                throw new Error('Project not found.');
+            }
+            await deleteRepo.mutateAsync({ projectId: matchingProject.id });
             setDeleteDialogOpen(false);
             setRepoToDelete(null);
         } catch (error) {
@@ -343,19 +351,24 @@ export function RepoList() {
                             <tr>
                                 <td colSpan={3} className="text-center py-12 text-muted-foreground">
                                     <div className="flex flex-col items-center gap-2">
-                                        <p>No repositories found.</p>
-                                        <button className="btn btn-link" onClick={() => setBrowserOpen(true)}>Add your first repository</button>
+                        <p>No projects found.</p>
+                        <button className="btn btn-link" onClick={() => setBrowserOpen(true)}>Add your first project</button>
                                     </div>
                                 </td>
                             </tr>
                         )}
-                        {repos?.map((repo: Repository) => {
-                            const repoDisplayName = getRepositoryDisplayName(repo);
+                        {repos?.map((repo: Project) => {
+                            const repoPath = getProjectPrimaryFolderPath(repo) || '';
+                            const repoDisplayName = getProjectDisplayName(repo);
                             return (
                                 <tr
-                                    key={repo.path}
+                                    key={repo.id}
                                     className="hover:bg-base-200/30 cursor-pointer group"
-                                    onClick={() => router.push(`/git?path=${encodeURIComponent(repo.path)}`)}
+                                    onClick={() => {
+                                        if (repoPath) {
+                                            router.push(`/git?path=${encodeURIComponent(repoPath)}`);
+                                        }
+                                    }}
                                 >
                                     <td>
                                         <div className="flex items-center gap-3">
@@ -363,13 +376,13 @@ export function RepoList() {
                                             <span className="font-bold text-sm">{repoDisplayName}</span>
                                         </div>
                                     </td>
-                                    <td className="text-sm opacity-70 font-mono truncate max-w-xs" title={repo.path}>
-                                        {repo.path}
+                                    <td className="text-sm opacity-70 font-mono truncate max-w-xs" title={repoPath}>
+                                        {repoPath}
                                     </td>
                                     <td className="text-right">
                                         <div className="flex items-center justify-end gap-1">
                                             <Link
-                                                href={`/git?path=${encodeURIComponent(repo.path)}`}
+                                                href={repoPath ? `/git?path=${encodeURIComponent(repoPath)}` : '#'}
                                                 className="btn btn-ghost btn-sm btn-square"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
@@ -377,7 +390,7 @@ export function RepoList() {
                                             </Link>
                                             <button
                                                 className="btn btn-ghost btn-sm btn-square text-error hover:bg-error/10"
-                                                onClick={(e) => handleDeleteClick(e, { path: repo.path, displayName: repoDisplayName })}
+                                                onClick={(e) => handleDeleteClick(e, { path: repoPath, displayName: repoDisplayName })}
                                             >
                                                 <i className="iconoir-trash text-[16px]" aria-hidden="true" />
                                             </button>
@@ -566,7 +579,7 @@ export function RepoList() {
                         <p className="py-4">
                             <span className="break-all font-mono text-sm">{selectedNonRepoPath}</span>
                             <br />
-                            This folder is not a Git repository. Initialize it as a new local Git repository and open it in workspace?
+                            This folder is not a Git repository. Add it as a project and open it in workspace?
                         </p>
                         <div className="modal-action">
                             <button className="btn" onClick={handleCancelInitRepo} disabled={addRepo.isPending}>No</button>
@@ -577,7 +590,7 @@ export function RepoList() {
                                         Initializing...
                                     </span>
                                 ) : (
-                                    'Yes, Initialize'
+                                    'Yes, Add Project'
                                 )}
                             </button>
                         </div>
@@ -591,15 +604,13 @@ export function RepoList() {
             {deleteDialogOpen && (
                 <dialog className="modal modal-open">
                     <div className="modal-box">
-                        <h3 className="font-bold text-lg">Delete Repository</h3>
+                        <h3 className="font-bold text-lg">Delete Project</h3>
                         <p className="py-4 break-words">
                             Are you sure you want to remove <strong className="break-all">{repoToDelete?.displayName}</strong> from the list?
-                            Choose whether to only remove it from your repository list, or also delete its local folder.
                         </p>
                         <div className="modal-action">
                             <button className="btn" onClick={() => setDeleteDialogOpen(false)} disabled={deleteRepo.isPending}>Cancel</button>
-                            <button className="btn btn-error btn-outline" onClick={() => handleDeleteConfirm(false)} disabled={deleteRepo.isPending}>Delete Repo</button>
-                            <button className="btn btn-error" onClick={() => handleDeleteConfirm(true)} disabled={deleteRepo.isPending}>Delete Repo &amp; Folder</button>
+                            <button className="btn btn-error" onClick={() => handleDeleteConfirm(false)} disabled={deleteRepo.isPending}>Delete Project</button>
                         </div>
                     </div>
                     <form method="dialog" className="modal-backdrop">

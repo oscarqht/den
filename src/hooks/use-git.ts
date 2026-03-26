@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { GitStatus, GitLog, Project, AppSettings, FileDiffPayload, BranchTrackingInfo, GitError, GitWorktree, GitConflictState } from '@/lib/types';
+import { GitStatus, GitLog, Project, Repository, AppSettings, FileDiffPayload, BranchTrackingInfo, GitError, GitWorktree, GitConflictState } from '@/lib/types';
 import { showGitErrorToast } from './use-toast';
 
 const API_BASE = '/api';
@@ -45,21 +45,47 @@ export function useProjects() {
   });
 }
 
-export function useProject(projectPath: string | null) {
+export function useProject(projectId: string | null) {
   const { data: projects } = useProjects();
   return useMemo(() => 
-    projects?.find(project => project.path === projectPath) || null,
-  [projects, projectPath]);
+    projects?.find(project => project.id === projectId) || null,
+  [projects, projectId]);
+}
+
+export function useRepositories() {
+  return useQuery<Repository[]>({
+    queryKey: ['repositories'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/repositories`);
+      if (!res.ok) throw new Error('Failed to fetch repositories');
+      return res.json();
+    },
+  });
+}
+
+export function useRepository(repoPath: string | null) {
+  const { data: repositories } = useRepositories();
+  return useMemo(() =>
+    repositories?.find((repository) => repository.path === repoPath) || null,
+  [repositories, repoPath]);
 }
 
 export function useAddProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ path, name }: { path: string; name?: string }) => {
+    mutationFn: async ({
+      name,
+      folderPaths,
+      createDefaultFolder,
+    }: {
+      name: string;
+      folderPaths?: string[];
+      createDefaultFolder?: { enabled: boolean; folderName?: string };
+    }) => {
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, name }),
+        body: JSON.stringify({ name, folderPaths, createDefaultFolder }),
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -81,6 +107,8 @@ interface CloneProjectParams {
 }
 
 interface CloneProjectResponse extends Project {
+  projectId: string;
+  projectPath: string;
   usedCredentialId: string | null;
 }
 
@@ -108,11 +136,17 @@ export function useCloneProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ path, updates }: { path: string; updates: Partial<Project> }) => {
+    mutationFn: async ({
+      projectId,
+      updates,
+    }: {
+      projectId: string;
+      updates: Partial<Pick<Project, 'name' | 'folderPaths' | 'iconPath' | 'lastOpenedAt'>>;
+    }) => {
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, updates }),
+        body: JSON.stringify({ projectId, updates }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -126,11 +160,11 @@ export function useUpdateProject() {
 export function useDeleteProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ path, deleteLocalFolder = false }: { path: string; deleteLocalFolder?: boolean }) => {
+    mutationFn: async ({ projectId }: { projectId: string }) => {
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, deleteLocalFolder }),
+        body: JSON.stringify({ projectId }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -141,12 +175,32 @@ export function useDeleteProject() {
   });
 }
 
-// Backward-compatible hook names while callers migrate.
-export const useRepositories = useProjects;
-export const useRepository = useProject;
+export function useUpdateRepository() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      path,
+      updates,
+    }: {
+      path: string;
+      updates: Partial<Repository>;
+    }) => {
+      const res = await fetch(`${API_BASE}/repositories`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, updates }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repositories'] });
+    },
+  });
+}
+
 export const useAddRepository = useAddProject;
 export const useCloneRepository = useCloneProject;
-export const useUpdateRepository = useUpdateProject;
 export const useDeleteRepository = useDeleteProject;
 
 

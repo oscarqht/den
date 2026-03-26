@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import { getLocalDb } from '@/lib/local-db';
+import { findProjectByFolderPath, getProjectById } from '@/lib/store';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
@@ -10,6 +11,7 @@ import type { AgentProvider, ReasoningEffort, SessionGitRepoContext } from '@/li
 
 export type DraftMetadata = {
   id: string;
+  projectId?: string;
   projectPath: string;
   gitContexts: SessionGitRepoContext[];
   message: string;
@@ -29,6 +31,7 @@ export type DraftMetadata = {
 
 type DraftRow = {
   id: string;
+  project_id: string | null;
   project_path: string | null;
   repo_path: string | null;
   branch_name: string | null;
@@ -115,6 +118,7 @@ function rowToDraft(row: DraftRow): DraftMetadata {
 
   return {
     id: row.id,
+    projectId: row.project_id?.trim() || undefined,
     projectPath,
     gitContexts,
     message: row.message,
@@ -162,8 +166,9 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
     const db = getLocalDb();
     const safeId = path.basename(draft.id);
     const projectPath = draft.projectPath?.trim() || draft.repoPath?.trim() || '';
-    if (!projectPath) {
-      return { success: false, error: 'Project path is required.' };
+    const projectId = draft.projectId?.trim() || null;
+    if (!projectPath && !projectId) {
+      return { success: false, error: 'Project is required.' };
     }
 
     const gitContexts = normalizeGitContexts(draft);
@@ -175,16 +180,17 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
 
     db.prepare(`
       INSERT OR REPLACE INTO drafts (
-        id, project_path, repo_path, branch_name, git_contexts_json, message,
+        id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
         attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
         startup_script, dev_server_script, session_mode
       ) VALUES (
-        @id, @projectPath, @repoPath, @branchName, @gitContextsJson, @message,
+        @id, @projectId, @projectPath, @repoPath, @branchName, @gitContextsJson, @message,
         @attachmentPathsJson, @agentProvider, @model, @reasoningEffort, @timestamp, @title,
         @startupScript, @devServerScript, @sessionMode
       )
     `).run({
       id: safeId,
+      projectId,
       projectPath,
       repoPath: primaryContext?.sourceRepoPath ?? null,
       branchName: primaryContext?.branchName ?? null,
@@ -213,19 +219,23 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
 export async function listDrafts(projectPath?: string): Promise<DraftMetadata[]> {
   try {
     const db = getLocalDb();
+    const projectId = projectPath ? getProjectById(projectPath)?.id ?? null : null;
+    const resolvedProjectPath = projectPath && !projectId
+      ? (findProjectByFolderPath(projectPath)?.folderPaths[0] ?? projectPath)
+      : null;
     const query = projectPath
       ? `
         SELECT
-          id, project_path, repo_path, branch_name, git_contexts_json, message,
+          id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
           attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
           startup_script, dev_server_script, session_mode
         FROM drafts
-        WHERE project_path = ?
+        WHERE ${projectId ? 'project_id = ?' : 'project_path = ?'}
         ORDER BY timestamp DESC
       `
       : `
         SELECT
-          id, project_path, repo_path, branch_name, git_contexts_json, message,
+          id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
           attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
           startup_script, dev_server_script, session_mode
         FROM drafts
@@ -233,7 +243,7 @@ export async function listDrafts(projectPath?: string): Promise<DraftMetadata[]>
       `;
 
     const rows = projectPath
-      ? (db.prepare(query).all(projectPath) as DraftRow[])
+      ? (db.prepare(query).all(projectId ?? resolvedProjectPath) as DraftRow[])
       : (db.prepare(query).all() as DraftRow[]);
 
     return rows.map(rowToDraft);

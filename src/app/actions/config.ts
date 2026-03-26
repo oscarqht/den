@@ -1,6 +1,8 @@
 'use server';
 
 import { getLocalDb } from '../../lib/local-db.ts';
+import { findProjectByFolderPath, getProjectById, getProjects } from '../../lib/store.ts';
+import { getProjectPrimaryFolderPath } from '../../lib/project-folders.ts';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
@@ -65,7 +67,7 @@ type ConfigRow = {
 };
 
 type ProjectSettingsRow = {
-  project_path: string;
+  project_id: string;
   agent_provider: string | null;
   agent_model: string | null;
   agent_reasoning_effort: string | null;
@@ -112,6 +114,29 @@ function normalizeConfig(config: Config): Config {
   };
 }
 
+function resolveProjectId(projectIdOrPath: string): string | null {
+  const trimmedValue = projectIdOrPath.trim();
+  if (!trimmedValue) return null;
+
+  const projectById = getProjectById(trimmedValue);
+  if (projectById) {
+    return projectById.id;
+  }
+
+  return findProjectByFolderPath(trimmedValue)?.id ?? null;
+}
+
+function getProjectCompatibilityKeys(projectId: string): string[] {
+  const project = getProjectById(projectId);
+  if (!project) return [projectId];
+
+  return Array.from(new Set([
+    project.id,
+    ...project.folderPaths,
+    getProjectPrimaryFolderPath(project) ?? '',
+  ].filter(Boolean)));
+}
+
 function writeConfig(config: Config): void {
   const db = getLocalDb();
   const tx = db.transaction((nextConfig: Config) => {
@@ -139,12 +164,17 @@ function writeConfig(config: Config): void {
       homeProjectSort: normalizeHomeProjectSort(normalizedConfig.homeProjectSort),
     });
 
-    db.prepare('DELETE FROM app_config_recent_projects').run();
+    db.prepare('DELETE FROM app_config_recent_project_entities').run();
     const insertRecentProject = db.prepare(`
-      INSERT INTO app_config_recent_projects (position, project_path) VALUES (?, ?)
+      INSERT INTO app_config_recent_project_entities (position, project_id) VALUES (?, ?)
     `);
-    normalizedConfig.recentProjects.forEach((projectPath, index) => {
-      insertRecentProject.run(index, projectPath);
+    const recentProjectIds = Array.from(new Set(
+      normalizedConfig.recentProjects
+        .map((projectEntry) => resolveProjectId(projectEntry))
+        .filter((projectId): projectId is string => Boolean(projectId)),
+    ));
+    recentProjectIds.forEach((projectId, index) => {
+      insertRecentProject.run(index, projectId);
     });
 
     db.prepare('DELETE FROM app_config_pinned_folder_shortcuts').run();
@@ -155,20 +185,27 @@ function writeConfig(config: Config): void {
       insertPinnedShortcut.run(index, folderPath);
     });
 
-    db.prepare('DELETE FROM app_config_project_settings').run();
+    db.prepare('DELETE FROM app_config_project_entity_settings').run();
     const insertProjectSettings = db.prepare(`
-      INSERT INTO app_config_project_settings (
-        project_path, agent_provider, agent_model, agent_reasoning_effort,
+      INSERT INTO app_config_project_entity_settings (
+        project_id, agent_provider, agent_model, agent_reasoning_effort,
         startup_script, dev_server_script, alias
       ) VALUES (
-        @projectPath, @agentProvider, @agentModel, @agentReasoningEffort,
+        @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
         @startupScript, @devServerScript, @alias
       )
     `);
-    for (const [projectPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
+    const normalizedProjectSettingsEntries = new Map<string, ProjectSettings>();
+    for (const [projectIdOrPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
+      const projectId = resolveProjectId(projectIdOrPath);
+      if (!projectId) continue;
+      normalizedProjectSettingsEntries.set(projectId, projectSettings);
+    }
+
+    for (const [projectId, projectSettings] of normalizedProjectSettingsEntries.entries()) {
       const normalizedProjectSettings = normalizeProjectSettings(projectSettings);
       insertProjectSettings.run({
-        projectPath,
+        projectId,
         agentProvider: normalizedProjectSettings.agentProvider ?? null,
         agentModel: normalizedProjectSettings.agentModel ?? null,
         agentReasoningEffort: normalizeNullableProviderReasoningEffort(
@@ -197,10 +234,10 @@ export async function getConfig(): Promise<Config> {
   `).get() as ConfigRow | undefined;
 
   const recentProjects = db.prepare(`
-    SELECT project_path
-    FROM app_config_recent_projects
+    SELECT project_id
+    FROM app_config_recent_project_entities
     ORDER BY position ASC
-  `).all() as Array<{ project_path: string }>;
+  `).all() as Array<{ project_id: string }>;
 
   const pinnedFolderShortcuts = db.prepare(`
     SELECT folder_path
@@ -210,14 +247,27 @@ export async function getConfig(): Promise<Config> {
 
   const projectSettingsRows = db.prepare(`
     SELECT
-      project_path, agent_provider, agent_model, agent_reasoning_effort,
+      project_id, agent_provider, agent_model, agent_reasoning_effort,
       startup_script, dev_server_script, alias
-    FROM app_config_project_settings
+    FROM app_config_project_entity_settings
   `).all() as ProjectSettingsRow[];
 
   const projectSettings = Object.fromEntries(
-    projectSettingsRows.map((row) => [row.project_path, toProjectSettings(row)]),
+    projectSettingsRows.flatMap((row) => {
+      const projectId = row.project_id.trim();
+      if (!projectId) return [];
+
+      const projectSettings = toProjectSettings(row);
+      return getProjectCompatibilityKeys(projectId).map((key) => [key, projectSettings] as const);
+    }),
   );
+
+  const recentProjectIds = recentProjects
+    .map((entry) => entry.project_id)
+    .filter((projectId) => projectId.trim().length > 0);
+  const recentProjectPaths = recentProjectIds
+    .map((projectId) => getProjectPrimaryFolderPath(getProjectById(projectId) ?? { folderPaths: [] }) || projectId)
+    .filter((projectPath) => projectPath.trim().length > 0);
 
   return {
     ...DEFAULT_CONFIG,
@@ -233,8 +283,8 @@ export async function getConfig(): Promise<Config> {
       configRow?.default_agent_provider,
       configRow?.default_agent_reasoning_effort,
     ),
-    recentProjects: recentProjects.map((entry) => entry.project_path),
-    recentRepos: recentProjects.map((entry) => entry.project_path),
+    recentProjects: recentProjectPaths,
+    recentRepos: recentProjectPaths,
     pinnedFolderShortcuts: pinnedFolderShortcuts.map((entry) => entry.folder_path),
     projectSettings,
     repoSettings: projectSettings,
@@ -267,15 +317,24 @@ export async function updateConfig(updates: Partial<Config>): Promise<Config> {
   return newConfig;
 }
 
-export async function getProjectAlias(projectPath: string): Promise<string | null> {
+export async function getProjectAlias(projectId: string): Promise<string | null> {
+  const resolvedProjectId = resolveProjectId(projectId);
+  const project = resolvedProjectId ? getProjectById(resolvedProjectId) : null;
+  if (!project) return null;
+
   const config = await getConfig();
-  const alias = config.projectSettings[projectPath]?.alias?.trim();
-  return alias || null;
+  const alias = config.projectSettings[resolvedProjectId!]?.alias?.trim()
+    || config.projectSettings[getProjectPrimaryFolderPath(project) || '']?.alias?.trim();
+  return alias || project.name;
 }
 
-export async function updateProjectSettings(projectPath: string, updates: Partial<ProjectSettings>): Promise<Config> {
+export async function updateProjectSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<Config> {
+  const resolvedProjectId = resolveProjectId(projectId);
+  if (!resolvedProjectId) {
+    throw new Error('Project not found.');
+  }
   const currentConfig = await getConfig();
-  const currentProjectSettings = currentConfig.projectSettings[projectPath] || {};
+  const currentProjectSettings = currentConfig.projectSettings[resolvedProjectId] || currentConfig.projectSettings[projectId] || {};
   const nextProjectSettings = normalizeProjectSettings({
     ...currentProjectSettings,
     ...updates,
@@ -285,7 +344,7 @@ export async function updateProjectSettings(projectPath: string, updates: Partia
     ...currentConfig,
     projectSettings: {
       ...currentConfig.projectSettings,
-      [projectPath]: nextProjectSettings,
+      [resolvedProjectId]: nextProjectSettings,
     },
   };
 
@@ -317,15 +376,4 @@ export async function setGitRepoCredential(repoPath: string, credentialId: strin
     INSERT OR REPLACE INTO git_repo_credentials (repo_path, credential_id)
     VALUES (?, ?)
   `).run(repoPath, normalizedCredentialId);
-}
-
-// Backward-compatible wrappers while callers migrate.
-export type RepoSettings = ProjectSettings;
-
-export async function getRepoAlias(repoPath: string): Promise<string | null> {
-  return getProjectAlias(repoPath);
-}
-
-export async function updateRepoSettings(repoPath: string, updates: Partial<RepoSettings>): Promise<Config> {
-  return updateProjectSettings(repoPath, updates);
 }

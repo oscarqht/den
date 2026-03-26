@@ -1,17 +1,20 @@
 import { ChevronRight, FolderGit2, Settings, X, GitBranch as GitBranchIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { getBaseName } from '@/lib/path';
+import type { HomeProjectGitRepo } from '@/lib/home-project-git';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 
 export type HomeRepoCardProps = {
   project: string;
   projectDisplayName?: string;
+  projectSecondaryLabel?: string;
+  isProjectOpenable?: boolean;
   isDarkThemeActive: boolean;
   runningSessionCount: number;
   draftCount: number;
   projectIconPath: string | null;
   showProjectIcon: boolean;
-  projectGitRepos?: string[];
+  projectGitRepos?: HomeProjectGitRepo[];
   isDiscoveringProjectGitRepos: boolean;
   onSelectProject: (project: string) => void | Promise<boolean>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
@@ -26,24 +29,11 @@ function normalizePathForComparison(pathValue: string): string {
   return pathValue.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
-function toProjectRelativeRepoPath(projectPath: string, repoPath: string): string {
-  const normalizedProjectPath = normalizePathForComparison(projectPath);
-  const normalizedRepoPath = normalizePathForComparison(repoPath);
-
-  if (!normalizedProjectPath || !normalizedRepoPath) return repoPath;
-  if (normalizedRepoPath === normalizedProjectPath) return '.';
-
-  const projectPrefix = `${normalizedProjectPath}/`;
-  if (normalizedRepoPath.startsWith(projectPrefix)) {
-    return normalizedRepoPath.slice(projectPrefix.length);
-  }
-
-  return repoPath;
-}
-
 export function HomeRepoCard({
   project,
   projectDisplayName,
+  projectSecondaryLabel,
+  isProjectOpenable = true,
   isDarkThemeActive,
   runningSessionCount,
   draftCount,
@@ -60,6 +50,7 @@ export function HomeRepoCard({
   onMouseLeave,
 }: HomeRepoCardProps) {
   const projectName = projectDisplayName || getBaseName(project);
+  const secondaryLabel = projectSecondaryLabel || project;
   const cardGradient = getStableRepoCardGradient(normalizePathForComparison(project));
   const [isGitRepoMenuOpen, setIsGitRepoMenuOpen] = useState(false);
   const gitRepoMenuRef = useRef<HTMLDivElement | null>(null);
@@ -86,8 +77,12 @@ export function HomeRepoCard({
 
   return (
     <div
-      onClick={() => void onSelectProject(project)}
+      onClick={() => {
+        if (!isProjectOpenable) return;
+        void onSelectProject(project);
+      }}
       onKeyDown={(event) => {
+        if (!isProjectOpenable) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           void onSelectProject(project);
@@ -95,9 +90,11 @@ export function HomeRepoCard({
       }}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
-      role="button"
-      tabIndex={0}
-      className="repo-card-tilt-wrapper group relative h-[248px] cursor-pointer text-left transition-transform duration-200"
+      role={isProjectOpenable ? 'button' : undefined}
+      tabIndex={isProjectOpenable ? 0 : -1}
+      className={`repo-card-tilt-wrapper group relative h-[248px] text-left transition-transform duration-200 ${
+        isProjectOpenable ? 'cursor-pointer' : 'cursor-default'
+      }`}
     >
       <div
         className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/30 backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/5 dark:backdrop-saturate-125 dark:hover:border-white/20"
@@ -146,7 +143,7 @@ export function HomeRepoCard({
                   {projectName}
                 </h3>
                 <div className="flex shrink-0 items-center gap-2">
-                  {shouldShowGitWorkspaceButton && (
+                  {isProjectOpenable && shouldShowGitWorkspaceButton && (
                     <div className="relative" ref={gitRepoMenuRef}>
                       <button
                         onClick={(event) => {
@@ -170,21 +167,20 @@ export function HomeRepoCard({
                       </button>
                       {hasMultipleGitRepos && isGitRepoMenuOpen && (
                         <div className="absolute right-0 top-8 z-30 max-h-56 w-52 overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-[#30363d] dark:bg-[#161b22]">
-                          {discoveredProjectGitRepos.map((repoPath) => {
-                            const relativeRepoPath = toProjectRelativeRepoPath(project, repoPath);
+                          {discoveredProjectGitRepos.map((repoEntry) => {
                             return (
                               <button
-                                key={repoPath}
+                                key={repoEntry.repoPath}
                                 type="button"
                                 className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/70"
-                                title={repoPath}
+                                title={repoEntry.repoPath}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setIsGitRepoMenuOpen(false);
-                                  onOpenGitWorkspace(project, repoPath);
+                                  onOpenGitWorkspace(project, repoEntry.repoPath);
                                 }}
                               >
-                                <span className="truncate">{relativeRepoPath}</span>
+                                <span className="truncate">{repoEntry.label}</span>
                               </button>
                             );
                           })}
@@ -212,16 +208,16 @@ export function HomeRepoCard({
               </div>
               <p
                 className="mt-2 line-clamp-2 break-all font-mono text-xs leading-5 text-slate-600 dark:text-slate-300"
-                title={project}
+                title={secondaryLabel}
               >
-                {project}
+                {secondaryLabel}
               </p>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <span>Open project</span>
-            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            <span>{isProjectOpenable ? 'Open project' : 'Add folders in settings to open'}</span>
+            <ChevronRight className={`h-4 w-4 transition-transform ${isProjectOpenable ? 'group-hover:translate-x-0.5' : ''}`} />
           </div>
         </div>
       </div>

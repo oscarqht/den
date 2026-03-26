@@ -1,4 +1,4 @@
-import type { SessionGitRepoContext, SessionWorkspaceMode } from './types.ts';
+import type { SessionGitRepoContext, SessionWorkspaceFolder, SessionWorkspaceMode } from './types.ts';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
   'Plan mode: in your first response of this session, inspect the relevant code, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands. After the user approves that initial plan, execute small or trivial follow-up changes directly without re-requesting approval. Request approval again only when a proposed change is substantial (for example meaningfully expands scope, changes approach, or introduces material risk).';
@@ -18,6 +18,7 @@ export type BuildAgentStartupPromptOptions = {
   attachmentPaths?: string[];
   sessionMode?: 'fast' | 'plan';
   workspaceMode: SessionWorkspaceMode;
+  workspaceFolders?: SessionWorkspaceFolder[];
   gitRepos?: SessionGitRepoContext[];
   discoveredRepoRelativePaths?: string[];
 };
@@ -48,6 +49,46 @@ function getKnownRepoPaths(
   const discoveredPaths = uniqueRepoPaths(discoveredRepoRelativePaths || []);
   if (discoveredPaths.length > 0) return discoveredPaths;
   return uniqueRepoPaths((gitRepos || []).map((repo) => repo.relativeRepoPath));
+}
+
+function formatWorkspaceFolderProvisioning(provisioning: SessionWorkspaceFolder['provisioning']): string {
+  switch (provisioning) {
+    case 'direct':
+      return 'direct source folder';
+    case 'link':
+      return 'linked source folder';
+    case 'copy':
+      return 'copied folder';
+    case 'worktree':
+      return 'Git worktree';
+  }
+}
+
+export function buildWorkspaceInstructionLines(
+  workspaceMode: SessionWorkspaceMode,
+  workspaceFolders: SessionWorkspaceFolder[] = [],
+): string[] {
+  if (workspaceFolders.length === 0) {
+    return [];
+  }
+
+  const normalizedWorkspaceFolders = [...workspaceFolders].sort((left, right) => (
+    left.workspaceRelativePath.localeCompare(right.workspaceRelativePath)
+  ));
+
+  if (normalizedWorkspaceFolders.length === 1 && normalizedWorkspaceFolders[0]?.workspaceRelativePath === '.') {
+    const onlyFolder = normalizedWorkspaceFolders[0];
+    return [
+      `Workspace layout: your shell starts in \`.\`, which maps to \`${onlyFolder.sourcePath}\` as a ${formatWorkspaceFolderProvisioning(onlyFolder.provisioning)}.`,
+    ];
+  }
+
+  return [
+    `Workspace layout: your shell starts at the workspace root in ${workspaceMode} mode with ${normalizedWorkspaceFolders.length} mapped entries.`,
+    ...normalizedWorkspaceFolders.map((workspaceFolder) => (
+      `Workspace entry \`${workspaceFolder.workspaceRelativePath}\`: \`${workspaceFolder.sourcePath}\` (${formatWorkspaceFolderProvisioning(workspaceFolder.provisioning)}).`
+    )),
+  ];
 }
 
 export function hasStartupTaskDescription(taskDescription?: string | null): boolean {
@@ -118,6 +159,7 @@ export function buildAgentStartupPrompt({
   attachmentPaths = [],
   sessionMode = 'fast',
   workspaceMode,
+  workspaceFolders = [],
   gitRepos = [],
   discoveredRepoRelativePaths = [],
 }: BuildAgentStartupPromptOptions): string | null {
@@ -134,6 +176,7 @@ export function buildAgentStartupPrompt({
   if (sessionMode === 'plan') {
     instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
   }
+  instructionLines.push(...buildWorkspaceInstructionLines(workspaceMode, workspaceFolders));
   instructionLines.push(...buildProjectGitInstructionLines(workspaceMode, gitRepos, discoveredRepoRelativePaths));
   instructionLines.push(AUTO_COMMIT_INSTRUCTION);
   instructionLines.push(AGENT_BROWSER_SKILL_INSTRUCTION);

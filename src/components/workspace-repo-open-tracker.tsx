@@ -18,7 +18,14 @@ export function WorkspaceRepoOpenTracker() {
       return;
     }
 
-    if (!repoPath || !projects?.some((project) => project.path === repoPath)) {
+    const matchingProject = repoPath
+      ? projects?.find((project) => project.folderPaths.some((folderPath) => (
+        repoPath === folderPath
+        || repoPath.startsWith(`${folderPath}/`)
+        || repoPath.startsWith(`${folderPath}\\`)
+      )))
+      : null;
+    if (!repoPath || !matchingProject) {
       return;
     }
 
@@ -28,7 +35,7 @@ export function WorkspaceRepoOpenTracker() {
 
     lastTrackedPathRef.current = repoPath;
     updateProject.mutate({
-      path: repoPath,
+      projectId: matchingProject.id,
       updates: {
         lastOpenedAt: new Date().toISOString(),
       },

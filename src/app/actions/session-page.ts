@@ -4,6 +4,7 @@ import { getProjectAlias } from './config';
 import { getSessionTerminalSources, resolveRepoCardIcon } from './git';
 import { discoverProjectGitRepos } from './project';
 import { consumeSessionLaunchContext, getSessionMetadata, type SessionMetadata } from './session';
+import { getProjectById } from '@/lib/store';
 import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
 
 type SessionPageLaunchContext = {
@@ -46,9 +47,15 @@ export async function getSessionPageBootstrap(sessionId: string): Promise<Sessio
     }
 
     const isFirstOpen = metadata.initialized === false;
+    const resolvedProject = metadata.projectId ? getProjectById(metadata.projectId) : null;
     const [repoDisplayName, iconResult, launchContextResult] = await Promise.all([
-        getProjectAlias(metadata.projectPath),
-        resolveRepoCardIcon(metadata.projectPath).catch(() => ({ success: false as const, iconPath: null })),
+        Promise.resolve(
+            resolvedProject?.name?.trim()
+            || null
+        ).then(async (projectName) => projectName || getProjectAlias(metadata.projectId ?? metadata.projectPath)),
+        resolvedProject?.iconPath
+            ? Promise.resolve({ success: true as const, iconPath: resolvedProject.iconPath })
+            : resolveRepoCardIcon(metadata.projectPath).catch(() => ({ success: false as const, iconPath: null })),
         consumeSessionLaunchContext(sessionId),
     ]);
 

@@ -24,21 +24,16 @@ export async function getProjectDisplayNameFromConfig(projectPath: string): Prom
   return alias || getRepoFolderName(projectPath);
 }
 
-export function getProjectDisplayName(project: Pick<Project, 'path' | 'name' | 'displayName'>): string {
-  const customName = project.displayName?.trim();
-  if (customName) {
-    return customName;
-  }
-
+export function getProjectDisplayName(project: Pick<Project, 'name'>): string {
   if (project.name?.trim()) {
     return project.name;
   }
 
-  return getRepoFolderName(project.path);
+  return 'Untitled Project';
 }
 
-export function getRepositoryDisplayName(repo: Pick<Repository, 'path' | 'name' | 'displayName'>): string {
-  return getProjectDisplayName(repo);
+export function getRepositoryDisplayName(repo: Pick<Repository, 'path' | 'name'>): string {
+  return repo.name?.trim() || getRepoFolderName(repo.path);
 }
 
 function getNormalizedExtension(filePath: string): string {

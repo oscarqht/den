@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getRequestHostname, getRequestOrigin, isDirectLocalRequest } from './request-origin.ts';
+import {
+  getRequestHostname,
+  getRequestOrigin,
+  isDirectLocalRequest,
+  isTrustedTailnetRequest,
+} from './request-origin.ts';
 
 function createHeaders(values: Record<string, string>): Pick<Headers, 'get'> {
   return {
@@ -76,5 +81,40 @@ describe('isDirectLocalRequest', () => {
     });
 
     assert.strictEqual(isDirectLocalRequest(headers, 'localhost', 'http:'), false);
+  });
+});
+
+describe('isTrustedTailnetRequest', () => {
+  it('treats Tailscale MagicDNS hosts as trusted tailnet traffic', () => {
+    const headers = createHeaders({
+      host: 'office-mac.tail3158df.ts.net:3200',
+    });
+
+    assert.strictEqual(isTrustedTailnetRequest(headers), true);
+  });
+
+  it('treats Tailscale CGNAT addresses as trusted tailnet traffic', () => {
+    const headers = createHeaders({
+      host: '100.88.1.2:3200',
+    });
+
+    assert.strictEqual(isTrustedTailnetRequest(headers), true);
+  });
+
+  it('rejects forwarded hosts that are not Tailscale', () => {
+    const headers = createHeaders({
+      host: 'office-mac.tail3158df.ts.net:3200',
+      'x-forwarded-host': 'palx.nport.link',
+    });
+
+    assert.strictEqual(isTrustedTailnetRequest(headers), false);
+  });
+
+  it('does not treat unrelated hosts as trusted tailnet traffic', () => {
+    const headers = createHeaders({
+      host: 'palx.nport.link',
+    });
+
+    assert.strictEqual(isTrustedTailnetRequest(headers), false);
   });
 });

@@ -19,6 +19,21 @@ function normalizeHostnameCandidate(rawValue: string): string {
     return trimmed;
 }
 
+function isTailscaleCgnatIpv4(hostname: string): boolean {
+    const match = hostname.match(/^(\d{1,3})(?:\.(\d{1,3})){3}$/);
+    if (!match) {
+        return false;
+    }
+
+    const octets = hostname.split('.').map((part) => Number(part));
+    if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
+        return false;
+    }
+
+    const [firstOctet, secondOctet] = octets;
+    return firstOctet === 100 && secondOctet >= 64 && secondOctet <= 127;
+}
+
 export function isLocalHostname(rawValue: string): boolean {
     const hostname = normalizeHostnameCandidate(rawValue);
 
@@ -27,6 +42,14 @@ export function isLocalHostname(rawValue: string): boolean {
         || hostname === '::1'
         || hostname === '0.0.0.0'
         || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+export function isTailscaleHostname(rawValue: string): boolean {
+    const hostname = normalizeHostnameCandidate(rawValue);
+
+    return hostname.endsWith('.ts.net')
+        || isTailscaleCgnatIpv4(hostname)
+        || hostname.startsWith('fd7a:115c:a1e0:');
 }
 
 export const normalizePreviewUrl = (rawValue: string): string | null => {

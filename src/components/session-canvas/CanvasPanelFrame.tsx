@@ -16,6 +16,7 @@ import type { SessionCanvasPanel } from '@/lib/types';
 type CanvasPanelFrameProps = {
   panel: SessionCanvasPanel;
   scale: number;
+  interactionMode?: 'canvas' | 'stacked';
   active: boolean;
   selected: boolean;
   closable?: boolean;
@@ -57,6 +58,7 @@ function snapToGrid(value: number): number {
 function CanvasPanelFrameComponent({
   panel,
   scale,
+  interactionMode = 'canvas',
   active,
   selected,
   closable = true,
@@ -66,6 +68,7 @@ function CanvasPanelFrameComponent({
   headerActions,
   children,
 }: CanvasPanelFrameProps) {
+  const isStacked = interactionMode === 'stacked';
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
     pointerId: number;
@@ -88,11 +91,19 @@ function CanvasPanelFrameComponent({
     const frame = frameRef.current;
     if (!frame) return;
 
+    if (isStacked) {
+      frame.style.left = '';
+      frame.style.top = '';
+      frame.style.width = '';
+      frame.style.height = '';
+      return;
+    }
+
     frame.style.left = `${geometry.x}px`;
     frame.style.top = `${geometry.y}px`;
     frame.style.width = `${geometry.width}px`;
     frame.style.height = `${geometry.height}px`;
-  }, []);
+  }, [isStacked]);
 
   const flushPendingGeometry = useCallback(() => {
     animationFrameRef.current = null;
@@ -128,7 +139,7 @@ function CanvasPanelFrameComponent({
     });
   }, []);
 
-  const stopPointerTracking = useCallback(() => {
+  const finalizePointerTracking = useCallback(() => {
     const dragState = dragStateRef.current;
     const pointerCaptureElement = pointerCaptureElementRef.current;
     if (dragState && pointerCaptureElement?.hasPointerCapture?.(dragState.pointerId)) {
@@ -142,12 +153,9 @@ function CanvasPanelFrameComponent({
     pointerCaptureElementRef.current = null;
     setIframeInteractionEnabled(true);
     dragStateRef.current = null;
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', handlePointerUp);
-    window.removeEventListener('pointercancel', handlePointerUp);
   }, [setIframeInteractionEnabled]);
 
-  const handlePointerMove = useCallback((event: PointerEvent) => {
+  const handlePointerMove = useCallback(function handlePointerMove(event: PointerEvent) {
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -174,7 +182,7 @@ function CanvasPanelFrameComponent({
     });
   }, [scale, scheduleGeometryPreview]);
 
-  const handlePointerUp = useCallback((event: PointerEvent) => {
+  const handlePointerUp = useCallback(function handlePointerUp(event: PointerEvent) {
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -202,8 +210,24 @@ function CanvasPanelFrameComponent({
     }
 
     setIsResizePreviewActive(false);
-    stopPointerTracking();
-  }, [applyGeometryToFrame, onUpdate, panel.id, stopPointerTracking]);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointercancel', handlePointerUp);
+    finalizePointerTracking();
+  }, [applyGeometryToFrame, finalizePointerTracking, handlePointerMove, onUpdate, panel.id]);
+
+  const stopPointerTracking = useCallback(() => {
+    const dragState = dragStateRef.current;
+    if (!dragState) {
+      finalizePointerTracking();
+      return;
+    }
+
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointercancel', handlePointerUp);
+    finalizePointerTracking();
+  }, [finalizePointerTracking, handlePointerMove, handlePointerUp]);
 
   const startPointerTracking = useCallback((
     event: ReactPointerEvent,
@@ -284,7 +308,9 @@ function CanvasPanelFrameComponent({
   return (
     <div
       ref={frameRef}
-      className={`absolute flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white transition-shadow dark:bg-[#111827] ${
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white transition-shadow dark:bg-[#111827] ${
+        isStacked ? 'relative h-full w-full' : 'absolute'
+      } ${
         selected
           ? 'border-slate-400 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] ring-1 ring-slate-300 dark:border-slate-500 dark:ring-slate-600'
           : active
@@ -292,11 +318,11 @@ function CanvasPanelFrameComponent({
             : 'border-slate-200 shadow-[0_12px_32px_-16px_rgba(15,23,42,0.4)] dark:border-slate-800'
       }`}
       style={{
-        left: panel.x,
-        top: panel.y,
-        width: panel.width,
-        height: panel.height,
-        zIndex: panel.zIndex,
+        left: isStacked ? undefined : panel.x,
+        top: isStacked ? undefined : panel.y,
+        width: isStacked ? '100%' : panel.width,
+        height: isStacked ? '100%' : panel.height,
+        zIndex: isStacked ? undefined : panel.zIndex,
         contain: 'layout paint',
       }}
       data-session-canvas-panel="true"
@@ -304,6 +330,7 @@ function CanvasPanelFrameComponent({
       onFocusCapture={() => onFocus(panel.id)}
       onMouseDown={() => onFocus(panel.id)}
       onWheelCapture={(event) => {
+        if (isStacked) return;
         if (!selected) return;
         if (event.ctrlKey || event.metaKey) return;
         event.stopPropagation();
@@ -312,11 +339,12 @@ function CanvasPanelFrameComponent({
       <div
         className={`relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-2.5 py-1.5 text-[12px] dark:border-slate-800 dark:bg-slate-950/80 ${closable ? 'pr-10' : 'pr-2.5'}`}
         onPointerDown={(event) => {
+          if (isStacked) return;
           if (isInteractiveTarget(event.target)) return;
           startPointerTracking(event, 'move');
         }}
       >
-        <Grip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        {!isStacked ? <Grip className="h-3.5 w-3.5 shrink-0 text-slate-400" /> : null}
         <div className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-slate-100">
           {panel.title}
         </div>
@@ -347,7 +375,7 @@ function CanvasPanelFrameComponent({
         <div className={isResizePreviewActive ? 'hidden h-full' : 'h-full'}>
           {children}
         </div>
-        {!selected && !isResizePreviewActive ? (
+        {!isStacked && !selected && !isResizePreviewActive ? (
           <button
             type="button"
             className="absolute inset-0 z-10 cursor-default bg-transparent"
@@ -371,25 +399,27 @@ function CanvasPanelFrameComponent({
         ) : null}
       </div>
 
-      <button
-        type="button"
-        className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-tl-md bg-slate-100/80 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-900/80 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-        onPointerDown={(event) => {
-          startPointerTracking(event, 'resize');
-        }}
-        data-panel-interactive="true"
-        aria-label={`Resize ${panel.title}`}
-      >
-        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5">
-          <path
-            d="M6 14L14 6M10 14L14 10M14 14L14 14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
+      {!isStacked ? (
+        <button
+          type="button"
+          className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-tl-md bg-slate-100/80 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-900/80 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          onPointerDown={(event) => {
+            startPointerTracking(event, 'resize');
+          }}
+          data-panel-interactive="true"
+          aria-label={`Resize ${panel.title}`}
+        >
+          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5">
+            <path
+              d="M6 14L14 6M10 14L14 10M14 14L14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }

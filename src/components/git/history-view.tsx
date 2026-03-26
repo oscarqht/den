@@ -3487,8 +3487,16 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const headerIconButtonClass =
     "flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 bg-white/88 text-slate-600 transition-colors hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
   const headerActionLabelClass = "max-[1199px]:hidden";
-  const branchSelectButtonClass =
-    "flex h-8 max-w-[24rem] items-center gap-2 rounded-lg border border-slate-200/90 bg-white/88 px-3 text-sm font-mono font-medium text-slate-700 transition-colors hover:bg-white dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-200 dark:hover:bg-slate-800";
+  const headerSelectButtonClass =
+    "flex h-8 items-center gap-2 rounded-lg border border-slate-200/90 bg-white/88 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-200 dark:hover:bg-slate-800";
+  const branchSelectButtonClass = cn(
+    headerSelectButtonClass,
+    "max-w-[24rem] font-mono",
+  );
+  const credentialSelectButtonClass = cn(
+    headerSelectButtonClass,
+    "max-w-[20rem]",
+  );
   const selectedRepoCredentialLabel = repoCredentialSelection === 'auto'
     ? 'Auto (remote-based)'
     : formatRepoCredentialOptionLabel(
@@ -4700,16 +4708,10 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 <span className={headerActionLabelClass}>Push</span>
               </button>
             </div>
-            <div
-              className="relative flex items-center gap-2 rounded-lg border border-slate-200/90 bg-white/70 px-2 py-1 dark:border-slate-700 dark:bg-slate-900/70"
-              ref={credentialPopoverRef}
-            >
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Credential
-              </span>
+            <div className="relative shrink-0" ref={credentialPopoverRef}>
               <button
                 type="button"
-                className="flex h-7 w-9 items-center justify-center rounded border border-slate-200/90 bg-white/90 text-slate-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800"
+                className={credentialSelectButtonClass}
                 onClick={() => setIsCredentialMenuOpen((previous) => !previous)}
                 disabled={isLoadingRepoCredential || isSavingRepoCredential}
                 title={selectedRepoCredentialLabel}
@@ -4717,27 +4719,28 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 aria-haspopup="menu"
                 aria-expanded={isCredentialMenuOpen}
               >
+                <span className="truncate">{selectedRepoCredentialLabel}</span>
                 {(isLoadingRepoCredential || isSavingRepoCredential) ? (
-                  <span className="loading loading-spinner loading-xs"></span>
+                  <span className="loading loading-spinner loading-xs shrink-0"></span>
                 ) : (
                   <i
                     className={cn(
-                      "iconoir-nav-arrow-down text-[16px] transition-transform",
+                      "iconoir-nav-arrow-down shrink-0 text-[16px] transition-transform opacity-60",
                       isCredentialMenuOpen && "rotate-180",
                     )}
                     aria-hidden="true"
                   />
                 )}
               </button>
-              {(isLoadingRepoCredential || isSavingRepoCredential) && (
-                <span className="loading loading-spinner loading-xs"></span>
-              )}
               {isCredentialMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-[280px] overflow-hidden rounded-[18px] bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
-                  <div className="max-h-[320px] overflow-auto py-1.5">
+                <div className="absolute right-0 top-full z-50 mt-2 flex w-[20rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[20px] bg-white/96 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:bg-slate-950/96 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.84)]">
+                  <div className="flex h-[57px] shrink-0 items-center border-b border-slate-200/70 bg-white/96 px-4 dark:border-slate-800 dark:bg-slate-950/96">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Credential</h3>
+                  </div>
+                  <div className="max-h-[320px] overflow-auto p-2">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                       onClick={() => {
                         void handleRepoCredentialSelectionChange('auto');
                       }}
@@ -4751,7 +4754,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                         <button
                           key={credential.id}
                           type="button"
-                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                          className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                           onClick={() => {
                             void handleRepoCredentialSelectionChange(credential.id);
                           }}

@@ -24,6 +24,7 @@ type SessionExplorerDockProps = {
   sessionId: string;
   roots: SessionExplorerRoot[];
   state: SessionExplorerState;
+  mobile?: boolean;
   onStateChange: (updates: Partial<SessionExplorerState>) => void;
   onOpenFile: (filePath: string) => void;
 };
@@ -144,6 +145,7 @@ export function SessionExplorerDock({
   sessionId,
   roots,
   state,
+  mobile = false,
   onStateChange,
   onOpenFile,
 }: SessionExplorerDockProps) {
@@ -234,6 +236,10 @@ export function SessionExplorerDock({
   }, [onStateChange, state.width]);
 
   if (state.collapsed) {
+    if (mobile) {
+      return null;
+    }
+
     return (
       <div className="relative z-30 h-full w-0 shrink-0 overflow-visible">
         <button
@@ -251,8 +257,8 @@ export function SessionExplorerDock({
 
   return (
     <div
-      className="relative z-30 h-full shrink-0 px-4 py-4 pr-2"
-      style={{ width: state.width + 24 }}
+      className={mobile ? 'relative h-full w-full' : 'relative z-30 h-full shrink-0 px-4 py-4 pr-2'}
+      style={mobile ? undefined : { width: state.width + 24 }}
     >
       <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/92 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:border-slate-800 dark:bg-[#0b1020]/92 dark:shadow-[0_20px_40px_-24px_rgba(2,6,23,0.8)]">
         {error ? (
@@ -310,21 +316,25 @@ export function SessionExplorerDock({
           ))}
         </div>
 
-        <div
-          className="absolute inset-y-0 right-0 w-1 cursor-col-resize bg-transparent transition hover:bg-slate-300/60 dark:hover:bg-slate-600/60"
-          onPointerDown={beginResize}
-        />
+        {!mobile ? (
+          <div
+            className="absolute inset-y-0 right-0 w-1 cursor-col-resize bg-transparent transition hover:bg-slate-300/60 dark:hover:bg-slate-600/60"
+            onPointerDown={beginResize}
+          />
+        ) : null}
       </div>
 
-      <button
-        type="button"
-        className="absolute right-0 top-1/2 z-40 h-16 w-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-300/70 shadow-[0_8px_18px_-10px_rgba(15,23,42,0.5)] transition hover:w-2.5 hover:bg-slate-500/80 dark:bg-slate-700/80 dark:hover:bg-slate-500"
-        onClick={() => onStateChange({ collapsed: true })}
-        aria-label="Collapse explorer"
-        title="Collapse explorer"
-      >
-        <span className="sr-only">Collapse explorer</span>
-      </button>
+      {!mobile ? (
+        <button
+          type="button"
+          className="absolute right-0 top-1/2 z-40 h-16 w-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-300/70 shadow-[0_8px_18px_-10px_rgba(15,23,42,0.5)] transition hover:w-2.5 hover:bg-slate-500/80 dark:bg-slate-700/80 dark:hover:bg-slate-500"
+          onClick={() => onStateChange({ collapsed: true })}
+          aria-label="Collapse explorer"
+          title="Collapse explorer"
+        >
+          <span className="sr-only">Collapse explorer</span>
+        </button>
+      ) : null}
     </div>
   );
 }

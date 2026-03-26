@@ -1,6 +1,7 @@
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
+import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-shell/AppPageSurface';
 import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
@@ -21,6 +22,7 @@ export type HomeDashboardProps = {
   filteredRecentProjects: string[];
   isDarkThemeActive: boolean;
   runningSessionCountByProject: Map<string, number>;
+  latestRunningSessionIdByProject: Map<string, string>;
   draftCountByProject: Map<string, number>;
   projectCardIconByPath: Record<string, string | null>;
   brokenProjectCardIcons: Record<string, boolean>;
@@ -61,6 +63,7 @@ export function HomeDashboard({
   filteredRecentProjects,
   isDarkThemeActive,
   runningSessionCountByProject,
+  latestRunningSessionIdByProject,
   draftCountByProject,
   projectCardIconByPath,
   brokenProjectCardIcons,
@@ -85,35 +88,40 @@ export function HomeDashboard({
   onRepoCardMouseLeave,
   onAddProject,
 }: HomeDashboardProps) {
+  const compactGhostButtonClass =
+    'btn btn-ghost btn-sm h-8 min-h-8 shrink-0 gap-2 rounded-lg px-2.5 text-[12px] font-medium text-slate-700 shadow-none hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white';
+  const compactPanelShadowClass =
+    'rounded-[22px] shadow-[0_18px_36px_-24px_rgba(15,23,42,0.38)] backdrop-blur dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.82)]';
+
   return (
-    <div className="w-full max-w-7xl">
-      <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-white/50 bg-white/40 px-4 py-4 shadow-[0_8px_32px_-8px_rgba(15,23,42,0.15)] backdrop-blur-xl backdrop-saturate-150 transition-colors lg:flex-row lg:items-center lg:justify-between lg:px-7 dark:border-white/10 dark:bg-slate-900/30 dark:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]">
+    <div className="w-full max-w-[1380px]">
+      <header className={`relative z-10 flex flex-col gap-3 px-4 py-3 transition-colors lg:flex-row lg:items-center lg:justify-between ${APP_PAGE_TOOLBAR_CLASS}`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 aspect-square items-center justify-center rounded-xl bg-white/60 shadow-sm backdrop-blur-sm dark:border dark:border-white/10 dark:bg-white/10">
-            <Image src="/palx-icon.png" alt="Palx" width={22} height={22} className="h-[22px] w-[22px] shrink-0 rounded-sm" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+            <Image src="/palx-icon.png" alt="Palx" width={20} height={20} className="h-5 w-5 shrink-0 rounded-sm" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate whitespace-nowrap text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Palx</h2>
-            <p className="truncate whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">AI Coding Agent Dashboard</p>
+            <h2 className="truncate whitespace-nowrap text-base font-semibold tracking-tight text-slate-900 dark:text-white">Palx</h2>
+            <p className="truncate whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400">AI coding workspace</p>
           </div>
         </div>
 
         <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap">
-          <label className="input input-sm flex w-full items-center gap-2 border-white/40 bg-white/50 text-slate-700 shadow-none backdrop-blur-sm transition-colors lg:w-72 dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
+          <label className="flex h-8 w-full items-center gap-2 rounded-lg border border-slate-200/90 bg-white/85 px-2.5 text-slate-700 shadow-none transition-colors lg:w-72 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200">
             <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              className="grow text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              className="grow bg-transparent text-[12px] placeholder:text-slate-400 focus:outline-none dark:placeholder:text-slate-500"
               placeholder="Search projects..."
               value={homeSearchQuery}
               onChange={(event) => onHomeSearchQueryChange(event.target.value)}
             />
           </label>
-          <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-white/40 bg-white/50 px-2.5 text-sm text-slate-700 backdrop-blur-sm transition-colors dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
+          <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-slate-200/90 bg-white/85 px-2.5 text-[12px] text-slate-700 transition-colors dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200">
             <ArrowUpDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             <span className="sr-only">Sort projects</span>
             <select
-              className="min-w-0 bg-transparent text-sm outline-none"
+              className="min-w-0 bg-transparent text-[12px] outline-none"
               value={homeProjectSort}
               onChange={(event) => onHomeProjectSortChange(event.target.value as HomeProjectSort)}
               aria-label="Sort projects"
@@ -124,7 +132,7 @@ export function HomeDashboard({
           </label>
           <div className="relative shrink-0">
             <button
-              className="btn btn-primary btn-sm gap-2"
+              className="btn btn-primary btn-sm h-8 min-h-8 gap-2 rounded-lg px-3 text-[12px]"
               onClick={onOpenQuickCreate}
               title="Create task"
               aria-label="Create task"
@@ -139,7 +147,7 @@ export function HomeDashboard({
             ) : null}
           </div>
           <button
-            className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className={compactGhostButtonClass}
             onClick={onOpenCredentials}
             title="Open settings"
             aria-label="Open settings"
@@ -150,7 +158,7 @@ export function HomeDashboard({
           {showLogout && logoutEnabled ? (
             <a
               href="/auth/logout"
-              className="btn btn-ghost btn-sm shrink-0 gap-2 px-2 lg:px-3 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+              className={compactGhostButtonClass}
               title="Log out"
               aria-label="Log out"
             >
@@ -159,7 +167,7 @@ export function HomeDashboard({
             </a>
           ) : null}
           <button
-            className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-white/10 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
+            className="btn btn-ghost btn-sm btn-square h-8 min-h-8 w-8 rounded-lg text-slate-700 hover:bg-slate-100 dark:border dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
             onClick={onCycleThemeMode}
             title={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
             aria-label={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
@@ -177,7 +185,7 @@ export function HomeDashboard({
         )}
 
         {failedQuickCreateDrafts.length > 0 ? (
-          <div className="mb-5 rounded-2xl border border-amber-200/70 bg-amber-50/80 p-4 shadow-sm backdrop-blur-sm dark:border-amber-400/20 dark:bg-amber-950/20">
+          <div className="mb-5 rounded-[22px] border border-amber-200/80 bg-amber-50/88 p-4 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.28)] backdrop-blur dark:border-amber-400/20 dark:bg-amber-950/24 dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.75)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
@@ -196,7 +204,7 @@ export function HomeDashboard({
               {failedQuickCreateDrafts.map((draft) => (
                 <div
                   key={draft.id}
-                  className="rounded-xl border border-amber-200/70 bg-white/80 p-4 dark:border-amber-400/20 dark:bg-slate-900/50"
+                  className="rounded-xl border border-amber-200/70 bg-white/90 p-4 dark:border-amber-400/20 dark:bg-slate-900/58"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -243,16 +251,16 @@ export function HomeDashboard({
         ) : null}
 
         {!isLoaded ? (
-          <div className="flex h-56 items-center justify-center rounded-2xl border border-white/40 bg-white/25 backdrop-blur-lg dark:border-white/10 dark:bg-white/5">
+          <div className={`flex h-52 items-center justify-center ${APP_PAGE_PANEL_CLASS}`}>
             <span className="loading loading-spinner loading-md text-primary"></span>
           </div>
         ) : filteredRecentProjects.length === 0 ? (
-          <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-white/40 bg-white/25 text-center backdrop-blur-lg dark:border-white/10 dark:bg-white/5">
+          <div className={`flex h-52 flex-col items-center justify-center text-center ${APP_PAGE_PANEL_CLASS}`}>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {homeSearchQuery.trim() ? 'No projects match your search.' : 'No recent projects found.'}
             </p>
             {!homeSearchQuery.trim() && (
-              <button className="btn btn-primary btn-sm mt-3 gap-2" onClick={onAddProject}>
+              <button className="btn btn-primary btn-sm mt-3 h-8 min-h-8 gap-2 rounded-lg px-3 text-[12px]" onClick={onAddProject}>
                 <Plus className="h-4 w-4" />
                 Add your first project
               </button>
@@ -269,6 +277,7 @@ export function HomeDashboard({
                 isProjectOpenable={isProjectOpenable(project)}
                 isDarkThemeActive={isDarkThemeActive}
                 runningSessionCount={runningSessionCountByProject.get(project) ?? 0}
+                latestRunningSessionId={latestRunningSessionIdByProject.get(project) ?? null}
                 draftCount={draftCountByProject.get(project) ?? 0}
                 projectIconPath={projectCardIconByPath[project] ?? null}
                 showProjectIcon={!!projectCardIconByPath[project] && !brokenProjectCardIcons[project]}
@@ -286,15 +295,15 @@ export function HomeDashboard({
 
             <button
               onClick={onAddProject}
-              className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/50 bg-white/25 text-slate-600 backdrop-blur-lg backdrop-saturate-150 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white/45 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:border-white/20 dark:hover:bg-white/10"
+              className={`group flex h-[224px] flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200/90 bg-white/72 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/45 hover:bg-white dark:border-slate-700 dark:bg-slate-950/72 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-950 ${compactPanelShadowClass}`}
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/70 shadow-sm backdrop-blur-sm transition-transform group-hover:scale-105 dark:border dark:border-white/10 dark:bg-white/10">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-sm transition-transform group-hover:scale-105 dark:border-slate-700 dark:bg-slate-900/90">
                 <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
               </span>
-              <span className="text-lg font-semibold transition-colors group-hover:text-primary">
+              <span className="text-base font-semibold transition-colors group-hover:text-primary">
                 Add Project
               </span>
-              <span className="text-sm text-slate-400 dark:text-slate-500">Import from local folder or git URL</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">Import from local folder or git URL</span>
             </button>
           </div>
         )}

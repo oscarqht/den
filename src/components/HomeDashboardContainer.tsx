@@ -892,6 +892,20 @@ export default function HomeDashboardContainer({
     return counts;
   }, [allSessions, resolveProjectEntry]);
 
+  const latestRunningSessionIdByProject = useMemo(() => {
+    const sessionIds = new Map<string, string>();
+    for (const session of allSessions) {
+      const projectKey = session.projectId
+        || (session.projectPath ? resolveProjectEntry(session.projectPath).key : '')
+        || session.repoPath;
+      if (!projectKey) continue;
+      if (!sessionIds.has(projectKey)) {
+        sessionIds.set(projectKey, session.sessionName);
+      }
+    }
+    return sessionIds;
+  }, [allSessions, resolveProjectEntry]);
+
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const draft of allDrafts) {
@@ -1141,6 +1155,7 @@ export default function HomeDashboardContainer({
         filteredRecentProjects={filteredRecentProjects}
         isDarkThemeActive={isDarkThemeActive}
         runningSessionCountByProject={runningSessionCountByProject}
+        latestRunningSessionIdByProject={latestRunningSessionIdByProject}
         draftCountByProject={draftCountByProject}
         projectCardIconByPath={projectCardIconByKey}
         brokenProjectCardIcons={brokenRepoCardIcons}

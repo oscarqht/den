@@ -40,7 +40,7 @@ export const TERMINAL_THEME_LIGHT: TerminalTheme = buildMonochromeTheme(
 );
 
 export const TERMINAL_THEME_DARK: TerminalTheme = buildMonochromeTheme(
-  '#22272e',
+  '#020617',
   '#adbac7',
   'rgba(49, 109, 202, 0.35)',
 );

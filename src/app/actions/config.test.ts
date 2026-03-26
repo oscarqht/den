@@ -102,4 +102,29 @@ describe('config global agent defaults', () => {
     assert.equal(codexConfig.defaultAgentProvider, 'codex');
     assert.equal(codexConfig.defaultAgentReasoningEffort, 'low');
   });
+
+  it('clears project runtime fields when undefined updates are provided', async () => {
+    const projectRoot = path.join(tempHome, 'project-runtime-clear');
+    const project = storeModule.addProject({
+      name: 'Project Runtime Clear',
+      folderPaths: [projectRoot],
+    });
+
+    await configModule.updateProjectSettings(project.id, {
+      agentProvider: 'codex',
+      agentModel: 'gpt-5.4',
+      agentReasoningEffort: 'low',
+    });
+
+    const updated = await configModule.updateProjectSettings(project.id, {
+      agentProvider: 'gemini',
+      agentModel: 'gemini-2.5-pro',
+      agentReasoningEffort: undefined,
+    });
+
+    assert.equal(updated.projectSettings[project.id]?.agentProvider, 'gemini');
+    assert.equal(updated.projectSettings[project.id]?.agentModel, 'gemini-2.5-pro');
+    assert.equal(updated.projectSettings[project.id]?.agentReasoningEffort, undefined);
+    assert.equal(updated.projectSettings[projectRoot]?.agentReasoningEffort, undefined);
+  });
 });

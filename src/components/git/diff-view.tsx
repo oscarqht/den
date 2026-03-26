@@ -46,6 +46,7 @@ export function DiffView({
   
   const { resolvedTheme } = useTheme();
   const splitView = controlledSplitView ?? uncontrolledSplitView;
+  const diffHeaderClass = 'border-b border-slate-200/70 bg-white/30 dark:border-slate-800 dark:bg-slate-950/30';
 
   // Save split view preference when it changes
   useEffect(() => {
@@ -65,7 +66,7 @@ export function DiffView({
   };
 
   const header = showHeader ? (
-    <div className="flex items-center justify-between px-4 h-[57px] border-b border-base-300 shrink-0 bg-base-100">
+    <div className={`flex h-[57px] shrink-0 items-center justify-between px-4 ${diffHeaderClass}`}>
       <span className="text-sm font-mono truncate max-w-[70%]" title={filePath}>{filePath}</span>
       <div className="flex items-center gap-2">
         <label htmlFor={splitViewToggleId} className="text-[10px] uppercase tracking-wider font-bold cursor-pointer opacity-70">Split View</label>
@@ -106,9 +107,9 @@ export function DiffView({
   const isImage = isImageFile(filePath);
   if (isImage) {
     return (
-      <div className="flex flex-col h-full bg-base-100">
+      <div className="flex h-full flex-col bg-transparent">
         {showHeader ? (
-          <div className="flex items-center justify-between px-4 h-[57px] border-b border-base-300 shrink-0 bg-base-100">
+          <div className={`flex h-[57px] shrink-0 items-center justify-between px-4 ${diffHeaderClass}`}>
             <span className="text-sm font-mono truncate max-w-[70%]" title={filePath}>{filePath}</span>
           </div>
         ) : null}
@@ -124,9 +125,9 @@ export function DiffView({
 
   if (isBinary) {
     return (
-      <div className="flex flex-col h-full bg-base-100">
+      <div className="flex h-full flex-col bg-transparent">
         {showHeader ? (
-          <div className="flex items-center justify-between px-4 h-[57px] border-b border-base-300 shrink-0 bg-base-100">
+          <div className={`flex h-[57px] shrink-0 items-center justify-between px-4 ${diffHeaderClass}`}>
             <span className="text-sm font-mono truncate max-w-[70%]" title={filePath}>{filePath}</span>
           </div>
         ) : null}
@@ -148,7 +149,7 @@ export function DiffView({
   const isLargeDiff = (contentSize > MAX_DIFF_SIZE || lineCount > MAX_DIFF_LINES);
 
   return (
-    <div className="flex flex-col h-full bg-base-100">
+    <div className="flex h-full flex-col bg-transparent">
       {header}
       <div ref={diffScrollContainerRef} className="flex-1 overflow-auto diff-viewer-wrapper">
         {isLargeDiff && !renderAnyway ? (

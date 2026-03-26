@@ -47,7 +47,7 @@ describe('session-navigation', () => {
   it('records and consumes a pending session navigation once', () => {
     recordPendingSessionNavigation('session-1');
 
-    assert.strictEqual(consumePendingSessionNavigationRetry(), 'session-1');
+    assert.deepStrictEqual(consumePendingSessionNavigationRetry(), { sessionName: 'session-1' });
     assert.strictEqual(consumePendingSessionNavigationRetry(), null);
   });
 
@@ -62,7 +62,7 @@ describe('session-navigation', () => {
     recordPendingSessionNavigation('session-3');
     clearPendingSessionNavigation('session-other');
 
-    assert.strictEqual(consumePendingSessionNavigationRetry(), 'session-3');
+    assert.deepStrictEqual(consumePendingSessionNavigationRetry(), { sessionName: 'session-3' });
   });
 });
 

@@ -1,5 +1,6 @@
 import { ChevronRight, Settings, X, GitBranch as GitBranchIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import { getBaseName } from '@/lib/path';
 import { getProjectIconUrl } from '@/lib/project-icons';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
@@ -12,6 +13,7 @@ export type HomeRepoCardProps = {
   isProjectOpenable?: boolean;
   isDarkThemeActive: boolean;
   runningSessionCount: number;
+  latestRunningSessionId?: string | null;
   draftCount: number;
   projectIconPath: string | null;
   showProjectIcon: boolean;
@@ -37,6 +39,7 @@ export function HomeRepoCard({
   isProjectOpenable = true,
   isDarkThemeActive,
   runningSessionCount,
+  latestRunningSessionId,
   draftCount,
   projectIconPath,
   showProjectIcon,
@@ -94,24 +97,24 @@ export function HomeRepoCard({
       onMouseLeave={onMouseLeave}
       role={isProjectOpenable ? 'button' : undefined}
       tabIndex={isProjectOpenable ? 0 : -1}
-      className={`repo-card-tilt-wrapper group relative h-[248px] text-left transition-transform duration-200 ${
+      className={`repo-card-tilt-wrapper group relative h-[224px] text-left transition-transform duration-200 ${
         isProjectOpenable ? 'cursor-pointer' : 'cursor-default'
       }`}
     >
       <div
-        className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/30 backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/5 dark:backdrop-saturate-125 dark:hover:border-white/20"
+        className={`repo-card-tilt relative h-full overflow-hidden bg-white/82 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_22px_44px_-24px_rgba(15,23,42,0.4)] dark:bg-slate-950/82 dark:hover:border-slate-700 ${APP_PAGE_PANEL_CLASS}`}
         style={isDarkThemeActive ? undefined : cardGradient}
       >
-        <div className="absolute inset-0 bg-white/20 dark:bg-slate-900/20" />
-        <div className="repo-card-tilt-content relative flex h-full flex-col justify-between p-5">
-          <div className="flex items-start gap-4">
+        <div className="absolute inset-0 bg-white/46 dark:bg-slate-950/44" />
+        <div className="repo-card-tilt-content relative flex h-full flex-col justify-between p-4">
+          <div className="flex items-start gap-3">
               <div className="relative flex shrink-0 items-center">
-                <div className="repo-card-tilt-icon flex h-20 w-20 items-center justify-center rounded-[1.35rem] bg-white text-slate-700 shadow-sm dark:border dark:border-white/15 dark:bg-white dark:text-slate-200">
+                <div className="repo-card-tilt-icon flex h-16 w-16 items-center justify-center rounded-[1.1rem] border border-slate-200/80 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={projectIconUrl}
                   alt={`${projectName} icon`}
-                  className="h-14 w-14 rounded-xl object-cover"
+                  className="h-11 w-11 rounded-lg object-cover"
                   onError={hasCustomProjectIcon ? () => onProjectIconError(project) : undefined}
                 />
               </div>
@@ -137,7 +140,7 @@ export function HomeRepoCard({
               </div>
             <div className="min-w-0 flex-1 self-start pt-1">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="min-w-0 truncate pr-2 text-lg font-bold leading-tight text-slate-900 dark:text-white">
+                <h3 className="min-w-0 truncate pr-2 text-base font-semibold leading-tight text-slate-900 dark:text-white">
                   {projectName}
                 </h3>
                 <div className="flex shrink-0 items-center gap-2">
@@ -153,7 +156,7 @@ export function HomeRepoCard({
                           }
                           setIsGitRepoMenuOpen((previous) => !previous);
                         }}
-                        className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:bg-white/50 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white dark:disabled:hover:bg-white/10"
+                        className="btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-600 opacity-100 shadow-none transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:bg-white/85 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:disabled:hover:bg-slate-900/90"
                         title={isDiscoveringProjectGitRepos
                           ? 'Discovering repositories...'
                           : hasMultipleGitRepos
@@ -186,18 +189,30 @@ export function HomeRepoCard({
                       )}
                     </div>
                   )}
+                  {latestRunningSessionId ? (
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        window.location.assign(`/session/${encodeURIComponent(latestRunningSessionId)}`);
+                      }}
+                      className="btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-600 opacity-100 shadow-none transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      title="Open latest running session"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                   <button
                     onClick={(event) => {
                       void onOpenProjectSettings(event, project);
                     }}
-                    className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-slate-900 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
+                    className="btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-600 opacity-100 shadow-none transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                     title="Project settings"
                   >
                     <Settings className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={(event) => onRemoveRecent(event, project)}
-                    className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-500 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-rose-600 dark:bg-white/10 dark:text-slate-400 dark:hover:bg-white/20 dark:hover:text-rose-300"
+                    className="btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-500 opacity-100 shadow-none transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white hover:text-rose-600 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-rose-300"
                     title="Delete project"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -205,7 +220,7 @@ export function HomeRepoCard({
                 </div>
               </div>
               <p
-                className="mt-2 line-clamp-2 break-all font-mono text-xs leading-5 text-slate-600 dark:text-slate-300"
+                className="mt-2 line-clamp-2 break-all font-mono text-[11px] leading-5 text-slate-600 dark:text-slate-300"
                 title={secondaryLabel}
               >
                 {secondaryLabel}
@@ -213,7 +228,7 @@ export function HomeRepoCard({
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <div className="flex items-center justify-between text-[12px] font-semibold text-slate-700 dark:text-slate-200">
             <span>{isProjectOpenable ? 'Open project' : 'Add folders in settings to open'}</span>
             <ChevronRight className={`h-4 w-4 transition-transform ${isProjectOpenable ? 'group-hover:translate-x-0.5' : ''}`} />
           </div>

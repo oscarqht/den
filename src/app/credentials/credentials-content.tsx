@@ -38,6 +38,10 @@ import {
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  APP_PAGE_PANEL_CLASS,
+  APP_PAGE_TOOLBAR_CLASS,
+} from '@/components/app-shell/AppPageSurface';
 
 const DEFAULT_GITLAB_SERVER_URL = 'https://gitlab.com';
 const PROVIDER_ICON_URLS = {
@@ -545,281 +549,279 @@ export default function SettingsContent() {
     setDeletingAgent(null);
   };
 
-  const panelClass =
-    'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700/50 dark:bg-slate-800 dark:shadow-[0_12px_30px_-18px_rgba(2,6,23,0.9)]';
+  const panelClass = `overflow-hidden ${APP_PAGE_PANEL_CLASS}`;
   const sectionHeaderClass =
-    'flex flex-col gap-3 border-b border-slate-200 bg-white px-6 py-5 md:flex-row md:items-center md:justify-between dark:border-slate-700/50 dark:bg-slate-800';
+    'flex flex-col gap-3 border-b border-slate-200/80 bg-white/35 px-5 py-4 md:flex-row md:items-center md:justify-between dark:border-slate-800 dark:bg-slate-950/35';
   const subsectionHeaderClass =
-    'flex flex-col gap-3 bg-white px-6 py-5 md:flex-row md:items-center md:justify-between dark:bg-slate-800';
+    'flex flex-col gap-3 bg-white/20 px-5 py-4 md:flex-row md:items-center md:justify-between dark:bg-slate-950/20';
   const inputClass =
-    'block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-primary/50 dark:focus:bg-slate-900';
+    'block h-10 w-full rounded-lg border border-slate-200/90 bg-white/85 px-3 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/85 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary/50';
   const secondaryButtonClass =
-    'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
+    'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white/85 px-3 text-[12px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200 dark:hover:bg-slate-800';
   const warningButtonClass =
-    'inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25';
+    'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[12px] font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25';
   const rowActionButtonClass =
     'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 dark:text-slate-400 dark:hover:bg-red-900/30 dark:hover:text-red-400';
 
   return (
-    <main className="min-h-screen bg-[#f6f6f8] px-4 py-8 md:px-8 md:py-12 dark:bg-[#0f1117]">
-      <div className="mx-auto w-full max-w-7xl space-y-8">
-        <div className="mb-8">
-          <div className="mb-2 flex items-center gap-4">
-            <button
-              type="button"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              onClick={() => router.push('/')}
-              aria-label="Back to home"
-            >
-              <ChevronRight className="h-6 w-6 rotate-180" />
-            </button>
-            <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">
-              Settings
-            </h1>
-          </div>
-          <p className="ml-14 text-sm text-slate-500 md:text-base dark:text-slate-400">
-            Manage default coding agent preferences, API keys, and access
-            tokens for third-party services.
-          </p>
-        </div>
-
-        {flashMessage && (
-          <div
-            className={`rounded-lg border px-4 py-3 text-sm ${
-              flashMessage.tone === 'error'
-                ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-200'
-            }`}
+    <div className="mx-auto w-full max-w-[1380px] space-y-5">
+      <div className={`flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 ${APP_PAGE_TOOLBAR_CLASS}`}>
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+            onClick={() => router.push('/')}
+            aria-label="Back to home"
           >
-            {flashMessage.text}
-          </div>
-        )}
-
-        {loading ? (
-          <div className={`${panelClass} p-10`}>
-            <div className="flex flex-col items-center gap-3">
-              <span className="loading loading-spinner loading-md text-primary"></span>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Loading settings...
-              </p>
+            <ChevronRight className="h-4 w-4 rotate-180" />
+          </button>
+          <div className="min-w-0">
+            <div className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+              Settings
             </div>
+            <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+              Default coding agent preferences, API keys, and service credentials.
+            </p>
           </div>
-        ) : (
-          <div className="space-y-6">
-            <section className={panelClass}>
-              <div className={sectionHeaderClass}>
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-sky-100 p-1.5 text-sky-600 dark:border dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400">
-                    <Bot className="h-5 w-5" />
+        </div>
+      </div>
+
+      {flashMessage && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            flashMessage.tone === 'error'
+              ? 'border-red-200 bg-red-50/90 text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200'
+              : 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-200'
+          }`}
+        >
+          {flashMessage.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className={`${panelClass} p-10`}>
+          <div className="flex flex-col items-center gap-3">
+            <span className="loading loading-spinner loading-md text-primary"></span>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Loading settings...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <section className={panelClass}>
+            <div className={sectionHeaderClass}>
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-sky-100 p-1.5 text-sky-600 dark:border dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Coding Agent Defaults
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Use these defaults for ad-hoc agent tasks and as the
+                    fallback when a project has no saved runtime settings.
+                  </p>
+                </div>
+              </div>
+              <button
+                className={secondaryButtonClass}
+                onClick={() => void handleSaveAgentDefaults()}
+                disabled={savingAgentDefaults}
+              >
+                {savingAgentDefaults ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Save Defaults
+              </button>
+            </div>
+
+            <div className="space-y-6 p-5">
+              <div
+                className={`grid gap-4 ${
+                  reasoningEffortOptions.length > 0
+                    ? 'md:grid-cols-3'
+                    : 'md:grid-cols-2'
+                }`}
+              >
+                <label className="flex flex-col gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Provider
+                  </span>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                      value={selectedDefaultAgentProvider}
+                      onChange={(event) => {
+                        setSelectedDefaultAgentProvider(
+                          normalizeAgentProvider(event.target.value),
+                        );
+                        setSelectedDefaultAgentModel('');
+                        setSelectedDefaultAgentReasoningEffort('');
+                      }}
+                    >
+                      {displayedAgentProviders.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                  </div>
+                </label>
+
+                <label className="flex flex-col gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Model
+                  </span>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                      value={selectedDefaultAgentModel}
+                      onChange={(event) =>
+                        setSelectedDefaultAgentModel(event.target.value)
+                      }
+                    >
+                      {modelOptions.map((model) => (
+                        <option key={model.id || 'default-model'} value={model.id}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                  </div>
+                  {selectedModelOption.description ? (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {selectedModelOption.description}
+                    </span>
+                  ) : null}
+                </label>
+
+                {reasoningEffortOptions.length > 0 && (
+                  <label className="flex flex-col gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Reasoning Effort
+                    </span>
+                    <div className="relative">
+                      <select
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                        value={selectedDefaultAgentReasoningEffort}
+                        onChange={(event) =>
+                          setSelectedDefaultAgentReasoningEffort(
+                            event.target.value as ReasoningEffort | '',
+                          )
+                        }
+                      >
+                        {reasoningEffortOptions.map((effort) => (
+                          <option key={effort} value={effort}>
+                            {effort}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-slate-200/90 bg-white/70 px-3 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                <div className="space-y-1">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    {agentProviderLabel(
+                      selectedDefaultAgentProvider,
+                      agentProviders,
+                    )}
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Coding Agent Defaults
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Use these defaults for ad-hoc agent tasks and as the
-                      fallback when a project has no saved runtime settings.
-                    </p>
+                    {loadingAgentStatus
+                      ? 'Checking runtime status...'
+                      : agentStatus
+                        ? [
+                            agentStatus.installed
+                              ? 'Installed'
+                              : 'Not installed',
+                            agentStatus.loggedIn
+                              ? 'Logged in'
+                              : 'Login required',
+                            agentStatus.version
+                              ? `v${agentStatus.version}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' • ')
+                        : 'Runtime status unavailable'}
                   </div>
+                  <div>
+                    Effective model:{' '}
+                    {effectiveDefaultModelId || 'Provider default'}
+                  </div>
+                </div>
+                {agentDefaultsError ? (
+                  <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                    {agentDefaultsError}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className={panelClass}>
+            <div className={sectionHeaderClass}>
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-amber-100 p-1.5 text-amber-600 dark:border dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Credentials
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Manage Git access tokens and agent API credentials stored in
+                    your local keychain.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className={subsectionHeaderClass}>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    GitHub Credentials
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Access private repositories and Gists.
+                  </p>
                 </div>
                 <button
                   className={secondaryButtonClass}
-                  onClick={() => void handleSaveAgentDefaults()}
-                  disabled={savingAgentDefaults}
+                  onClick={() => void handleSaveGitHub()}
+                  disabled={savingType === 'github'}
                 >
-                  {savingAgentDefaults ? (
+                  {savingType === 'github' ? (
                     <span className="loading loading-spinner loading-xs"></span>
                   ) : (
                     <KeyRound className="h-4 w-4" />
                   )}
-                  Save Defaults
+                  Add Token
                 </button>
               </div>
-
-              <div className="space-y-6 p-6">
-                <div
-                  className={`grid gap-4 ${
-                    reasoningEffortOptions.length > 0
-                      ? 'md:grid-cols-3'
-                      : 'md:grid-cols-2'
-                  }`}
-                >
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Provider
-                    </span>
-                    <div className="relative">
-                      <select
-                        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-100"
-                        value={selectedDefaultAgentProvider}
-                        onChange={(event) => {
-                          setSelectedDefaultAgentProvider(
-                            normalizeAgentProvider(event.target.value),
-                          );
-                          setSelectedDefaultAgentModel('');
-                          setSelectedDefaultAgentReasoningEffort('');
-                        }}
-                      >
-                        {displayedAgentProviders.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                    </div>
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Model
-                    </span>
-                    <div className="relative">
-                      <select
-                        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-100"
-                        value={selectedDefaultAgentModel}
-                        onChange={(event) =>
-                          setSelectedDefaultAgentModel(event.target.value)
-                        }
-                      >
-                        {modelOptions.map((model) => (
-                          <option key={model.id || 'default-model'} value={model.id}>
-                            {model.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                    </div>
-                    {selectedModelOption.description ? (
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {selectedModelOption.description}
-                      </span>
-                    ) : null}
-                  </label>
-
-                  {reasoningEffortOptions.length > 0 && (
-                    <label className="flex flex-col gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Reasoning Effort
-                      </span>
-                      <div className="relative">
-                        <select
-                          className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-100"
-                          value={selectedDefaultAgentReasoningEffort}
-                          onChange={(event) =>
-                            setSelectedDefaultAgentReasoningEffort(
-                              event.target.value as ReasoningEffort | '',
-                            )
-                          }
-                        >
-                          {reasoningEffortOptions.map((effort) => (
-                            <option key={effort} value={effort}>
-                              {effort}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
-                      </div>
-                    </label>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-                  <div className="space-y-1">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">
-                      {agentProviderLabel(
-                        selectedDefaultAgentProvider,
-                        agentProviders,
-                      )}
-                    </div>
-                    <div>
-                      {loadingAgentStatus
-                        ? 'Checking runtime status...'
-                        : agentStatus
-                          ? [
-                              agentStatus.installed
-                                ? 'Installed'
-                                : 'Not installed',
-                              agentStatus.loggedIn
-                                ? 'Logged in'
-                                : 'Login required',
-                              agentStatus.version
-                                ? `v${agentStatus.version}`
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' • ')
-                          : 'Runtime status unavailable'}
-                    </div>
-                    <div>
-                      Effective model:{' '}
-                      {effectiveDefaultModelId || 'Provider default'}
-                    </div>
-                  </div>
-                  {agentDefaultsError ? (
-                    <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-                      {agentDefaultsError}
-                    </div>
-                  ) : null}
-                </div>
+              <div className="bg-slate-50/20 px-5 py-4 dark:bg-slate-950/20">
+                <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Personal Access Token
+                </label>
+                <input
+                  type="password"
+                  className={inputClass}
+                  placeholder="ghp_xxx"
+                  value={githubToken}
+                  onChange={(event) => setGitHubToken(event.target.value)}
+                  disabled={savingType === 'github'}
+                />
               </div>
-            </section>
-
-            <section className={panelClass}>
-              <div className={sectionHeaderClass}>
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-amber-100 p-1.5 text-amber-600 dark:border dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
-                    <KeyRound className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Credentials
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Manage Git access tokens and agent API credentials stored in
-                      your local keychain.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className={subsectionHeaderClass}>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                      GitHub Credentials
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Access private repositories and Gists.
-                    </p>
-                  </div>
-                  <button
-                    className={secondaryButtonClass}
-                    onClick={() => void handleSaveGitHub()}
-                    disabled={savingType === 'github'}
-                  >
-                    {savingType === 'github' ? (
-                      <span className="loading loading-spinner loading-xs"></span>
-                    ) : (
-                      <KeyRound className="h-4 w-4" />
-                    )}
-                    Add Token
-                  </button>
-                </div>
-                <div className="bg-slate-50/40 px-6 py-4 dark:bg-slate-900/35">
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Personal Access Token
-                  </label>
-                  <input
-                    type="password"
-                    className={inputClass}
-                    placeholder="ghp_xxx"
-                    value={githubToken}
-                    onChange={(event) => setGitHubToken(event.target.value)}
-                    disabled={savingType === 'github'}
-                  />
-                </div>
-
                 {githubCredentials.length === 0 ? (
                   <div className="px-6 py-6 text-sm text-slate-500 dark:text-slate-400">
                     No GitHub credentials saved.
@@ -1096,8 +1098,7 @@ export default function SettingsContent() {
             </div>
           </div>
         )}
-      </div>
       {dialog}
-    </main>
+    </div>
   );
 }

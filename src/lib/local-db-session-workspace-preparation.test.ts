@@ -31,6 +31,17 @@ after(async () => {
 });
 
 describe('local DB session workspace preparation schema', () => {
+  it('creates the session canvas layout table', () => {
+    const db = localDbModule.getLocalDb();
+    const row = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'session_canvas_layouts'
+    `).get() as { name?: string } | undefined;
+
+    assert.equal(row?.name, 'session_canvas_layouts');
+  });
+
   it('creates app_config with global default agent columns', () => {
     const db = localDbModule.getLocalDb();
     const columns = db.prepare('PRAGMA table_info(app_config)').all() as Array<{

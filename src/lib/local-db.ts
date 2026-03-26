@@ -264,6 +264,12 @@ function createSchema(db: Database.Database): void {
       timestamp TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS session_canvas_layouts (
+      session_name TEXT PRIMARY KEY,
+      layout_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS session_workspace_preparations (
       preparation_id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL DEFAULT '',
@@ -1063,6 +1069,7 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'session_launch_contexts', 'reasoning_effort TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_paths_json TEXT');
   addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_relative_paths_json TEXT');
+  addColumnIfMissing(db, 'session_canvas_layouts', 'updated_at TEXT');
   addColumnIfMissing(db, 'drafts', 'project_id TEXT');
   addColumnIfMissing(db, 'drafts', 'project_path TEXT');
   addColumnIfMissing(db, 'drafts', 'git_contexts_json TEXT');
@@ -1394,6 +1401,7 @@ function runSchemaMigrations(db: Database.Database): void {
   createIndexIfColumnsExist(db, 'app_config_project_entity_settings', 'app_config_project_entity_settings_project_idx', ['project_id']);
   createIndexIfColumnsExist(db, 'quick_create_drafts', 'quick_create_drafts_updated_at_idx', ['updated_at']);
   createIndexIfColumnsExist(db, 'session_git_repos', 'session_git_repos_session_idx', ['session_name']);
+  createIndexIfColumnsExist(db, 'session_canvas_layouts', 'session_canvas_layouts_updated_at_idx', ['updated_at']);
   createIndexIfColumnsExist(
     db,
     'session_workspace_preparations',

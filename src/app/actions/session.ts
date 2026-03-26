@@ -2992,6 +2992,7 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
     db.prepare(`DELETE FROM sessions WHERE session_name = ?`).run(sessionName);
     db.prepare(`DELETE FROM session_git_repos WHERE session_name = ?`).run(sessionName);
     db.prepare(`DELETE FROM session_launch_contexts WHERE session_name = ?`).run(sessionName);
+    db.prepare(`DELETE FROM session_canvas_layouts WHERE session_name = ?`).run(sessionName);
     db.prepare(`DELETE FROM session_agent_history_items WHERE session_name = ?`).run(sessionName);
 
     const promptsDir = await getSessionPromptsDir();

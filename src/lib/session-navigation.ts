@@ -67,7 +67,7 @@ export function recordPendingSessionNavigation(sessionName: string): void {
   });
 }
 
-export function consumePendingSessionNavigationRetry(): string | null {
+export function consumePendingSessionNavigationRetry(): { sessionName: string } | null {
   const storage = getSessionStorage();
   if (!storage) return null;
 
@@ -88,7 +88,9 @@ export function consumePendingSessionNavigationRetry(): string | null {
     ...pending,
     retryCount: pending.retryCount + 1,
   });
-  return pending.sessionName;
+  return {
+    sessionName: pending.sessionName,
+  };
 }
 
 export function clearPendingSessionNavigation(sessionName?: string): void {

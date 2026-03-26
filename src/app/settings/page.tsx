@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AppPageSurface } from '@/components/app-shell/AppPageSurface';
 import SettingsContent from '../credentials/credentials-content';
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function SettingsPage() {
-  return <SettingsContent />;
+  return (
+    <AppPageSurface>
+      <SettingsContent />
+    </AppPageSurface>
+  );
 }

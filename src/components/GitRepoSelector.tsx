@@ -55,8 +55,9 @@ import {
   findActiveMention,
   replaceActiveMention,
 } from '@/lib/task-description-mentions';
-import { buildAgentStartupPrompt, hasStartupTaskDescription } from '@/lib/agent-startup-prompt';
+import { hasStartupTaskDescription } from '@/lib/agent-startup-prompt';
 import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
+import { getEffectiveProjectAgentRuntimeSettings } from '@/lib/project-agent-runtime';
 import {
   resolveShouldUseDarkTheme,
   THEME_MODE_STORAGE_KEY,
@@ -64,6 +65,10 @@ import {
 } from '@/lib/ttyd-theme';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import { useAppDialog } from '@/hooks/use-app-dialog';
+import {
+  APP_PAGE_PANEL_CLASS,
+  APP_PAGE_TOOLBAR_CLASS,
+} from '@/components/app-shell/AppPageSurface';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import SessionFileBrowser from './SessionFileBrowser';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
@@ -74,6 +79,7 @@ import type {
   AgentProvider,
   AppStatus,
   ModelOption,
+  Project,
   ProviderCatalogEntry,
   ReasoningEffort,
   SessionWorkspacePreference,
@@ -266,28 +272,6 @@ function normalizeProviderReasoningSelection(
   return normalizeProviderReasoningEffort(provider, normalizeReasoningSelection(value));
 }
 
-function getEffectiveAgentRuntimeSettings(config: Config, repoPath: string) {
-  const projectSettings = config.projectSettings[repoPath] || {};
-  const resolvedProvider = normalizeAgentProvider(
-    projectSettings.agentProvider ?? config.defaultAgentProvider,
-  );
-  const resolvedModel =
-    projectSettings.agentModel ?? config.defaultAgentModel ?? '';
-  const resolvedReasoningEffort =
-    normalizeProviderReasoningEffort(
-      resolvedProvider,
-      projectSettings.agentReasoningEffort
-        ?? config.defaultAgentReasoningEffort,
-    ) || '';
-
-  return {
-    provider: resolvedProvider,
-    model: resolvedModel,
-    reasoningEffort: resolvedReasoningEffort,
-    projectSettings,
-  };
-}
-
 function normalizeModelOption(input: unknown): ModelOption | null {
   if (!input || typeof input !== 'object') return null;
 
@@ -413,6 +397,7 @@ export default function GitRepoSelector({
   const [config, setConfig] = useState<Config | null>(null);
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
   const [repoAlias, setRepoAlias] = useState<string>('');
   const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_PROJECT_STARTUP_COMMAND);
@@ -491,6 +476,7 @@ export default function GitRepoSelector({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const sessionNavigationCommittedRef = useRef(false);
   const agentRuntimeSettingsRequestRef = useRef(0);
+  const hydratedAgentRuntimeRepoRef = useRef<string | null>(null);
   const [preparedWorkspace, setPreparedWorkspace] = useState<WorkspacePreparationState | null>(null);
   const [isPreparingWorkspace, setIsPreparingWorkspace] = useState(false);
   const activePreparedWorkspaceRef = useRef<WorkspacePreparationState | null>(null);
@@ -517,7 +503,9 @@ export default function GitRepoSelector({
   }, []);
 
   const resetSelectedProjectState = useCallback((projectPath: string) => {
+    hydratedAgentRuntimeRepoRef.current = null;
     setSelectedRepo(projectPath);
+    setSelectedProjectId(null);
     setRepoFilesCache([]);
     setProjectGitRepos([]);
     setBranchesByRepo({});
@@ -539,10 +527,8 @@ export default function GitRepoSelector({
     return requestId;
   }, [resetSelectedProjectState]);
 
-  const navigateToSession = useCallback((sessionName: string, options?: { fresh?: boolean }) => {
-    const targetPath = options?.fresh
-      ? `/session/${encodeURIComponent(sessionName)}?fresh=1`
-      : `/session/${encodeURIComponent(sessionName)}`;
+  const navigateToSession = useCallback((sessionName: string) => {
+    const targetPath = `/session/${encodeURIComponent(sessionName)}`;
     sessionNavigationCommittedRef.current = true;
     recordPendingSessionNavigation(sessionName);
     // Use a hard navigation here. App Router transitions out of /new can be interrupted
@@ -910,9 +896,15 @@ export default function GitRepoSelector({
     path: string,
     resolvedConfig?: Config,
     selectedProjectRequestId?: number,
+    projectSettingsKey?: string,
   ) => {
     // Load saved session scripts
-    await loadSavedAgentSettings(path, resolvedConfig, selectedProjectRequestId);
+    await loadSavedAgentSettings(
+      path,
+      resolvedConfig,
+      selectedProjectRequestId,
+      projectSettingsKey,
+    );
     if (
       selectedProjectRequestId !== undefined
       && !isActiveSelectedProjectLoad(selectedProjectRequestId)
@@ -950,7 +942,9 @@ export default function GitRepoSelector({
     );
   }, [selectedProjectGitContexts, selectedRepo, sessionWorkspacePreference]);
 
-  const ensureProjectRegistered = useCallback(async (projectPath: string) => {
+  const selectedProjectSettingsReference = selectedProjectId || selectedRepo;
+
+  const ensureProjectRegistered = useCallback(async (projectPath: string): Promise<Project | null> => {
     try {
       const response = await fetch('/api/projects', {
         method: 'POST',
@@ -958,17 +952,21 @@ export default function GitRepoSelector({
         body: JSON.stringify({ path: projectPath, name: getBaseName(projectPath) }),
       });
 
-      if (response.ok) return;
+      if (response.ok) {
+        const payload = await response.json().catch(() => null) as Project | null;
+        return payload && typeof payload.id === 'string' ? payload : null;
+      }
 
       const payload = await response.json().catch(() => null) as { error?: unknown } | null;
       const errorMessage = typeof payload?.error === 'string' ? payload.error : '';
-      if (/already exists/i.test(errorMessage)) return;
-      if (response.status === 500 && !errorMessage) return;
+      if (/already exists/i.test(errorMessage)) return null;
+      if (response.status === 500 && !errorMessage) return null;
 
       console.warn('Failed to ensure project registration:', errorMessage || response.statusText);
     } catch (error) {
       console.warn('Failed to ensure project registration:', error);
     }
+    return null;
   }, []);
 
   const handleSelectRepo = async (
@@ -981,7 +979,14 @@ export default function GitRepoSelector({
       ? beginSelectedProjectLoad(path)
       : undefined;
     try {
-      await ensureProjectRegistered(path);
+      const registeredProject = await ensureProjectRegistered(path);
+      if (
+        selectedProjectRequestId !== undefined
+        && !isActiveSelectedProjectLoad(selectedProjectRequestId)
+      ) {
+        return false;
+      }
+      setSelectedProjectId(registeredProject?.id ?? null);
 
       const currentConfig = config || await getConfig();
       if (
@@ -1024,7 +1029,12 @@ export default function GitRepoSelector({
         return true;
       }
 
-      await loadSelectedRepoData(path, nextConfig, selectedProjectRequestId);
+      await loadSelectedRepoData(
+        path,
+        nextConfig,
+        selectedProjectRequestId,
+        registeredProject?.id ?? undefined,
+      );
       if (
         selectedProjectRequestId !== undefined
         && !isActiveSelectedProjectLoad(selectedProjectRequestId)
@@ -1130,12 +1140,13 @@ export default function GitRepoSelector({
   useEffect(() => {
     if (mode !== 'new') return;
 
-    const retrySessionName = consumePendingSessionNavigationRetry();
-    if (!retrySessionName) return;
+    const pendingNavigation = consumePendingSessionNavigationRetry();
+    if (!pendingNavigation) return;
     if (sessionNavigationCommittedRef.current) return;
 
     sessionNavigationCommittedRef.current = true;
-    router.replace(`/session/${encodeURIComponent(retrySessionName)}`);
+    const nextPath = `/session/${encodeURIComponent(pendingNavigation.sessionName)}`;
+    router.replace(nextPath);
   }, [mode, router]);
 
   useEffect(() => {
@@ -1144,6 +1155,7 @@ export default function GitRepoSelector({
     if (!repoPath) {
       pendingProjectRouteSyncRef.current = null;
       setSelectedRepo(null);
+      setSelectedProjectId(null);
       setExistingSessions([]);
       setCurrentBranchName('');
       setIsLoadingProjectGitRepos(false);
@@ -1515,6 +1527,7 @@ export default function GitRepoSelector({
     repoPath: string,
     resolvedConfig?: Config,
     selectedProjectRequestId?: number,
+    projectSettingsKey?: string,
   ) => {
     // Refresh config to ensure we have latest settings?
     // We can just rely on current config state if we assume single user or minimal concurrency.
@@ -1528,11 +1541,13 @@ export default function GitRepoSelector({
     }
     if (!config && currentConfig) setConfig(currentConfig);
 
-    const effectiveSettings = getEffectiveAgentRuntimeSettings(
+    const settingsLookupKey = projectSettingsKey || selectedProjectId || repoPath;
+    const effectiveSettings = getEffectiveProjectAgentRuntimeSettings(
       currentConfig,
-      repoPath,
+      settingsLookupKey,
     );
     const settings = effectiveSettings.projectSettings;
+    hydratedAgentRuntimeRepoRef.current = repoPath;
     setSelectedAgentProvider(effectiveSettings.provider);
     setSelectedAgentModel(effectiveSettings.model);
     setSelectedReasoningEffort(effectiveSettings.reasoningEffort);
@@ -1617,8 +1632,8 @@ export default function GitRepoSelector({
   };
 
   const saveStartupScript = async () => {
-    if (selectedRepo) {
-      const newConfig = await updateProjectSettings(selectedRepo, { startupScript });
+    if (selectedProjectSettingsReference) {
+      const newConfig = await updateProjectSettings(selectedProjectSettingsReference, { startupScript });
       setConfig(newConfig);
     }
   }
@@ -1628,8 +1643,8 @@ export default function GitRepoSelector({
   };
 
   const saveDevServerScriptValue = async (script: string) => {
-    if (selectedRepo) {
-      const newConfig = await updateProjectSettings(selectedRepo, { devServerScript: script });
+    if (selectedProjectSettingsReference) {
+      const newConfig = await updateProjectSettings(selectedProjectSettingsReference, { devServerScript: script });
       setConfig(newConfig);
     }
   };
@@ -2428,10 +2443,11 @@ export default function GitRepoSelector({
   }, [reasoningEffortOptions, selectedAgentProvider, selectedReasoningEffort]);
 
   useEffect(() => {
-    if (mode !== 'new' || !selectedRepo || !config) return;
+    if (mode !== 'new' || !selectedRepo || !config || !selectedProjectSettingsReference) return;
+    if (hydratedAgentRuntimeRepoRef.current !== selectedRepo) return;
 
-    const explicitProjectSettings = config.projectSettings[selectedRepo] || {};
-    const currentSettings = getEffectiveAgentRuntimeSettings(config, selectedRepo);
+    const explicitProjectSettings = config.projectSettings[selectedProjectSettingsReference] || {};
+    const currentSettings = getEffectiveProjectAgentRuntimeSettings(config, selectedProjectSettingsReference);
     const nextReasoning = selectedAgentProvider === 'codex'
       ? normalizeProviderReasoningSelection(selectedAgentProvider, selectedReasoningEffort)
       : undefined;
@@ -2461,7 +2477,7 @@ export default function GitRepoSelector({
     const requestId = agentRuntimeSettingsRequestRef.current + 1;
     agentRuntimeSettingsRequestRef.current = requestId;
 
-    void saveAgentRuntimeSettings(selectedRepo, {
+    void saveAgentRuntimeSettings(selectedProjectSettingsReference, {
       agentProvider: selectedAgentProvider,
       agentModel: selectedAgentModel || undefined,
       agentReasoningEffort: nextReasoning,
@@ -2472,7 +2488,7 @@ export default function GitRepoSelector({
     }).catch((settingsError) => {
       console.error('Failed to persist agent runtime settings:', settingsError);
     });
-  }, [config, mode, reasoningEffortOptions, saveAgentRuntimeSettings, selectedAgentModel, selectedAgentProvider, selectedReasoningEffort, selectedRepo]);
+  }, [config, mode, reasoningEffortOptions, saveAgentRuntimeSettings, selectedAgentModel, selectedAgentProvider, selectedProjectSettingsReference, selectedReasoningEffort, selectedRepo]);
 
   useEffect(() => {
     if (!isWaitingForLogin || !waitingForLoginProvider || !isPageForegrounded) {
@@ -2512,6 +2528,7 @@ export default function GitRepoSelector({
 
   const startSession = async () => {
     if (!selectedRepo) return;
+    const projectSettingsReference = selectedProjectSettingsReference ?? selectedRepo;
     setLoading(true);
     setError(null);
 
@@ -2535,7 +2552,7 @@ export default function GitRepoSelector({
       // Also save startup script if changed
       await saveStartupScript();
       await saveDevServerScriptValue(resolvedDevServerScript);
-      const nextConfig = await updateProjectSettings(selectedRepo, {
+      const nextConfig = await updateProjectSettings(projectSettingsReference, {
         agentProvider: resolvedProvider,
         agentModel: resolvedModel || undefined,
         agentReasoningEffort: resolvedReasoningEffort,
@@ -2631,41 +2648,9 @@ export default function GitRepoSelector({
           return;
         }
 
-        const initialAgentPrompt = buildAgentStartupPrompt({
-          taskDescription: launchInitialMessage || undefined,
-          attachmentPaths: allAttachmentPaths,
-          sessionMode,
-          workspaceMode: wtResult.workspaceMode || 'folder',
-          workspaceFolders: wtResult.workspaceFolders,
-          gitRepos: wtResult.gitRepos,
-          discoveredRepoRelativePaths: projectGitRepos.map((repoPath) => toProjectRelativeRepoPath(selectedRepo, repoPath)),
-        });
-
-        if (initialAgentPrompt) {
-          const messageResponse = await fetch('/api/agent/message', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sessionId: wtResult.sessionName,
-              message: initialAgentPrompt,
-              displayMessage: initialAgentPrompt,
-              markInitialized: true,
-            }),
-          });
-          const messagePayload = await messageResponse.json().catch(() => null) as { error?: string } | null;
-          if (!messageResponse.ok) {
-            setError(messagePayload?.error || 'Failed to queue initial agent turn');
-            notifySessionsChanged();
-            setLoading(false);
-            return;
-          }
-        }
-
         // 4. Navigate to session page by path only
         notifySessionsChanged();
-        navigateToSession(wtResult.sessionName, { fresh: true });
+        navigateToSession(wtResult.sessionName);
         return;
 
         // No need to refresh sessions as we are navigating away
@@ -3140,6 +3125,16 @@ export default function GitRepoSelector({
       return { ...previous, [repo]: true };
     });
   }, []);
+  const newSessionPanelClass = `rounded-[22px] p-4 ${APP_PAGE_PANEL_CLASS}`;
+  const newSessionToolbarClass = APP_PAGE_TOOLBAR_CLASS;
+  const newSessionControlClass =
+    'border border-slate-200/70 bg-white/35 text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-100';
+  const newSessionSurfaceClass =
+    'border border-slate-200/70 bg-white/20 dark:border-slate-800 dark:bg-slate-950/20';
+  const newSessionRaisedSurfaceClass =
+    'border border-slate-200/70 bg-white/30 shadow-sm dark:border-slate-800 dark:bg-slate-950/30';
+  const newSessionChipClass =
+    'border border-slate-200/70 bg-white/35 text-slate-700 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-200';
 
   return (
     <>
@@ -3159,6 +3154,7 @@ export default function GitRepoSelector({
           failedQuickCreateDrafts={[]}
           isDarkThemeActive={isDarkThemeActive}
           runningSessionCountByProject={runningSessionCountByProject}
+          latestRunningSessionIdByProject={new Map()}
           draftCountByProject={draftCountByProject}
           projectCardIconByPath={repoCardIconByRepo}
           brokenProjectCardIcons={brokenRepoCardIcons}
@@ -3291,26 +3287,28 @@ export default function GitRepoSelector({
             </div>
           )}
 
-          <div className="mb-8">
-            <div className="mb-2 flex items-center gap-4">
+          <div className={`mb-5 flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 ${newSessionToolbarClass}`}>
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 onClick={() => { void handleReturnHome(); }}
                 aria-label="Back to home"
               >
-                <ChevronRight className="h-6 w-6 rotate-180" />
+                <ChevronRight className="h-4 w-4 rotate-180" />
               </button>
-              <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">Assign New Task</h1>
+              <div className="min-w-0">
+                <div className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">New Session</div>
+                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  Configure the environment and describe the work for your coding agent.
+                </p>
+              </div>
             </div>
-            <p className="ml-14 text-sm text-slate-500 md:text-base dark:text-slate-400">
-              Configure the environment and describe the work required for your AI agent.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
             <div className="self-start space-y-6 lg:col-span-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+              <div className={newSessionPanelClass}>
                 <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                   <FolderGit2 className="h-5 w-5 text-primary" />
                   Context Setup
@@ -3321,7 +3319,7 @@ export default function GitRepoSelector({
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Project</span>
                     <div className="relative">
                       <select
-                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                        className={`h-12 w-full appearance-none rounded-lg px-3 pr-10 font-mono text-sm ${newSessionControlClass}`}
                         value={selectedRepo}
                         onChange={(event) => {
                           void handleCurrentRepoChange(event);
@@ -3344,7 +3342,7 @@ export default function GitRepoSelector({
                   <div className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Git Repositories</span>
                     {isLoadingProjectGitRepos ? (
-                      <div className="flex h-12 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-400">
+                      <div className={`flex h-12 items-center rounded-lg px-3 text-sm text-slate-500 dark:text-slate-400 ${newSessionRaisedSurfaceClass}`}>
                         <span className="loading loading-spinner loading-xs mr-2"></span>
                         Discovering repositories...
                       </div>
@@ -3359,13 +3357,13 @@ export default function GitRepoSelector({
                           const selectedBaseBranch = baseBranchByRepo[repoPath] || '';
                           const displayRepoPath = getRepoDisplayPath(repoPath, projectGitRepos.length);
                           return (
-                            <div key={repoPath} className="rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-[#30363d] dark:bg-[#0d1117]/70">
+                            <div key={repoPath} className={`rounded-lg p-2 ${newSessionSurfaceClass}`}>
                               <div className="truncate font-mono text-[11px] text-slate-600 dark:text-slate-300" title={repoPath}>
                                 {displayRepoPath}
                               </div>
                               <div className="relative mt-2">
                                 <select
-                                  className="h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-2 pr-8 font-mono text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                                  className={`h-10 w-full appearance-none rounded-md px-2 pr-8 font-mono text-xs ${newSessionControlClass}`}
                                   value={selectedBaseBranch}
                                   onChange={(event) => handleBranchChange(repoPath, event.target.value)}
                                   disabled={loading || repoBranches.length === 0}
@@ -3403,11 +3401,11 @@ export default function GitRepoSelector({
                   </button>
 
                   {showSessionAdvanced && (
-                    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/55">
+                    <div className={`space-y-4 rounded-xl p-3 ${newSessionSurfaceClass}`}>
                       <label className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Up Command</span>
                         <textarea
-                          className="min-h-[86px] rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                          className={`min-h-[86px] rounded-lg px-3 py-2 font-mono text-sm ${newSessionControlClass}`}
                           placeholder="npm install"
                           value={startupScript}
                           onChange={handleStartupScriptChange}
@@ -3425,7 +3423,7 @@ export default function GitRepoSelector({
                       <label className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dev Server Command</span>
                         <textarea
-                          className="min-h-[86px] rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                          className={`min-h-[86px] rounded-lg px-3 py-2 font-mono text-sm ${newSessionControlClass}`}
                           placeholder="npm run dev"
                           value={devServerScript}
                           onChange={handleDevServerScriptChange}
@@ -3445,16 +3443,16 @@ export default function GitRepoSelector({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+              <div className={newSessionPanelClass}>
                 <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Ongoing Tasks</h3>
                 <div className="space-y-2">
                   {isLoadingProjectActivity ? (
-                    <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                    <div className={`flex items-center rounded-lg px-3 py-4 text-sm text-slate-500 dark:text-slate-400 ${newSessionSurfaceClass}`}>
                       <span className="loading loading-spinner loading-xs mr-2"></span>
                       Loading ongoing tasks...
                     </div>
                   ) : existingSessions.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                    <div className="rounded-lg border border-dashed border-slate-200/70 bg-white/20 px-3 py-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/20 dark:text-slate-400">
                       No ongoing sessions for this project.
                     </div>
                   )}
@@ -3512,16 +3510,16 @@ export default function GitRepoSelector({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+              <div className={newSessionPanelClass}>
                 <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Drafts</h3>
                 <div className="space-y-2">
                   {isLoadingProjectActivity ? (
-                    <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                    <div className={`flex items-center rounded-lg px-3 py-4 text-sm text-slate-500 dark:text-slate-400 ${newSessionSurfaceClass}`}>
                       <span className="loading loading-spinner loading-xs mr-2"></span>
                       Loading drafts...
                     </div>
                   ) : existingDrafts.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
+                    <div className="rounded-lg border border-dashed border-slate-200/70 bg-white/20 px-3 py-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/20 dark:text-slate-400">
                       No drafts for this project.
                     </div>
                   )}
@@ -3573,7 +3571,7 @@ export default function GitRepoSelector({
             <div className="self-start lg:col-span-9">
               <div
                 ref={taskDescriptionPanelRef}
-                className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]"
+                className={`flex h-full flex-col ${newSessionPanelClass}`}
               >
                 <div className="mb-4 space-y-3">
                   <div className={`flex gap-2 ${isStackedTaskHeader ? 'flex-col' : 'flex-row items-center justify-between'}`}>
@@ -3583,7 +3581,7 @@ export default function GitRepoSelector({
                     </label>
                     <div className={`flex flex-1 flex-wrap items-center gap-1.5 ${isStackedTaskHeader ? '' : 'justify-end'}`}>
                       <div
-                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        className={`inline-flex h-9 items-center overflow-hidden rounded-lg ${newSessionRaisedSurfaceClass}`}
                         role="group"
                         aria-label="Session mode"
                       >
@@ -3591,7 +3589,7 @@ export default function GitRepoSelector({
                           type="button"
                           className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionMode === 'fast'
                             ? 'bg-primary text-white'
-                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            : 'text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-900/70'
                             }`}
                           onClick={() => handleSessionModeChange('fast')}
                           aria-pressed={sessionMode === 'fast'}
@@ -3604,12 +3602,12 @@ export default function GitRepoSelector({
                             <span>Fast</span>
                           )}
                         </button>
-                        <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
+                        <div className="h-5 w-px bg-slate-200/80 dark:bg-slate-800" />
                         <button
                           type="button"
                           className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionMode === 'plan'
                             ? 'bg-primary text-white'
-                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            : 'text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-900/70'
                             }`}
                           onClick={() => handleSessionModeChange('plan')}
                           aria-pressed={sessionMode === 'plan'}
@@ -3625,7 +3623,7 @@ export default function GitRepoSelector({
                       </div>
 
                       <div
-                        className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
+                        className={`inline-flex h-9 items-center overflow-hidden rounded-lg ${newSessionRaisedSurfaceClass}`}
                         role="group"
                         aria-label="Task location"
                       >
@@ -3633,7 +3631,7 @@ export default function GitRepoSelector({
                           type="button"
                           className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionWorkspacePreference === 'local'
                             ? 'bg-primary text-white'
-                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            : 'text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-900/70'
                             }`}
                           onClick={() => handleSessionWorkspacePreferenceChange('local')}
                           aria-pressed={sessionWorkspacePreference === 'local'}
@@ -3646,12 +3644,12 @@ export default function GitRepoSelector({
                             <span>Local</span>
                           )}
                         </button>
-                        <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" />
+                        <div className="h-5 w-px bg-slate-200/80 dark:bg-slate-800" />
                         <button
                           type="button"
                           className={`h-full px-2.5 text-[11px] font-semibold transition lg:px-3 ${sessionWorkspacePreference === 'workspace'
                             ? 'bg-primary text-white'
-                            : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#161b22]'
+                            : 'text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-900/70'
                             }`}
                           onClick={() => handleSessionWorkspacePreferenceChange('workspace')}
                           aria-pressed={sessionWorkspacePreference === 'workspace'}
@@ -3669,7 +3667,7 @@ export default function GitRepoSelector({
                       <div className="relative w-[126px] sm:w-[132px]">
                         <div className="relative">
                           <select
-                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            className={`h-9 w-full appearance-none rounded-lg px-2.5 pr-8 text-[11px] ${newSessionControlClass}`}
                             value={selectedAgentProvider}
                             onChange={handleAgentProviderChange}
                             disabled={loading}
@@ -3693,7 +3691,7 @@ export default function GitRepoSelector({
                       <div className="relative w-[116px] sm:w-[124px]">
                         <div className="relative">
                           <select
-                            className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                            className={`h-9 w-full appearance-none rounded-lg px-2.5 pr-8 text-[11px] disabled:cursor-not-allowed disabled:opacity-60 ${newSessionControlClass}`}
                             value={selectedAgentModel}
                             onChange={handleAgentModelChange}
                             disabled={loading || (activeAgentModelCatalog.models.length === 0 && !selectedAgentModel.trim())}
@@ -3713,7 +3711,7 @@ export default function GitRepoSelector({
                         <div className="relative w-[96px] sm:w-[104px]">
                           <div className="relative">
                             <select
-                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              className={`h-9 w-full appearance-none rounded-lg px-2.5 pr-8 text-[11px] disabled:cursor-not-allowed disabled:opacity-60 ${newSessionControlClass}`}
                               value={selectedReasoningEffort}
                               onChange={handleReasoningEffortChange}
                               disabled={loading}
@@ -3734,7 +3732,7 @@ export default function GitRepoSelector({
                         <div className="relative w-[120px] sm:w-[132px]">
                           <div className="relative">
                             <select
-                              className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white px-2.5 pr-8 font-mono text-[11px] text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
+                              className={`h-9 w-full appearance-none rounded-lg px-2.5 pr-8 font-mono text-[11px] ${newSessionControlClass}`}
                               value={activePredefinedPrompt?.id ?? ''}
                               onChange={(event) => handleSelectPredefinedPrompt(event.target.value)}
                               disabled={loading}
@@ -3758,7 +3756,7 @@ export default function GitRepoSelector({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700/70 dark:bg-[#0d1117]/40 dark:text-slate-400 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-col gap-2 rounded-xl border border-slate-200/70 bg-white/20 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950/20 dark:text-slate-400 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="font-medium text-slate-600 dark:text-slate-300">
                         {agentProviderLabel(selectedAgentProvider, agentProviders)}
@@ -3786,7 +3784,7 @@ export default function GitRepoSelector({
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-200 dark:hover:bg-[#161b22]"
+                        className="rounded-lg border border-slate-200/70 bg-white/35 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50/80 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-200 dark:hover:bg-slate-900/70"
                         onClick={() => void fetchAgentStatus(selectedAgentProvider)}
                         disabled={loading || isLoadingAgentStatus}
                       >
@@ -3829,7 +3827,7 @@ export default function GitRepoSelector({
                 <div className="group relative mb-4 flex h-[360px] flex-grow flex-col md:h-[420px]">
                   <textarea
                     id="task-description"
-                    className="h-full w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100 dark:placeholder:text-slate-500"
+                    className="h-full w-full resize-none rounded-xl border border-slate-200/70 bg-white/20 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-800 dark:bg-slate-950/20 dark:text-slate-100 dark:placeholder:text-slate-500"
                     placeholder={`Describe the task for the AI agent...\nExample:\n1. Create a new component for the user profile card.\n2. Ensure it fetches data from the /api/user endpoint.\n3. Add error handling for failed requests.\n\nTip: Type @ to mention files or folders, and $ to mention skills.`}
                     value={initialMessage}
                     onChange={handleMessageChange}
@@ -3852,7 +3850,7 @@ export default function GitRepoSelector({
                   />
 
                   {showSuggestions && suggestionList.length > 0 && (
-                    <div className="absolute left-3 right-3 top-[calc(100%-8rem)] z-50 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-[#30363d] dark:bg-[#161b22]">
+                    <div className="absolute left-3 right-3 top-[calc(100%-8rem)] z-50 max-h-48 overflow-y-auto rounded-lg border border-slate-200/70 bg-white/95 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
                       {suggestionList.map((suggestion, idx) => (
                         <button
                           key={suggestion}
@@ -3899,12 +3897,12 @@ export default function GitRepoSelector({
                     <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">Uploading selected attachments...</div>
                   )}
 
-                  <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1117]/40">
+                  <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200/70 bg-white/20 p-3 dark:border-slate-800 dark:bg-slate-950/20">
                     <div className="flex flex-wrap gap-2">
                       {attachments.map((attachmentPath, idx) => (
                         <span
                           key={`upload-${attachmentPath}-${idx}`}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          className={`inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1 text-xs ${newSessionChipClass}`}
                           title={attachmentPath}
                         >
                           <span className="truncate">{getBaseName(attachmentPath)}</span>
@@ -3922,7 +3920,7 @@ export default function GitRepoSelector({
                       {prefilledAttachmentPaths.map((attachmentPath, idx) => (
                         <span
                           key={`prefill-${attachmentPath}-${idx}`}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          className={`inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1 text-xs ${newSessionChipClass}`}
                           title={attachmentPath}
                         >
                           <span className="truncate">{getBaseName(attachmentPath)}</span>
@@ -3972,7 +3970,7 @@ export default function GitRepoSelector({
       )}
 
       {mode === 'new' && !selectedRepo && !!repoPath && !error && (
-        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+        <div className="w-full max-w-2xl rounded-2xl border border-slate-200/70 bg-white/88 p-8 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/88 dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
           <div className="flex flex-col items-center gap-3 text-center">
             <span className="loading loading-spinner loading-lg text-primary"></span>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Loading project...</h2>

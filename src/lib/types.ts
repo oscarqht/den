@@ -150,6 +150,106 @@ export interface SessionGitRepoContext {
   baseBranch?: string;
 }
 
+export type SessionCanvasPanelType =
+  | 'agent-terminal'
+  | 'terminal'
+  | 'file-viewer'
+  | 'preview'
+  | 'git-session';
+
+export type SessionCanvasViewport = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+export type SessionCanvasExplorerState = {
+  collapsed: boolean;
+  width: number;
+  expandedPaths: string[];
+  selectedPath: string | null;
+};
+
+export type SessionCanvasBootstrapState = {
+  agentStarted: boolean;
+  startupStarted: boolean;
+  agentLaunchVersion?: number;
+  startupLaunchVersion?: number;
+};
+
+export type SessionCanvasPanelDefaults = {
+  preview?: {
+    width: number;
+    height: number;
+  };
+};
+
+export type SessionCanvasPanelBase = {
+  id: string;
+  type: SessionCanvasPanelType;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  state?: {
+    minimized?: boolean;
+  };
+};
+
+export type SessionCanvasAgentTerminalPanel = SessionCanvasPanelBase & {
+  type: 'agent-terminal';
+  payload: {
+    terminalKey: string;
+  };
+};
+
+export type SessionCanvasTerminalPanel = SessionCanvasPanelBase & {
+  type: 'terminal';
+  payload: {
+    terminalKey: string;
+    role?: 'startup' | 'generic';
+  };
+};
+
+export type SessionCanvasFileViewerPanel = SessionCanvasPanelBase & {
+  type: 'file-viewer';
+  payload: {
+    filePath: string;
+  };
+};
+
+export type SessionCanvasPreviewPanel = SessionCanvasPanelBase & {
+  type: 'preview';
+  payload: {
+    url: string;
+  };
+};
+
+export type SessionCanvasGitSessionPanel = SessionCanvasPanelBase & {
+  type: 'git-session';
+  payload: {
+    repoPath?: string | null;
+  };
+};
+
+export type SessionCanvasPanel =
+  | SessionCanvasAgentTerminalPanel
+  | SessionCanvasTerminalPanel
+  | SessionCanvasFileViewerPanel
+  | SessionCanvasPreviewPanel
+  | SessionCanvasGitSessionPanel;
+
+export type SessionCanvasLayout = {
+  version: number;
+  viewport: SessionCanvasViewport;
+  explorer: SessionCanvasExplorerState;
+  panels: SessionCanvasPanel[];
+  bootstrap: SessionCanvasBootstrapState;
+  panelDefaults?: SessionCanvasPanelDefaults;
+};
+
 export type AgentProvider = 'codex' | 'gemini' | 'cursor' | (string & {});
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | (string & {});

@@ -3,12 +3,15 @@ import { buildShellSetDirectoryCommand, joinShellStatements, quoteShellArg } fro
 import { type TerminalShellKind } from './terminal-session.ts';
 import type { AgentProvider, ReasoningEffort } from './types.ts';
 
-const AUTO_COMMIT_CODEX_FLAGS = [
+const SESSION_AGENT_CODEX_BASE_FLAGS = [
   '-c approval_policy="never"',
-  'exec',
   '--color never',
   '--sandbox danger-full-access',
   '--skip-git-repo-check',
+];
+const SESSION_AGENT_CODEX_EXEC_FLAGS = [
+  ...SESSION_AGENT_CODEX_BASE_FLAGS,
+  'exec',
   '-',
 ];
 const CONFLICT_AGENT_CODEX_FLAGS = [
@@ -43,6 +46,15 @@ type BuildProviderCommandOptions = {
   prompt: string;
   codexArgs: string[];
   codexMode: 'pipe' | 'inline';
+};
+
+export type BuildSessionAgentTerminalCommandOptions = {
+  provider: AgentProvider;
+  model: string;
+  reasoningEffort?: ReasoningEffort;
+  shellKind: TerminalShellKind;
+  workingDirectory: string;
+  prompt?: string | null;
 };
 
 function buildCodexReasoningArgs(
@@ -123,6 +135,61 @@ function buildProviderCommand({
     : `printf '%s\\n' ${promptArg} | ${codexCommand}`;
 }
 
+function buildInteractiveProviderCommand(
+  provider: AgentProvider,
+  model: string,
+  reasoningEffort: ReasoningEffort | undefined,
+  shellKind: TerminalShellKind,
+  prompt?: string,
+): string {
+  const normalizedModel = model.trim();
+  const normalizedReasoning = normalizeProviderReasoningEffort(provider, reasoningEffort);
+  const normalizedPrompt = prompt?.trim() || '';
+
+  if (provider === 'gemini') {
+    return [
+      'gemini --yolo',
+      normalizedModel
+        ? `--model ${quoteShellArg(normalizedModel, shellKind)}`
+        : null,
+      normalizedPrompt
+        ? `-p ${quoteShellArg(normalizedPrompt, shellKind)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  if (provider === 'cursor') {
+    return [
+      'cursor-agent -f',
+      normalizedModel
+        ? `--model ${quoteShellArg(normalizedModel, shellKind)}`
+        : null,
+      normalizedPrompt
+        ? `-p ${quoteShellArg(normalizedPrompt, shellKind)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  return [
+    'NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex',
+    '-a never',
+    '-s danger-full-access',
+    normalizedModel
+      ? `-m ${quoteShellArg(normalizedModel, shellKind)}`
+      : null,
+    ...buildCodexReasoningArgs(shellKind, normalizedReasoning),
+    normalizedPrompt
+      ? quoteShellArg(normalizedPrompt, shellKind)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function buildAutoCommitAgentPrompt(
   isFirstCommit: boolean,
   initialBranch?: string,
@@ -162,7 +229,7 @@ export function buildAutoCommitAgentCommand(
     reasoningEffort,
     shellKind,
     prompt,
-    codexArgs: AUTO_COMMIT_CODEX_FLAGS,
+    codexArgs: SESSION_AGENT_CODEX_EXEC_FLAGS,
     codexMode: 'pipe',
   });
 
@@ -264,6 +331,51 @@ export function buildConflictAgentCommand(
       buildShellSetDirectoryCommand(repoPath, shellKind),
       provider === 'codex'
         ? 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi'
+        : null,
+      providerCommand,
+    ],
+    shellKind,
+  );
+}
+
+export function buildSessionAgentTerminalCommand({
+  provider,
+  model,
+  reasoningEffort,
+  shellKind,
+  workingDirectory,
+  prompt,
+}: BuildSessionAgentTerminalCommandOptions): string {
+  const normalizedPrompt = prompt?.trim() || '';
+  const providerCommand = buildInteractiveProviderCommand(
+    provider,
+    model,
+    reasoningEffort,
+    shellKind,
+    normalizedPrompt,
+  );
+
+  if (shellKind === 'powershell') {
+    return joinShellStatements(
+      [
+        buildShellSetDirectoryCommand(workingDirectory, shellKind),
+        "$env:NO_COLOR = '1'",
+        "$env:FORCE_COLOR = '0'",
+        "$env:TERM = 'xterm'",
+        provider === 'codex'
+          ? "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key | Out-Null }"
+          : null,
+        providerCommand,
+      ],
+      shellKind,
+    );
+  }
+
+  return joinShellStatements(
+    [
+      buildShellSetDirectoryCommand(workingDirectory, shellKind),
+      provider === 'codex'
+        ? 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null 2>&1 || true; fi'
         : null,
       providerCommand,
     ],

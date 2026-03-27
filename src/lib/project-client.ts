@@ -1,5 +1,5 @@
-import type { Project } from '@/lib/types';
-import { getBaseName } from '@/lib/path';
+import type { Project } from './types.ts';
+import { getBaseName } from './path.ts';
 
 export type ResolvedProjectReference = {
   key: string;
@@ -10,6 +10,12 @@ export type ResolvedProjectReference = {
   folderPaths: string[];
   isOpenable: boolean;
   compatibilityKeys: string[];
+};
+
+export type ProjectActivityReference = {
+  projectId?: string | null;
+  projectPath?: string | null;
+  repoPath?: string | null;
 };
 
 function normalizeProjectReference(value: string): string {
@@ -103,4 +109,58 @@ export function resolveClientRecentProjects(
   }
 
   return resolvedProjects;
+}
+
+export function createClientProjectCompatibilityMap(
+  resolvedProjects: ResolvedProjectReference[],
+): Map<string, string> {
+  const compatibilityMap = new Map<string, string>();
+
+  for (const resolvedProject of resolvedProjects) {
+    for (const compatibilityKey of resolvedProject.compatibilityKeys) {
+      if (!compatibilityKey || compatibilityMap.has(compatibilityKey)) {
+        continue;
+      }
+
+      compatibilityMap.set(compatibilityKey, resolvedProject.key);
+    }
+  }
+
+  return compatibilityMap;
+}
+
+export function resolveClientProjectActivityKey(
+  projects: Project[],
+  reference: ProjectActivityReference,
+  preferredProjectKeyByCompatibilityKey?: Map<string, string>,
+): string {
+  const compatibilityReferences = [
+    reference.projectId?.trim() || '',
+    reference.projectPath?.trim() || '',
+    reference.repoPath?.trim() || '',
+  ].filter(Boolean);
+  for (const compatibilityReference of compatibilityReferences) {
+    const preferredProjectKey = preferredProjectKeyByCompatibilityKey?.get(compatibilityReference);
+    if (preferredProjectKey) {
+      return preferredProjectKey;
+    }
+  }
+
+  const pathReference = reference.projectPath?.trim() || reference.repoPath?.trim() || '';
+  if (pathReference) {
+    const projectFromPath = findClientProjectByReference(projects, pathReference);
+    if (projectFromPath) {
+      return projectFromPath.id;
+    }
+  }
+
+  const projectIdReference = reference.projectId?.trim() || '';
+  if (projectIdReference) {
+    const projectFromId = findClientProjectByReference(projects, projectIdReference);
+    if (projectFromId) {
+      return projectFromId.id;
+    }
+  }
+
+  return pathReference || projectIdReference;
 }

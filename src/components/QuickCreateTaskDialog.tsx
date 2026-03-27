@@ -1,10 +1,10 @@
 'use client';
 
-import { saveAttachments } from '@/app/actions/git';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getBaseName } from '@/lib/path';
+import { uploadAttachments } from '@/lib/upload-attachments';
 import { CloudDownload, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -110,7 +110,7 @@ export function QuickCreateTaskDialog({
         formData.append(`image-${index}`, new File([file], fileName, { type: file.type || 'image/png' }));
       });
 
-      const savedPaths = await saveAttachments(`quick-create-${attachmentNamespaceId}`, formData);
+      const savedPaths = await uploadAttachments(`quick-create-${attachmentNamespaceId}`, formData);
       if (savedPaths.length === 0) {
         throw new Error('Failed to save pasted images.');
       }

@@ -8,7 +8,6 @@ import {
   listInstalledAgentSkills,
   listRepoFiles,
   resolveRepoCardIcon,
-  saveAttachments,
   startTtydProcess,
 } from '@/app/actions/git';
 import {
@@ -50,6 +49,7 @@ import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
+import { uploadAttachments } from '@/lib/upload-attachments';
 import {
   type ActiveMention,
   findActiveMention,
@@ -1688,7 +1688,7 @@ export default function GitRepoSelector({
         formData.append(`image-${index}`, new File([file], fileName, { type: file.type || 'image/png' }));
       });
 
-      const savedPaths = await saveAttachments(selectedRepo, formData);
+      const savedPaths = await uploadAttachments(selectedRepo, formData);
       if (savedPaths.length === 0) {
         throw new Error('Failed to save pasted images.');
       }
@@ -1721,7 +1721,7 @@ export default function GitRepoSelector({
         formData.append(`attachment-${index}`, file, fileName);
       });
 
-      const savedPaths = await saveAttachments(selectedRepo, formData);
+      const savedPaths = await uploadAttachments(selectedRepo, formData);
       if (savedPaths.length === 0) {
         throw new Error('Failed to upload selected attachments.');
       }

@@ -2,7 +2,7 @@
 
 import path from 'node:path';
 import { getLocalDb } from '@/lib/local-db';
-import { findProjectByFolderPath, getProjectById } from '@/lib/store';
+import { resolveProjectStorageScope } from '@/lib/store';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
@@ -219,18 +219,23 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
 export async function listDrafts(projectPath?: string): Promise<DraftMetadata[]> {
   try {
     const db = getLocalDb();
-    const projectId = projectPath ? getProjectById(projectPath)?.id ?? null : null;
-    const resolvedProjectPath = projectPath && !projectId
-      ? (findProjectByFolderPath(projectPath)?.folderPaths[0] ?? projectPath)
-      : null;
-    const query = projectPath
+    const scope = projectPath ? resolveProjectStorageScope(projectPath) : null;
+    const projectPaths = scope?.folderPaths.filter((folderPath) => folderPath.trim().length > 0) ?? [];
+    const pathPlaceholders = projectPaths.map(() => '?').join(', ');
+    const query = scope
       ? `
         SELECT
           id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
           attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
           startup_script, dev_server_script, session_mode
         FROM drafts
-        WHERE ${projectId ? 'project_id = ?' : 'project_path = ?'}
+        WHERE ${
+          scope.projectId && projectPaths.length > 0
+            ? `(project_id = ? OR project_path IN (${pathPlaceholders}))`
+            : scope.projectId
+              ? 'project_id = ?'
+              : `project_path IN (${pathPlaceholders})`
+        }
         ORDER BY timestamp DESC
       `
       : `
@@ -242,8 +247,15 @@ export async function listDrafts(projectPath?: string): Promise<DraftMetadata[]>
         ORDER BY timestamp DESC
       `;
 
-    const rows = projectPath
-      ? (db.prepare(query).all(projectId ?? resolvedProjectPath) as DraftRow[])
+    const params = scope
+      ? [
+        ...(scope.projectId ? [scope.projectId] : []),
+        ...projectPaths,
+      ]
+      : [];
+
+    const rows = scope
+      ? (db.prepare(query).all(...params) as DraftRow[])
       : (db.prepare(query).all() as DraftRow[]);
 
     return rows.map(rowToDraft);

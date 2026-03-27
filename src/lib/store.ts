@@ -204,6 +204,27 @@ export function findProjectByFolderPath(folderPath: string): Project | null {
   return getProjects().find((project) => project.folderPaths.includes(normalizedFolderPath)) ?? null;
 }
 
+export function resolveProjectStorageScope(projectReference: string): {
+  projectId: string | null;
+  folderPaths: string[];
+} | null {
+  const trimmedReference = projectReference.trim();
+  if (!trimmedReference) return null;
+
+  const project = getProjectById(trimmedReference) ?? findProjectByFolderPath(trimmedReference);
+  if (!project) {
+    return {
+      projectId: null,
+      folderPaths: [trimmedReference],
+    };
+  }
+
+  return {
+    projectId: project.id,
+    folderPaths: project.folderPaths,
+  };
+}
+
 export function findProjectsContainingPath(targetPath: string): Project[] {
   const normalizedTargetPath = normalizeFolderPath(targetPath);
   return getProjects().filter((project) => (

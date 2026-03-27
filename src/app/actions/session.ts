@@ -36,7 +36,7 @@ import {
   stopTrackedSessionProcess,
   terminateProcessGracefully,
 } from '@/lib/session-processes';
-import { findProjectByFolderPath, getProjectById } from '@/lib/store';
+import { findProjectByFolderPath, getProjectById, resolveProjectStorageScope } from '@/lib/store';
 import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '@/lib/project-folders';
 import type {
   AgentProvider,
@@ -1947,9 +1947,10 @@ export async function getSessionMetadata(sessionName: string): Promise<SessionMe
 export async function listSessions(projectPath?: string): Promise<SessionMetadata[]> {
   try {
     const db = getLocalDb();
-    const projectId = projectPath ? getProjectById(projectPath)?.id ?? null : null;
-    const filterColumn = projectPath ? (projectId ? 'project_id' : 'project_path') : null;
-    const query = projectPath
+    const scope = projectPath ? resolveProjectStorageScope(projectPath) : null;
+    const projectPaths = scope?.folderPaths.filter((folderPath) => folderPath.trim().length > 0) ?? [];
+    const pathPlaceholders = projectPaths.map(() => '?').join(', ');
+    const query = scope
       ? `
         SELECT
           session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
@@ -1957,7 +1958,13 @@ export async function listSessions(projectPath?: string): Promise<SessionMetadat
           agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
           last_error, last_activity_at, title, dev_server_script, initialized, timestamp
         FROM sessions
-        WHERE ${filterColumn} = ?
+        WHERE ${
+          scope.projectId && projectPaths.length > 0
+            ? `(project_id = ? OR project_path IN (${pathPlaceholders}))`
+            : scope.projectId
+              ? 'project_id = ?'
+              : `project_path IN (${pathPlaceholders})`
+        }
         ORDER BY timestamp DESC
       `
       : `
@@ -1970,8 +1977,15 @@ export async function listSessions(projectPath?: string): Promise<SessionMetadat
         ORDER BY timestamp DESC
       `;
 
-    const rows = projectPath
-      ? (db.prepare(query).all(projectId ?? projectPath) as SessionRow[])
+    const params = scope
+      ? [
+        ...(scope.projectId ? [scope.projectId] : []),
+        ...projectPaths,
+      ]
+      : [];
+
+    const rows = scope
+      ? (db.prepare(query).all(...params) as SessionRow[])
       : (db.prepare(query).all() as SessionRow[]);
 
     return Promise.all(rows.map((row) => rowToSessionMetadata(row)));

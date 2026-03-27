@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, GitBranch, GitMerge, GitPullRequestArrow, RefreshCw } from 'lucide-react';
+import { GitBranch, GitMerge, GitPullRequestArrow, RefreshCw } from 'lucide-react';
 
 import {
   getSessionDivergence,
@@ -146,22 +146,6 @@ export function SessionCanvasGitPanel({
     }
   }, [refreshGitState, selectedRepo, sessionId]);
 
-  const handleOpenSourceRepoInGitPage = useCallback(() => {
-    if (!selectedRepo?.sourceRepoPath) return;
-
-    let origin = window.location.origin;
-    try {
-      if (window.top?.location?.origin) {
-        origin = window.top.location.origin;
-      }
-    } catch {
-      // Ignore cross-origin access errors and keep current window origin.
-    }
-
-    const targetUrl = `${origin}/git?path=${encodeURIComponent(selectedRepo.sourceRepoPath)}`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
-  }, [selectedRepo?.sourceRepoPath]);
-
   const repoOptions = useMemo(() => {
     return gitRepos.map((repo) => {
       const relativeLabel = repo.relativeRepoPath?.trim();
@@ -226,15 +210,6 @@ export function SessionCanvasGitPanel({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs gap-1"
-            onClick={handleOpenSourceRepoInGitPage}
-            title="Open the source repository in the Git page"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Open in Git
-          </button>
           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             Ahead {divergence.ahead}
           </span>

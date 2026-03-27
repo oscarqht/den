@@ -1,11 +1,9 @@
 'use client';
 
 import {
-  forwardRef,
   memo,
   useCallback,
   useEffect,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -24,14 +22,12 @@ import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
-  FolderOpen,
   GitBranch,
   Monitor,
   PanelLeft,
   Plus,
   RefreshCw,
   ScanSearch,
-  Search,
   TerminalSquare,
   Trash2,
 } from 'lucide-react';
@@ -39,7 +35,6 @@ import {
 import {
   readSessionCanvasFile,
   saveSessionCanvasLayout,
-  searchSessionCanvasWorkspace,
   type SessionCanvasBootstrapResult,
 } from '@/app/actions/session-canvas';
 import { deleteSessionInBackground } from '@/app/actions/session';
@@ -56,9 +51,8 @@ import {
   SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH,
   SESSION_CANVAS_LAYOUT_VERSION,
 } from '@/lib/session-canvas';
-import type { SessionCanvasWorkspaceSearchResult } from '@/lib/session-canvas-search';
 import { normalizeMarkdownLists } from '@/lib/markdown';
-import { getBaseName, getDirName } from '@/lib/path';
+import { getBaseName } from '@/lib/path';
 import {
   applyThemeToTerminalWindow,
   resolveShouldUseDarkTheme,
@@ -77,7 +71,6 @@ import type {
 } from '@/lib/types';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useTerminalLink } from '@/hooks/useTerminalLink';
-import SessionFileBrowser from '../SessionFileBrowser';
 import { CanvasPanelFrame } from './CanvasPanelFrame';
 import { SessionCanvasGitPanel } from './SessionCanvasGitPanel';
 import { SessionExplorerDock } from './SessionExplorerDock';
@@ -117,23 +110,6 @@ type FileViewerState =
   | { status: 'error'; message: string }
   | { status: 'ready'; content: string; mode: 'markdown' | 'text'; sizeBytes: number };
 
-type TerminalPanelHandle = {
-  insertText: (text: string) => boolean;
-};
-
-type TerminalPanelProps = {
-  sessionId: string;
-  panel: SessionCanvasAgentTerminalPanel | SessionCanvasTerminalPanel;
-  src: string;
-  terminalPersistenceMode: 'tmux' | 'shell';
-  terminalServiceReady: boolean;
-  terminalError: string | null;
-  bootstrapCommand: string | null;
-  shouldBootstrap: boolean;
-  onBootstrapComplete: () => void;
-  onOpenPreview: (url: string, openPreview: boolean) => Promise<boolean>;
-};
-
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 const CANVAS_GRID_SIZE = 28;
 const CANVAS_ZOOM_SENSITIVITY = 0.0015;
@@ -146,8 +122,6 @@ const CANVAS_FIT_PADDING = {
   left: 40,
 } as const;
 const MOBILE_STACKED_PANEL_HEIGHT = 'calc(100dvh - 8.5rem)';
-const COMMAND_PALETTE_MIN_QUERY_LENGTH = 2;
-const COMMAND_PALETTE_DEBOUNCE_MS = 160;
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -287,30 +261,6 @@ function sendTerminalEnter(runtime: TerminalRuntime): boolean {
   return sendTerminalInput(runtime.term, '\r');
 }
 
-function formatPathsForTerminalInput(paths: string[]): string {
-  const normalizedPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-  if (normalizedPaths.length === 0) return '';
-  return `${normalizedPaths.join(' ')} `;
-}
-
-function resolveBrowserInitialPath(args: {
-  selectedPath: string | null;
-  expandedPaths: string[];
-  rootPaths: string[];
-  fallbackPath: string;
-}): string {
-  const normalizedPath = args.selectedPath?.trim();
-  if (!normalizedPath) {
-    return args.fallbackPath;
-  }
-
-  if (args.rootPaths.includes(normalizedPath) || args.expandedPaths.includes(normalizedPath)) {
-    return normalizedPath;
-  }
-
-  return getDirName(normalizedPath) || args.fallbackPath;
-}
-
 function buildPreviewPanelTitle(url: string): string {
   const normalized = normalizePreviewUrl(url);
   if (!normalized) return 'Preview';
@@ -319,43 +269,6 @@ function buildPreviewPanelTitle(url: string): string {
   } catch {
     return 'Preview';
   }
-}
-
-function renderHighlightedText(text: string, query: string): React.ReactNode {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) {
-    return text;
-  }
-
-  const lowerText = text.toLowerCase();
-  const lowerQuery = trimmedQuery.toLowerCase();
-  const segments: React.ReactNode[] = [];
-  let cursor = 0;
-  let matchIndex = lowerText.indexOf(lowerQuery, cursor);
-
-  while (matchIndex !== -1) {
-    if (matchIndex > cursor) {
-      segments.push(text.slice(cursor, matchIndex));
-    }
-
-    const matchEnd = matchIndex + trimmedQuery.length;
-    segments.push(
-      <mark
-        key={`${matchIndex}:${matchEnd}`}
-        className="rounded bg-amber-200/80 px-0.5 text-inherit dark:bg-amber-400/20"
-      >
-        {text.slice(matchIndex, matchEnd)}
-      </mark>,
-    );
-    cursor = matchEnd;
-    matchIndex = lowerText.indexOf(lowerQuery, cursor);
-  }
-
-  if (cursor < text.length) {
-    segments.push(text.slice(cursor));
-  }
-
-  return segments;
 }
 
 const MarkdownFileContent = memo(function MarkdownFileContent({ content }: { content: string }) {
@@ -727,140 +640,7 @@ function PreviewPanel({
   );
 }
 
-function CommandPalette({
-  query,
-  loading,
-  error,
-  results,
-  highlightedIndex,
-  onQueryChange,
-  onHighlight,
-  onClose,
-  onSelect,
-}: {
-  query: string;
-  loading: boolean;
-  error: string | null;
-  results: SessionCanvasWorkspaceSearchResult[];
-  highlightedIndex: number;
-  onQueryChange: (value: string) => void;
-  onHighlight: (index: number) => void;
-  onClose: () => void;
-  onSelect: (result: SessionCanvasWorkspaceSearchResult) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  return (
-    <div
-      className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/45 px-4 pb-8 pt-[12vh] backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-950/95">
-        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-          <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search files by name or content..."
-            className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-900"
-            onClick={onClose}
-          >
-            Esc
-          </button>
-        </div>
-
-        <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
-          {query.trim().length < COMMAND_PALETTE_MIN_QUERY_LENGTH ? (
-            <div className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-              Type at least {COMMAND_PALETTE_MIN_QUERY_LENGTH} characters to search the workspace.
-            </div>
-          ) : null}
-
-          {query.trim().length >= COMMAND_PALETTE_MIN_QUERY_LENGTH && loading ? (
-            <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-slate-500 dark:text-slate-400">
-              <span className="loading loading-spinner loading-sm" />
-              Searching workspace...
-            </div>
-          ) : null}
-
-          {query.trim().length >= COMMAND_PALETTE_MIN_QUERY_LENGTH && !loading && error ? (
-            <div className="px-3 py-8 text-center text-sm text-red-600 dark:text-red-300">
-              {error}
-            </div>
-          ) : null}
-
-          {query.trim().length >= COMMAND_PALETTE_MIN_QUERY_LENGTH && !loading && !error && results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-              No workspace files matched &quot;{query.trim()}&quot;.
-            </div>
-          ) : null}
-
-          {query.trim().length >= COMMAND_PALETTE_MIN_QUERY_LENGTH && !loading && !error ? (
-            <div className="space-y-1">
-              {results.map((result, index) => {
-                const isHighlighted = index === highlightedIndex;
-                return (
-                  <button
-                    key={result.path}
-                    type="button"
-                    className={`flex w-full flex-col rounded-2xl px-3 py-3 text-left transition ${
-                      isHighlighted
-                        ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-50'
-                        : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900/80'
-                    }`}
-                    onMouseEnter={() => onHighlight(index)}
-                    onClick={() => onSelect(result)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {renderHighlightedText(result.name, query)}
-                      </span>
-                      <span className="shrink-0 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                        {result.matchKinds.join(' + ')}
-                      </span>
-                    </div>
-                    <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                      {renderHighlightedText(result.relativePath, query)}
-                    </div>
-                    {result.snippet ? (
-                      <div className="mt-2 line-clamp-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                        {renderHighlightedText(result.snippet, query)}
-                      </div>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(function TerminalPanel({
+function TerminalPanel({
   sessionId,
   panel,
   src,
@@ -871,7 +651,18 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
   shouldBootstrap,
   onBootstrapComplete,
   onOpenPreview,
-}, ref) {
+}: {
+  sessionId: string;
+  panel: SessionCanvasAgentTerminalPanel | SessionCanvasTerminalPanel;
+  src: string;
+  terminalPersistenceMode: 'tmux' | 'shell';
+  terminalServiceReady: boolean;
+  terminalError: string | null;
+  bootstrapCommand: string | null;
+  shouldBootstrap: boolean;
+  onBootstrapComplete: () => void;
+  onOpenPreview: (url: string, openPreview: boolean) => Promise<boolean>;
+}) {
   const { resolvedTheme } = useTheme();
   const { attachTerminalLinkHandler } = useTerminalLink({ onLoadPreview: onOpenPreview });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -959,27 +750,6 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
     }
     linkHandlerCleanupRef.current?.();
   }, []);
-
-  useImperativeHandle(ref, () => ({
-    insertText(text: string) {
-      const value = text ?? '';
-      if (!value || terminalError || !terminalServiceReady || !terminalReady) {
-        return false;
-      }
-
-      const runtime = getTerminalRuntime(iframeRef.current);
-      if (!runtime) {
-        return false;
-      }
-
-      const inserted = sendTerminalInput(runtime.term, value);
-      if (inserted) {
-        runtime.iframe.focus();
-        runtime.win.focus();
-      }
-      return inserted;
-    },
-  }), [terminalError, terminalReady, terminalServiceReady]);
 
   useEffect(() => {
     if (!iframeRef.current) {
@@ -1103,7 +873,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
       onLoad={handleLoad}
     />
   );
-});
+}
 
 export function SessionCanvasWorkspace({
   sessionId,
@@ -1119,7 +889,6 @@ export function SessionCanvasWorkspace({
     startX: number;
     startY: number;
   } | null>(null);
-  const agentTerminalHandlesRef = useRef<Record<string, TerminalPanelHandle | null>>({});
   const [layout, setLayout] = useState<SessionCanvasLayout>(bootstrap.layout);
   const [activePanelId, setActivePanelId] = useState<string | null>(bootstrap.layout.panels.at(-1)?.id || null);
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(bootstrap.layout.panels.at(-1)?.id || null);
@@ -1128,16 +897,6 @@ export function SessionCanvasWorkspace({
   const [terminalServiceReady, setTerminalServiceReady] = useState(false);
   const [terminalServiceError, setTerminalServiceError] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
-  const [agentFileTargetPanelId, setAgentFileTargetPanelId] = useState<string | null>(null);
-  const [isAgentFileBrowserOpen, setIsAgentFileBrowserOpen] = useState(false);
-  const [isAgentFileInsertPending, setIsAgentFileInsertPending] = useState(false);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [commandPaletteQuery, setCommandPaletteQuery] = useState('');
-  const [commandPaletteResults, setCommandPaletteResults] = useState<SessionCanvasWorkspaceSearchResult[]>([]);
-  const [commandPaletteLoading, setCommandPaletteLoading] = useState(false);
-  const [commandPaletteError, setCommandPaletteError] = useState<string | null>(null);
-  const [commandPaletteHighlightedIndex, setCommandPaletteHighlightedIndex] = useState(0);
-  const commandPaletteRequestIdRef = useRef(0);
   const didHydrateLayoutRef = useRef(false);
   const didFitInitialLayoutRef = useRef(false);
 
@@ -1169,70 +928,6 @@ export function SessionCanvasWorkspace({
     setMobileExplorerCollapsed(true);
   }, [isMobileViewport]);
 
-  const closeCommandPalette = useCallback(() => {
-    setIsCommandPaletteOpen(false);
-    setCommandPaletteQuery('');
-    setCommandPaletteResults([]);
-    setCommandPaletteLoading(false);
-    setCommandPaletteError(null);
-    setCommandPaletteHighlightedIndex(0);
-    commandPaletteRequestIdRef.current += 1;
-  }, []);
-
-  const openCommandPalette = useCallback(() => {
-    setIsCommandPaletteOpen(true);
-    setCommandPaletteLoading(false);
-    setCommandPaletteError(null);
-    setCommandPaletteHighlightedIndex(0);
-  }, []);
-
-  useEffect(() => {
-    if (!isCommandPaletteOpen) {
-      return;
-    }
-
-    const trimmedQuery = commandPaletteQuery.trim();
-    if (trimmedQuery.length < COMMAND_PALETTE_MIN_QUERY_LENGTH) {
-      setCommandPaletteResults([]);
-      setCommandPaletteLoading(false);
-      setCommandPaletteError(null);
-      setCommandPaletteHighlightedIndex(0);
-      commandPaletteRequestIdRef.current += 1;
-      return;
-    }
-
-    const requestId = commandPaletteRequestIdRef.current + 1;
-    commandPaletteRequestIdRef.current = requestId;
-    setCommandPaletteLoading(true);
-    setCommandPaletteError(null);
-
-    const timeoutId = window.setTimeout(() => {
-      void (async () => {
-        const result = await searchSessionCanvasWorkspace(sessionId, trimmedQuery);
-        if (commandPaletteRequestIdRef.current !== requestId) {
-          return;
-        }
-
-        if (!result.success) {
-          setCommandPaletteResults([]);
-          setCommandPaletteLoading(false);
-          setCommandPaletteError(result.error);
-          setCommandPaletteHighlightedIndex(0);
-          return;
-        }
-
-        setCommandPaletteResults(result.results);
-        setCommandPaletteLoading(false);
-        setCommandPaletteError(null);
-        setCommandPaletteHighlightedIndex(0);
-      })();
-    }, COMMAND_PALETTE_DEBOUNCE_MS);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [commandPaletteQuery, isCommandPaletteOpen, sessionId]);
-
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) {
@@ -1242,12 +937,6 @@ export function SessionCanvasWorkspace({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) {
-        return;
-      }
-
-      if (event.key.toLowerCase() === 'k' && !event.altKey && !event.shiftKey) {
-        event.preventDefault();
-        openCommandPalette();
         return;
       }
 
@@ -1275,24 +964,13 @@ export function SessionCanvasWorkspace({
       window.removeEventListener('wheel', handleWheel, { capture: true });
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [openCommandPalette]);
+  }, []);
 
   useEffect(() => {
     setLayout(bootstrap.layout);
     setActivePanelId(bootstrap.layout.panels.at(-1)?.id || null);
     setSelectedPanelId(bootstrap.layout.panels.at(-1)?.id || null);
     setMobileExplorerCollapsed(true);
-    setAgentFileTargetPanelId(null);
-    setIsAgentFileBrowserOpen(false);
-    setIsAgentFileInsertPending(false);
-    setIsCommandPaletteOpen(false);
-    setCommandPaletteQuery('');
-    setCommandPaletteResults([]);
-    setCommandPaletteLoading(false);
-    setCommandPaletteError(null);
-    setCommandPaletteHighlightedIndex(0);
-    commandPaletteRequestIdRef.current = 0;
-    agentTerminalHandlesRef.current = {};
     didHydrateLayoutRef.current = false;
     didFitInitialLayoutRef.current = false;
   }, [bootstrap.layout, sessionId]);
@@ -1354,28 +1032,6 @@ export function SessionCanvasWorkspace({
       window.clearTimeout(timeoutId);
     };
   }, [layout, sessionId]);
-
-  useEffect(() => {
-    const activePanelIds = new Set(layout.panels.map((panel) => panel.id));
-    let shouldCloseAgentFileBrowser = false;
-    for (const panelId of Object.keys(agentTerminalHandlesRef.current)) {
-      if (!activePanelIds.has(panelId)) {
-        delete agentTerminalHandlesRef.current[panelId];
-      }
-    }
-
-    setAgentFileTargetPanelId((current) => {
-      if (!current || activePanelIds.has(current)) {
-        return current;
-      }
-      shouldCloseAgentFileBrowser = true;
-      return null;
-    });
-
-    if (shouldCloseAgentFileBrowser) {
-      setIsAgentFileBrowserOpen(false);
-    }
-  }, [layout.panels]);
 
   const focusPanel = useCallback((panelId: string) => {
     setActivePanelId(panelId);
@@ -1582,109 +1238,6 @@ export function SessionCanvasWorkspace({
       setMobileExplorerCollapsed(true);
     }
   }, [getCenteredPanelPosition, isMobileViewport]);
-
-  const handleSelectCommandPaletteResult = useCallback((result: SessionCanvasWorkspaceSearchResult) => {
-    openFileViewer(result.path);
-    closeCommandPalette();
-  }, [closeCommandPalette, openFileViewer]);
-
-  useEffect(() => {
-    if (!isCommandPaletteOpen) {
-      return;
-    }
-
-    const handlePaletteKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeCommandPalette();
-        return;
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setCommandPaletteHighlightedIndex((current) => (
-          commandPaletteResults.length === 0 ? 0 : (current + 1) % commandPaletteResults.length
-        ));
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setCommandPaletteHighlightedIndex((current) => (
-          commandPaletteResults.length === 0
-            ? 0
-            : (current - 1 + commandPaletteResults.length) % commandPaletteResults.length
-        ));
-        return;
-      }
-
-      if (
-        event.key === 'Enter'
-        && !event.metaKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !event.shiftKey
-        && commandPaletteResults[commandPaletteHighlightedIndex]
-      ) {
-        event.preventDefault();
-        handleSelectCommandPaletteResult(commandPaletteResults[commandPaletteHighlightedIndex]!);
-      }
-    };
-
-    window.addEventListener('keydown', handlePaletteKeyDown, { capture: true });
-    return () => {
-      window.removeEventListener('keydown', handlePaletteKeyDown, { capture: true });
-    };
-  }, [
-    closeCommandPalette,
-    commandPaletteHighlightedIndex,
-    commandPaletteResults,
-    handleSelectCommandPaletteResult,
-    isCommandPaletteOpen,
-  ]);
-
-  const registerAgentTerminalHandle = useCallback((panelId: string, handle: TerminalPanelHandle | null) => {
-    if (handle) {
-      agentTerminalHandlesRef.current[panelId] = handle;
-      return;
-    }
-    delete agentTerminalHandlesRef.current[panelId];
-  }, []);
-
-  const handleOpenAgentFileBrowser = useCallback((panelId: string) => {
-    focusPanel(panelId);
-    setAgentFileTargetPanelId(panelId);
-    setIsAgentFileBrowserOpen(true);
-  }, [focusPanel]);
-
-  const handleInsertFilesIntoAgent = useCallback(async (paths: string[]) => {
-    if (isAgentFileInsertPending) {
-      return;
-    }
-    const targetPanelId = agentFileTargetPanelId;
-    const nextText = formatPathsForTerminalInput(paths);
-    if (!targetPanelId || !nextText) {
-      setIsAgentFileBrowserOpen(false);
-      return;
-    }
-
-    setIsAgentFileInsertPending(true);
-    try {
-      const inserted = agentTerminalHandlesRef.current[targetPanelId]?.insertText(nextText) ?? false;
-      if (!inserted) {
-        await confirmDialog({
-          title: 'Agent terminal not ready',
-          description: 'Wait for the agent terminal to finish loading, then try Add Files again.',
-          confirmLabel: 'OK',
-          cancelLabel: 'Close',
-        });
-        return;
-      }
-      setIsAgentFileBrowserOpen(false);
-    } finally {
-      setIsAgentFileInsertPending(false);
-    }
-  }, [agentFileTargetPanelId, confirmDialog, isAgentFileInsertPending]);
 
   const handleAddTerminal = useCallback(() => {
     const panelSize = {
@@ -1918,7 +1471,6 @@ export function SessionCanvasWorkspace({
     if (panel.type === 'agent-terminal') {
       return (
         <TerminalPanel
-          ref={(handle) => registerAgentTerminalHandle(panel.id, handle)}
           sessionId={sessionId}
           panel={panel}
           src={buildSessionCanvasTerminalSrc({
@@ -2018,7 +1570,6 @@ export function SessionCanvasWorkspace({
     layout.bootstrap.startupLaunchVersion,
     markBootstrapComplete,
     handleOpenPreviewUrl,
-    registerAgentTerminalHandle,
     sessionId,
     terminalServiceError,
     terminalServiceReady,
@@ -2044,55 +1595,6 @@ export function SessionCanvasWorkspace({
   const deleteButtonClass = isMobileViewport
     ? 'btn btn-ghost btn-sm btn-square h-10 min-h-10 w-10 text-slate-600 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300'
     : 'btn btn-ghost btn-xs btn-square h-6 min-h-6 w-6 text-slate-600 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300';
-  const panelHeaderButtonClass = 'btn btn-ghost btn-xs h-6 min-h-6 gap-1 px-2 text-[11px] text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100';
-  const agentFileBrowserInitialPath = useMemo(() => resolveBrowserInitialPath({
-    selectedPath: layout.explorer.selectedPath,
-    expandedPaths: layout.explorer.expandedPaths,
-    rootPaths: bootstrap.explorerRoots.map((root) => root.path),
-    fallbackPath: bootstrap.workspaceRootPath,
-  }), [
-    bootstrap.explorerRoots,
-    bootstrap.workspaceRootPath,
-    layout.explorer.expandedPaths,
-    layout.explorer.selectedPath,
-  ]);
-  const renderPanelHeaderActions = useCallback((panel: SessionCanvasPanel) => {
-    if (panel.type === 'agent-terminal') {
-      return (
-        <button
-          type="button"
-          className={panelHeaderButtonClass}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleOpenAgentFileBrowser(panel.id);
-          }}
-          disabled={isAgentFileInsertPending}
-          title="Browse files and insert absolute paths into the agent input"
-          aria-label="Add files"
-        >
-          <FolderOpen className="h-3.5 w-3.5" />
-          <span>Add Files</span>
-        </button>
-      );
-    }
-
-    if (panel.type === 'preview') {
-      return (
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs btn-square h-6 min-h-6 w-6 text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          onClick={(event) => {
-            event.stopPropagation();
-            focusPanel(panel.id);
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      );
-    }
-
-    return null;
-  }, [focusPanel, handleOpenAgentFileBrowser, isAgentFileInsertPending, panelHeaderButtonClass]);
 
   return (
     <div
@@ -2124,15 +1626,6 @@ export function SessionCanvasWorkspace({
                 </button>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className={mobileToolbarButtonClass}
-                  onClick={openCommandPalette}
-                  aria-label="Search workspace"
-                  title="Search workspace"
-                >
-                  <Search className="h-4 w-4" />
-                </button>
                 <button
                   type="button"
                   className={mobileToolbarButtonClass}
@@ -2217,7 +1710,18 @@ export function SessionCanvasWorkspace({
                   onFocus={focusPanel}
                   onUpdate={updatePanelGeometry}
                   onClose={closePanel}
-                  headerActions={renderPanelHeaderActions(panel)}
+                  headerActions={panel.type === 'preview' ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs btn-square h-6 min-h-6 w-6 text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        focusPanel(panel.id);
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 >
                     {renderPanel(panel)}
                   </CanvasPanelFrame>
@@ -2250,10 +1754,6 @@ export function SessionCanvasWorkspace({
                   <ArrowLeft className="h-3.5 w-3.5" />
                 </button>
                 <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
-                <button type="button" className={desktopToolbarButtonClass} onClick={openCommandPalette}>
-                  <Search className="h-3.5 w-3.5" />
-                  Search
-                </button>
                 <button type="button" className={desktopToolbarButtonClass} onClick={handleAddTerminal}>
                   <TerminalSquare className="h-3.5 w-3.5" />
                   Terminal
@@ -2335,13 +1835,24 @@ export function SessionCanvasWorkspace({
                     key={panel.id}
                     panel={panel}
                     scale={layout.viewport.scale}
-                  active={activePanelId === panel.id}
-                  selected={selectedPanelId === panel.id}
-                  closable={panel.type !== 'agent-terminal'}
-                  onFocus={focusPanel}
-                  onUpdate={updatePanelGeometry}
-                  onClose={closePanel}
-                    headerActions={renderPanelHeaderActions(panel)}
+                    active={activePanelId === panel.id}
+                    selected={selectedPanelId === panel.id}
+                    closable={panel.type !== 'agent-terminal'}
+                    onFocus={focusPanel}
+                    onUpdate={updatePanelGeometry}
+                    onClose={closePanel}
+                    headerActions={panel.type === 'preview' ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs btn-square h-6 min-h-6 w-6 text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          focusPanel(panel.id);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                   >
                     {renderPanel(panel)}
                   </CanvasPanelFrame>
@@ -2351,31 +1862,6 @@ export function SessionCanvasWorkspace({
           </div>
         </>
       )}
-      {isAgentFileBrowserOpen ? (
-        <SessionFileBrowser
-          initialPath={agentFileBrowserInitialPath}
-          onConfirm={handleInsertFilesIntoAgent}
-          onCancel={() => {
-            if (isAgentFileInsertPending) return;
-            setIsAgentFileBrowserOpen(false);
-          }}
-          confirmLabel={isAgentFileInsertPending ? 'Inserting...' : 'Insert'}
-          zIndexClassName="z-[100]"
-        />
-      ) : null}
-      {isCommandPaletteOpen ? (
-        <CommandPalette
-          query={commandPaletteQuery}
-          loading={commandPaletteLoading}
-          error={commandPaletteError}
-          results={commandPaletteResults}
-          highlightedIndex={commandPaletteHighlightedIndex}
-          onQueryChange={setCommandPaletteQuery}
-          onHighlight={setCommandPaletteHighlightedIndex}
-          onClose={closeCommandPalette}
-          onSelect={handleSelectCommandPaletteResult}
-        />
-      ) : null}
       {dialog}
     </div>
   );

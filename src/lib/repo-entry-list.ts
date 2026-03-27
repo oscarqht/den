@@ -3,16 +3,7 @@ import path from 'path';
 
 const MAX_ENTRIES = 10000;
 const MAX_DIRS = 15000;
-export const REPO_ENTRY_SKIP_DIRS = new Set([
-  '.git',
-  'node_modules',
-  '.next',
-  '.viba',
-  '.cache',
-  'dist',
-  'build',
-  'coverage',
-]);
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', '.viba', '.cache', 'dist', 'build', 'coverage']);
 
 export async function listRepoEntries(repoPath: string, query: string = ''): Promise<string[]> {
   const queue: string[] = [repoPath];
@@ -36,7 +27,7 @@ export async function listRepoEntries(repoPath: string, query: string = ''): Pro
         const fullPath = path.join(currentDir, entry.name);
 
         if (entry.isDirectory()) {
-          if (REPO_ENTRY_SKIP_DIRS.has(entry.name)) continue;
+          if (SKIP_DIRS.has(entry.name)) continue;
 
           const relativePath = path.relative(repoPath, fullPath);
           if (relativePath && !relativePath.startsWith('..')) {

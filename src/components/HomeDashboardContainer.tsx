@@ -29,7 +29,7 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
-import { countActiveHomeProjectSessionsByProject } from '@/lib/home-project-activity';
+import { countHomeProjectSessionsByProject } from '@/lib/home-project-activity';
 import {
   omitRecordKeys,
   toHomeProjectGitRepos,
@@ -37,8 +37,10 @@ import {
 } from '@/lib/home-project-git';
 import type { Credential } from '@/lib/credentials';
 import {
+  createClientProjectCompatibilityMap,
   findClientProjectByReference,
   getClientProjectCompatibilityKeys,
+  resolveClientProjectActivityKey,
   resolveClientProjectReference,
   resolveClientRecentProjects,
 } from '@/lib/project-client';
@@ -796,6 +798,9 @@ export default function HomeDashboardContainer({
   const resolvedRecentProjects = useMemo(() => (
     resolveClientRecentProjects(projects, recentProjects)
   ), [projects, recentProjects]);
+  const recentProjectKeyByCompatibilityKey = useMemo(() => (
+    createClientProjectCompatibilityMap(resolvedRecentProjects)
+  ), [resolvedRecentProjects]);
 
   useEffect(() => {
     if (!isHomePageForegrounded || resolvedRecentProjects.length === 0) return;
@@ -881,29 +886,22 @@ export default function HomeDashboardContainer({
     canConfirm: !isDeletingProject,
   });
 
-  const activeSessionCountByProject = useMemo(() => (
-    countActiveHomeProjectSessionsByProject(
+  const sessionCountByProject = useMemo(() => (
+    countHomeProjectSessionsByProject(
       allSessions,
-      (session) => (
-        session.projectId
-          || (session.projectPath ? resolveProjectEntry(session.projectPath).key : '')
-          || session.repoPath
-          || ''
-      ),
+      (session) => resolveClientProjectActivityKey(projects, session, recentProjectKeyByCompatibilityKey),
     )
-  ), [allSessions, resolveProjectEntry]);
+  ), [allSessions, projects, recentProjectKeyByCompatibilityKey]);
 
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const draft of allDrafts) {
-      const projectKey = draft.projectId
-        || (draft.projectPath ? resolveProjectEntry(draft.projectPath).key : '')
-        || draft.repoPath;
+      const projectKey = resolveClientProjectActivityKey(projects, draft, recentProjectKeyByCompatibilityKey);
       if (!projectKey) continue;
       counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
     }
     return counts;
-  }, [allDrafts, resolveProjectEntry]);
+  }, [allDrafts, projects, recentProjectKeyByCompatibilityKey]);
 
   const getProjectDisplayName = useCallback((projectReference: string): string => (
     resolveProjectEntry(projectReference).displayName
@@ -1141,7 +1139,7 @@ export default function HomeDashboardContainer({
         ThemeModeIcon={ThemeModeIcon}
         filteredRecentProjects={filteredRecentProjects}
         isDarkThemeActive={isDarkThemeActive}
-        activeSessionCountByProject={activeSessionCountByProject}
+        sessionCountByProject={sessionCountByProject}
         draftCountByProject={draftCountByProject}
         projectCardIconByPath={projectCardIconByKey}
         brokenProjectCardIcons={brokenRepoCardIcons}

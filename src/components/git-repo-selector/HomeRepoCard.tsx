@@ -11,7 +11,7 @@ export type HomeRepoCardProps = {
   projectSecondaryLabel?: string;
   isProjectOpenable?: boolean;
   isDarkThemeActive: boolean;
-  activeSessionCount: number;
+  sessionCount: number;
   draftCount: number;
   projectIconPath: string | null;
   showProjectIcon: boolean;
@@ -36,7 +36,7 @@ export function HomeRepoCard({
   projectSecondaryLabel,
   isProjectOpenable = true,
   isDarkThemeActive,
-  activeSessionCount,
+  sessionCount,
   draftCount,
   projectIconPath,
   showProjectIcon,
@@ -124,13 +124,13 @@ export function HomeRepoCard({
                       {draftCount}
                     </span>
                   )}
-                  {activeSessionCount > 0 && (
+                  {sessionCount > 0 && (
                     <span
                       className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1.5 text-[11px] font-bold text-white shadow-sm dark:border-[#141a25]"
-                      title={`${activeSessionCount} active session${activeSessionCount === 1 ? '' : 's'}`}
+                      title={`${sessionCount} session${sessionCount === 1 ? '' : 's'}`}
                       style={draftCount > 0 ? { marginLeft: '-0.5rem' } : {}}
                     >
-                      {activeSessionCount}
+                      {sessionCount}
                     </span>
                   )}
                 </div>

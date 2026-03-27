@@ -41,7 +41,7 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
-import { countActiveHomeProjectSessionsByProject } from '@/lib/home-project-activity';
+import { countHomeProjectSessionsByProject } from '@/lib/home-project-activity';
 import {
   toHomeProjectGitRepos,
   type HomeProjectGitRepo,
@@ -2856,8 +2856,8 @@ export default function GitRepoSelector({
     }
   };
 
-  const activeSessionCountByProject = useMemo(() => (
-    countActiveHomeProjectSessionsByProject(
+  const sessionCountByProject = useMemo(() => (
+    countHomeProjectSessionsByProject(
       allSessions,
       (session) => session.projectPath || session.repoPath || '',
     )
@@ -3156,7 +3156,7 @@ export default function GitRepoSelector({
           quickCreateActiveCount={0}
           failedQuickCreateDrafts={[]}
           isDarkThemeActive={isDarkThemeActive}
-          activeSessionCountByProject={activeSessionCountByProject}
+          sessionCountByProject={sessionCountByProject}
           draftCountByProject={draftCountByProject}
           projectCardIconByPath={repoCardIconByRepo}
           brokenProjectCardIcons={brokenRepoCardIcons}

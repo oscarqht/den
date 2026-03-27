@@ -48,6 +48,7 @@ import {
 } from '@/lib/home-project-git';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
+import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
@@ -100,7 +101,6 @@ const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   gemini: 'Gemini CLI',
   cursor: 'Cursor Agent CLI',
 };
-const SKILL_MENTION_SUGGESTION_LIMIT = 20;
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
 
@@ -329,13 +329,6 @@ function areMentionsEqual(left: ActiveMention | null, right: ActiveMention | nul
     && left.start === right.start
     && left.end === right.end
     && left.query === right.query;
-}
-
-function buildSkillMentionSuggestions(query: string, installedSkills: string[]): string[] {
-  const lowerQuery = query.toLowerCase();
-  return installedSkills
-    .filter((skillName) => skillName.toLowerCase().includes(lowerQuery))
-    .slice(0, SKILL_MENTION_SUGGESTION_LIMIT);
 }
 
 function readAgentModelCatalogCache(provider: AgentProvider): AgentModelCatalogCacheEntry | null {

@@ -13,7 +13,7 @@ import { AlertCircle, Clock3, FolderOpen, Loader2, Paperclip, PlayCircle, Send, 
 import ReactMarkdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import remarkGfm from 'remark-gfm';
-import { listRepoFiles, saveAttachments } from '@/app/actions/git';
+import { listInstalledAgentSkills, listRepoFiles, saveAttachments } from '@/app/actions/git';
 import {
   createOptimisticUserMessage,
   reconcileOptimisticUserMessages,
@@ -24,6 +24,12 @@ import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
+import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
+import {
+  type ActiveMention,
+  findActiveMention,
+  replaceActiveMention,
+} from '@/lib/task-description-mentions';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -775,6 +781,14 @@ function isTimelineNearBottom(element: HTMLDivElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight < TIMELINE_BOTTOM_STICK_THRESHOLD_PX;
 }
 
+function areMentionsEqual(left: ActiveMention | null, right: ActiveMention | null): boolean {
+  if (!left || !right) return left === right;
+  return left.trigger === right.trigger
+    && left.start === right.start
+    && left.end === right.end
+    && left.query === right.query;
+}
+
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
   {
     sessionId,
@@ -804,7 +818,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
   const [cursorPosition, setCursorPosition] = useState(0);
+  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
   const [workspaceEntriesCache, setWorkspaceEntriesCache] = useState<string[]>([]);
+  const [skillSuggestionsByProvider, setSkillSuggestionsByProvider] = useState<Partial<Record<AgentProvider, string[]>>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
@@ -818,6 +834,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Record<string, boolean>>({});
   const [lastSocketMessageAt, setLastSocketMessageAt] = useState<number | null>(null);
   const [possibleStale, setPossibleStale] = useState(false);
+  const latestComposerValueRef = useRef(composerValue);
+  const latestCursorPositionRef = useRef(cursorPosition);
+  const latestAgentProviderRef = useRef<AgentProvider | null>(null);
 
   const scheduleRefresh = useCallback((delay = 120) => {
     if (refreshTimerRef.current !== null) {
@@ -893,6 +912,18 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
     timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
   }, [historySizeVersion, loading, optimisticMessages, history]);
+
+  useEffect(() => {
+    latestComposerValueRef.current = composerValue;
+  }, [composerValue]);
+
+  useEffect(() => {
+    latestCursorPositionRef.current = cursorPosition;
+  }, [cursorPosition]);
+
+  useEffect(() => {
+    latestAgentProviderRef.current = runtime?.agentProvider || null;
+  }, [runtime?.agentProvider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1319,62 +1350,108 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     }
   }, [onFeedback, scheduleRefresh, sessionId]);
 
-  const updateComposerSuggestions = useCallback((query: string, entries: string[], currentAttachments: string[]) => {
-    const nextSuggestions = buildRepoMentionSuggestions({
-      query,
-      repoEntries: entries,
-      currentAttachments,
-      carriedAttachments: [],
-    });
-    setSuggestionList(nextSuggestions);
+  const hideSuggestions = useCallback(() => {
+    setShowSuggestions(false);
+    setSuggestionList([]);
     setSelectedSuggestionIndex(0);
+    setActiveMention(null);
   }, []);
 
-  const handleSelectSuggestion = useCallback((suggestion: string) => {
-    setComposerValue((previous) => {
-      const textBeforeCursor = previous.substring(0, cursorPosition);
-      const lastAt = textBeforeCursor.lastIndexOf('@');
-      if (lastAt === -1) {
-        return previous;
-      }
+  const applySuggestionList = useCallback((mention: ActiveMention, suggestions: string[]) => {
+    setActiveMention(mention);
+    setSuggestionList(suggestions);
+    setSelectedSuggestionIndex(0);
+    setShowSuggestions(suggestions.length > 0);
+  }, []);
 
-      const prefix = previous.substring(0, lastAt);
-      const suffix = previous.substring(cursorPosition);
-      const nextValue = `${prefix}@${suggestion} ${suffix}`;
-      pendingSelectionRef.current = prefix.length + suggestion.length + 2;
-      return nextValue;
-    });
-
-    setShowSuggestions(false);
-  }, [cursorPosition]);
-
-  const handleComposerChange = useCallback(async (nextValue: string, nextCursorPosition: number) => {
-    setComposerValue(nextValue);
-    setCursorPosition(nextCursorPosition);
-
-    const textBeforeCursor = nextValue.substring(0, nextCursorPosition);
-    const lastAt = textBeforeCursor.lastIndexOf('@');
-
-    if (lastAt !== -1) {
-      const query = textBeforeCursor.substring(lastAt + 1);
-      if (!/\s/.test(query)) {
-        setShowSuggestions(true);
-        let entries = workspaceEntriesCache;
-        if (entries.length === 0) {
-          entries = await listRepoFiles(workspacePath);
-          setWorkspaceEntriesCache(entries);
-        }
-        updateComposerSuggestions(
-          query,
-          entries,
-          pendingAttachmentPaths.map((attachmentPath) => getBaseName(attachmentPath))
-        );
-        return;
-      }
+  const refreshComposerSuggestions = useCallback(async (value: string, position: number) => {
+    const mention = findActiveMention(value, position);
+    if (!mention) {
+      hideSuggestions();
+      return;
     }
 
-    setShowSuggestions(false);
-  }, [pendingAttachmentPaths, updateComposerSuggestions, workspaceEntriesCache, workspacePath]);
+    setActiveMention(mention);
+
+    if (mention.trigger === '@') {
+      let entries = workspaceEntriesCache;
+      if (entries.length === 0) {
+        entries = await listRepoFiles(workspacePath);
+        setWorkspaceEntriesCache((previous) => (previous.length > 0 ? previous : entries));
+      }
+
+      const latestMention = findActiveMention(latestComposerValueRef.current, latestCursorPositionRef.current);
+      if (!areMentionsEqual(latestMention, mention)) {
+        return;
+      }
+
+      const suggestions = buildRepoMentionSuggestions({
+        query: mention.query,
+        repoEntries: entries,
+        currentAttachments: pendingAttachmentPaths.map((attachmentPath) => getBaseName(attachmentPath)),
+        carriedAttachments: [],
+      });
+      applySuggestionList(mention, suggestions);
+      return;
+    }
+
+    const provider = runtime?.agentProvider || null;
+    if (!provider) {
+      applySuggestionList(mention, []);
+      return;
+    }
+
+    let installedSkills = skillSuggestionsByProvider[provider];
+    if (!Object.prototype.hasOwnProperty.call(skillSuggestionsByProvider, provider)) {
+      installedSkills = await listInstalledAgentSkills(provider);
+      setSkillSuggestionsByProvider((previous) => (
+        Object.prototype.hasOwnProperty.call(previous, provider)
+          ? previous
+          : { ...previous, [provider]: installedSkills ?? [] }
+      ));
+    }
+
+    const latestMention = findActiveMention(latestComposerValueRef.current, latestCursorPositionRef.current);
+    if (!areMentionsEqual(latestMention, mention) || latestAgentProviderRef.current !== provider) {
+      return;
+    }
+
+    const suggestions = buildSkillMentionSuggestions(mention.query, installedSkills ?? []);
+    applySuggestionList(mention, suggestions);
+  }, [
+    applySuggestionList,
+    hideSuggestions,
+    pendingAttachmentPaths,
+    runtime?.agentProvider,
+    skillSuggestionsByProvider,
+    workspaceEntriesCache,
+    workspacePath,
+  ]);
+
+  const handleSelectSuggestion = useCallback((suggestion: string) => {
+    if (!activeMention) return;
+
+    const result = replaceActiveMention(composerValue, activeMention, suggestion);
+    latestComposerValueRef.current = result.value;
+    latestCursorPositionRef.current = result.cursorPosition;
+    setComposerValue(result.value);
+    setCursorPosition(result.cursorPosition);
+    pendingSelectionRef.current = result.cursorPosition;
+    hideSuggestions();
+  }, [activeMention, composerValue, hideSuggestions]);
+
+  const handleComposerChange = useCallback(async (nextValue: string, nextCursorPosition: number) => {
+    latestComposerValueRef.current = nextValue;
+    latestCursorPositionRef.current = nextCursorPosition;
+    setComposerValue(nextValue);
+    setCursorPosition(nextCursorPosition);
+    await refreshComposerSuggestions(nextValue, nextCursorPosition);
+  }, [refreshComposerSuggestions]);
+
+  useEffect(() => {
+    if (activeMention?.trigger !== '$') return;
+    void refreshComposerSuggestions(latestComposerValueRef.current, latestCursorPositionRef.current);
+  }, [activeMention?.trigger, refreshComposerSuggestions, runtime?.agentProvider]);
 
   const handleComposerPaste = useCallback(async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFiles = getClipboardImageFiles(event.clipboardData);
@@ -1859,8 +1936,8 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             className="max-h-28 min-h-20 w-full resize-y border-none bg-transparent font-mono text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
             style={{ height: COMPOSER_MAX_HEIGHT / 1.4 }}
             placeholder={isTurnActive
-              ? 'Queue a follow-up message, or add steering instructions...'
-              : 'Send a follow-up task or ask the agent to continue...'}
+              ? 'Queue a follow-up message, or add steering instructions...\nTip: Type @ for files and $ for skills.'
+              : 'Send a follow-up task or ask the agent to continue...\nTip: Type @ for files and $ for skills.'}
             value={composerValue}
             onChange={(event) => {
               const nextValue = event.target.value;
@@ -1869,7 +1946,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             }}
             onClick={(event) => {
               setCursorPosition(event.currentTarget.selectionStart);
-              setShowSuggestions(false);
+              hideSuggestions();
             }}
             onKeyUp={(event) => {
               setCursorPosition(event.currentTarget.selectionStart);
@@ -1925,7 +2002,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                 }
                 if (event.key === 'Escape') {
                   event.preventDefault();
-                  setShowSuggestions(false);
+                  hideSuggestions();
                   return;
                 }
               }

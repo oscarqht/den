@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import NewSessionComposer from '@/components/NewSessionComposer';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { findProjectByFolderPath, getProjectById } from '@/lib/store';
-import { getProjectPrimaryFolderPath } from '@/lib/project-folders';
+import { getProjects } from '@/lib/store';
+import { resolveClientProjectReference } from '@/lib/project-client';
 
 export const metadata: Metadata = {
   title: 'New Session',
@@ -134,21 +134,11 @@ type NewSessionPageProps = {
   }>;
 };
 
-function resolveProjectParamToPath(projectReference?: string | null): string | null {
+function resolveProjectParamToReference(projectReference?: string | null): string | null {
   const trimmedReference = projectReference?.trim();
   if (!trimmedReference) return null;
 
-  const projectById = getProjectById(trimmedReference);
-  if (projectById) {
-    return getProjectPrimaryFolderPath(projectById);
-  }
-
-  const projectByFolder = findProjectByFolderPath(trimmedReference);
-  if (projectByFolder) {
-    return getProjectPrimaryFolderPath(projectByFolder);
-  }
-
-  return trimmedReference;
+  return resolveClientProjectReference(getProjects(), trimmedReference).sessionReference;
 }
 
 export default async function NewSessionPage({
@@ -166,7 +156,7 @@ export default async function NewSessionPage({
   const prefillFromSession = Array.isArray(prefillParam)
     ? prefillParam[0]
     : prefillParam;
-  const projectPath = resolveProjectParamToPath(projectIdFromParam ?? projectPathFromParam);
+  const projectPath = resolveProjectParamToReference(projectIdFromParam ?? projectPathFromParam);
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-[#f6f6f8] p-4 md:p-8 dark:bg-[#0d1117]">

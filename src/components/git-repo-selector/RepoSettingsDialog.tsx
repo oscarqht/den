@@ -118,8 +118,8 @@ export function RepoSettingsDialog({
 
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-[#1e2532]/70">
               {projectFolderPaths.length === 0 ? (
-                <div className="text-sm text-amber-700 dark:text-amber-200">
-                  No folders are associated yet. Add at least one folder before starting a session.
+                <div className="text-sm text-slate-600 dark:text-slate-300">
+                  No folders are associated yet. Sessions can still start in local mode from your home directory.
                 </div>
               ) : (
                 <div className="space-y-2">

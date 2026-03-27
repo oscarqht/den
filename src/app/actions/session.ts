@@ -37,7 +37,11 @@ import {
   terminateProcessGracefully,
 } from '@/lib/session-processes';
 import { findProjectByFolderPath, getProjectById, resolveProjectStorageScope } from '@/lib/store';
-import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '@/lib/project-folders';
+import { buildProjectFolderEntries, normalizeProjectFolderPath } from '@/lib/project-folders';
+import {
+  resolveProjectWorkspacePreference,
+  resolveStoredProjectSessionContext,
+} from '@/lib/project-session-context';
 import type {
   AgentProvider,
   HistoryEntry,
@@ -634,29 +638,13 @@ async function resolveSessionProjectContext(projectIdOrPath: string): Promise<{
 
   const projectById = getProjectById(trimmedValue);
   if (projectById) {
-    const primaryFolderPath = getProjectPrimaryFolderPath(projectById);
-    if (!primaryFolderPath) {
-      throw new Error('Project does not have any associated folders.');
-    }
-    return {
-      projectId: projectById.id,
-      normalizedProjectPath: normalizeProjectFolderPath(primaryFolderPath),
-      normalizedFolderPaths: projectById.folderPaths.map((folderPath) => normalizeProjectFolderPath(folderPath)),
-    };
+    return resolveStoredProjectSessionContext(projectById);
   }
 
   const normalizedPath = normalizeProjectFolderPath(trimmedValue);
   const projectByFolderPath = findProjectByFolderPath(normalizedPath);
   if (projectByFolderPath) {
-    const primaryFolderPath = getProjectPrimaryFolderPath(projectByFolderPath);
-    if (!primaryFolderPath) {
-      throw new Error('Project does not have any associated folders.');
-    }
-    return {
-      projectId: projectByFolderPath.id,
-      normalizedProjectPath: normalizeProjectFolderPath(primaryFolderPath),
-      normalizedFolderPaths: projectByFolderPath.folderPaths.map((folderPath) => normalizeProjectFolderPath(folderPath)),
-    };
+    return resolveStoredProjectSessionContext(projectByFolderPath);
   }
 
   const projectStats = await fs.stat(normalizedPath);
@@ -963,7 +951,10 @@ async function resolveSessionWorkspaceContextInput(
     discoveredRepoPaths,
     requestedContexts,
   );
-  const normalizedWorkspacePreference = normalizeSessionWorkspacePreference(workspacePreference);
+  const normalizedWorkspacePreference = resolveProjectWorkspacePreference(
+    projectContext.normalizedFolderPaths,
+    normalizeSessionWorkspacePreference(workspacePreference),
+  );
   const contextFingerprint = buildSessionWorkspaceContextFingerprint(
     projectContext,
     normalizedContexts,

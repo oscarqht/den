@@ -5,6 +5,7 @@ import { FolderGit2, Plus, X, ChevronRight, ChevronDown, Bot, Trash2, ExternalLi
 import FileBrowser from './FileBrowser';
 import {
   GitBranch,
+  getHomeDirectory,
   listInstalledAgentSkills,
   listRepoFiles,
   resolveRepoCardIcon,
@@ -47,6 +48,7 @@ import {
   type HomeProjectGitRepo,
 } from '@/lib/home-project-git';
 import { getBaseName } from '@/lib/path';
+import { resolveClientProjectReference } from '@/lib/project-client';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
@@ -67,6 +69,7 @@ import {
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
+import { useProjects } from '@/hooks/use-git';
 import SessionFileBrowser from './SessionFileBrowser';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
 import { RepoSettingsDialog } from './git-repo-selector/RepoSettingsDialog';
@@ -390,6 +393,7 @@ export default function GitRepoSelector({
   logoutEnabled = true,
 }: GitRepoSelectorProps) {
   const repoPath = projectPath ?? legacyRepoPath;
+  const { data: projects = [] } = useProjects();
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
   const [isRepoSettingsDialogOpen, setIsRepoSettingsDialogOpen] = useState(false);
@@ -407,6 +411,7 @@ export default function GitRepoSelector({
   const [config, setConfig] = useState<Config | null>(null);
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [homeDirectoryPath, setHomeDirectoryPath] = useState<string | null>(null);
   const [repoForSettings, setRepoForSettings] = useState<string | null>(null);
   const [repoAlias, setRepoAlias] = useState<string>('');
   const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_PROJECT_STARTUP_COMMAND);
@@ -415,6 +420,10 @@ export default function GitRepoSelector({
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
   const router = useRouter();
+
+  const resolveProjectEntry = useCallback((projectReference: string) => (
+    resolveClientProjectReference(projects, projectReference)
+  ), [projects]);
 
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
   const [projectGitRepos, setProjectGitRepos] = useState<string[]>([]);
@@ -920,13 +929,26 @@ export default function GitRepoSelector({
     ]);
   };
 
+  const resolvedSelectedProject = useMemo(() => (
+    selectedRepo ? resolveProjectEntry(selectedRepo) : null
+  ), [resolveProjectEntry, selectedRepo]);
+
+  const selectedRepoBasePath = resolvedSelectedProject?.primaryPath ?? selectedRepo;
+  const selectedRepoFilesystemPath = resolvedSelectedProject?.primaryPath
+    ?? (resolvedSelectedProject?.project && !resolvedSelectedProject.hasAssociatedFolders
+      ? homeDirectoryPath
+      : selectedRepo);
+  const isFolderlessSelectedProject = Boolean(
+    resolvedSelectedProject?.project && !resolvedSelectedProject.hasAssociatedFolders,
+  );
+
   const getRepoDisplayPath = useCallback((repoPath: string, totalRepos: number): string => {
-    if (!selectedRepo) return repoPath;
+    if (!selectedRepoBasePath) return repoPath;
     if (totalRepos === 1) {
-      return getBaseName(selectedRepo) || selectedRepo;
+      return resolvedSelectedProject?.displayName || getBaseName(selectedRepoBasePath) || selectedRepoBasePath;
     }
-    return toProjectRelativeRepoPath(selectedRepo, repoPath);
-  }, [selectedRepo]);
+    return toProjectRelativeRepoPath(selectedRepoBasePath, repoPath);
+  }, [resolvedSelectedProject?.displayName, selectedRepoBasePath]);
 
   const selectedProjectGitContexts = useMemo<SessionCreateGitContextInput[]>(() => {
     return projectGitRepos.map((repoPath) => ({
@@ -1162,8 +1184,8 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     if (mode !== 'new' || !selectedRepo) return;
-    setLastAttachmentBrowserPath((prev) => prev || selectedRepo);
-  }, [mode, selectedRepo]);
+    setLastAttachmentBrowserPath(selectedRepoFilesystemPath || selectedRepo);
+  }, [mode, selectedRepo, selectedRepoFilesystemPath]);
 
   useEffect(() => {
     latestStartupScriptRef.current = startupScript;
@@ -1172,6 +1194,31 @@ export default function GitRepoSelector({
   useEffect(() => {
     latestSelectedRepoRef.current = selectedRepo;
   }, [selectedRepo]);
+
+  useEffect(() => {
+    if (!isFolderlessSelectedProject || homeDirectoryPath) return;
+
+    let cancelled = false;
+    void getHomeDirectory().then((homePath) => {
+      if (!cancelled) {
+        setHomeDirectoryPath(homePath);
+      }
+    }).catch((homeError) => {
+      console.error('Failed to resolve home directory for folderless project:', homeError);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [homeDirectoryPath, isFolderlessSelectedProject]);
+
+  useEffect(() => {
+    if (mode !== 'new' || !isFolderlessSelectedProject || sessionWorkspacePreference === 'local') {
+      return;
+    }
+
+    setSessionWorkspacePreference('local');
+  }, [isFolderlessSelectedProject, mode, sessionWorkspacePreference]);
 
   useEffect(() => {
     latestSelectedAgentProviderRef.current = selectedAgentProvider;
@@ -1808,7 +1855,7 @@ export default function GitRepoSelector({
     setActiveMention(mention);
 
     if (mention.trigger === '@') {
-      const repoPath = selectedRepo;
+      const repoPath = selectedRepoFilesystemPath;
       if (!repoPath) {
         applySuggestionList(mention, []);
         return;
@@ -1862,7 +1909,7 @@ export default function GitRepoSelector({
     repoFilesCache,
     selectedAgentProvider,
     selectedAttachmentNames,
-    selectedRepo,
+    selectedRepoFilesystemPath,
     skillSuggestionsByProvider,
   ]);
 
@@ -2710,6 +2757,7 @@ export default function GitRepoSelector({
       const draft: DraftMetadata = {
         id: draftId,
         projectPath: selectedRepo,
+        projectId: resolvedSelectedProject?.project?.id ?? undefined,
         gitContexts: draftGitContexts,
         repoPath: selectedRepo,
         branchName: firstGitContext?.branchName || currentBranchName || undefined,
@@ -2872,12 +2920,19 @@ export default function GitRepoSelector({
   );
 
   const getProjectDisplayName = useCallback((projectPath: string): string => {
-    const alias = config?.projectSettings?.[projectPath]?.alias?.trim();
-    return alias || getBaseName(projectPath);
-  }, [config?.projectSettings]);
+    const resolvedProject = resolveProjectEntry(projectPath);
+    const alias = config?.projectSettings?.[resolvedProject.project?.id ?? projectPath]?.alias?.trim()
+      || config?.projectSettings?.[resolvedProject.primaryPath ?? '']?.alias?.trim()
+      || config?.projectSettings?.[projectPath]?.alias?.trim();
+    return alias || resolvedProject.displayName || getBaseName(projectPath);
+  }, [config?.projectSettings, resolveProjectEntry]);
 
-  const getProjectSecondaryLabel = useCallback((projectPath: string): string => projectPath, []);
-  const isProjectOpenable = useCallback((): boolean => true, []);
+  const getProjectSecondaryLabel = useCallback((projectPath: string): string => (
+    resolveProjectEntry(projectPath).secondaryLabel
+  ), [resolveProjectEntry]);
+  const isProjectOpenable = useCallback((projectPath: string): boolean => (
+    resolveProjectEntry(projectPath).isOpenable
+  ), [resolveProjectEntry]);
 
   const sortedRecentProjects = useMemo(() => (
     sortHomeProjects(recentProjects, homeProjectSort, getProjectDisplayName)
@@ -3327,8 +3382,11 @@ export default function GitRepoSelector({
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                     </div>
-                    <span className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={selectedRepo || ''}>
-                      {selectedRepo}
+                    <span
+                      className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400"
+                      title={resolvedSelectedProject?.secondaryLabel || selectedRepo || ''}
+                    >
+                      {resolvedSelectedProject?.secondaryLabel || selectedRepo}
                     </span>
                   </label>
 
@@ -3646,8 +3704,8 @@ export default function GitRepoSelector({
                             }`}
                           onClick={() => handleSessionWorkspacePreferenceChange('workspace')}
                           aria-pressed={sessionWorkspacePreference === 'workspace'}
-                          disabled={loading}
-                          title="Workspace"
+                          disabled={loading || isFolderlessSelectedProject}
+                          title={isFolderlessSelectedProject ? 'Workspace mode requires an associated folder' : 'Workspace'}
                         >
                           {isCompactTaskHeader ? (
                             <Layers className="h-3.5 w-3.5" />
@@ -3765,7 +3823,9 @@ export default function GitRepoSelector({
                           {selectedModelOption.description}
                         </span>
                       )}
-                      {sessionWorkspacePreference === 'local' ? (
+                      {isFolderlessSelectedProject ? (
+                        <span>This project has no associated folders. The session will start in local mode from your home directory.</span>
+                      ) : sessionWorkspacePreference === 'local' ? (
                         <span>Local mode applies changes directly to the selected source folder.</span>
                       ) : isPreparingWorkspace ? (
                         <span>Prewarming workspace...</span>
@@ -4026,7 +4086,7 @@ export default function GitRepoSelector({
 
       {mode === 'new' && selectedRepo && isAttachmentBrowserOpen && (
         <SessionFileBrowser
-          initialPath={lastAttachmentBrowserPath || selectedRepo}
+          initialPath={lastAttachmentBrowserPath || selectedRepoFilesystemPath || selectedRepo}
           onPathChange={setLastAttachmentBrowserPath}
           onConfirm={async (paths) => {
             appendAttachmentPaths(paths);

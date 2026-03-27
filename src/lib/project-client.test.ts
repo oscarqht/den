@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   createClientProjectCompatibilityMap,
+  resolveClientProjectReference,
   resolveClientProjectActivityKey,
   resolveClientRecentProjects,
 } from './project-client.ts';
@@ -31,5 +32,20 @@ describe('project-client activity key resolution', () => {
     }, preferredKeys);
 
     assert.equal(projectKey, 'd3b9338a-c163-4b13-87e6-5e74d8604e1d');
+  });
+
+  it('keeps folderless projects openable by session reference while reporting no associated folders', () => {
+    const resolved = resolveClientProjectReference([{
+      id: 'project-123',
+      name: 'Metadata Only',
+      folderPaths: [],
+    }], 'project-123');
+
+    assert.equal(resolved.project?.id, 'project-123');
+    assert.equal(resolved.primaryPath, null);
+    assert.equal(resolved.sessionReference, 'project-123');
+    assert.equal(resolved.hasAssociatedFolders, false);
+    assert.equal(resolved.isOpenable, true);
+    assert.equal(resolved.secondaryLabel, 'No folders associated');
   });
 });

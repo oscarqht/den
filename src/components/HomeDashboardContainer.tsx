@@ -340,8 +340,8 @@ export default function HomeDashboardContainer({
 
     try {
       const resolvedProject = resolveProjectEntry(projectReference);
-      if (!resolvedProject.isOpenable || !resolvedProject.primaryPath) {
-        setError('Add at least one associated folder before starting a session.');
+      if (!resolvedProject.isOpenable || !resolvedProject.sessionReference) {
+        setError('Failed to open project.');
         return false;
       }
 
@@ -350,10 +350,10 @@ export default function HomeDashboardContainer({
         setConfig(currentConfig);
       }
 
-      const nextRecentKey = resolvedProject.project?.id ?? resolvedProject.primaryPath;
+      const nextRecentKey = resolvedProject.project?.id ?? resolvedProject.sessionReference;
       const compatibilityKeys = resolvedProject.project
         ? getClientProjectCompatibilityKeys(resolvedProject.project)
-        : [resolvedProject.primaryPath];
+        : [resolvedProject.sessionReference];
       const nextRecentProjects = [
         nextRecentKey,
         ...currentConfig.recentProjects.filter((projectEntry) => !compatibilityKeys.includes(projectEntry)),
@@ -366,7 +366,7 @@ export default function HomeDashboardContainer({
       setConfig(nextConfig);
 
       if (options?.navigateToNewInHome !== false) {
-        router.push(`/new?project=${encodeURIComponent(resolvedProject.project?.id ?? resolvedProject.primaryPath)}`);
+        router.push(`/new?project=${encodeURIComponent(resolvedProject.sessionReference)}`);
       }
 
       return true;

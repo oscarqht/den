@@ -1972,26 +1972,24 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               {onRequestAddFiles ? (
                 <button
                   type="button"
-                  className={`inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937] ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-3'}`}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white p-0 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937]"
                   onClick={onRequestAddFiles}
                   disabled={isAddingFiles}
                   title="Browse files and insert absolute paths into the agent input"
                   aria-label="Add files"
                 >
                   {isAddingFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-                  {!isMobileViewport ? 'Add Files' : null}
                 </button>
               ) : null}
               <button
                 type="button"
-                className={`inline-flex h-9 items-center rounded-lg bg-blue-600 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-4'}`}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 p-0 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => void handleSubmit()}
                 disabled={!canSend}
                 title={isTurnActive ? 'Queue' : 'Send'}
                 aria-label={isTurnActive ? 'Queue' : 'Send'}
               >
                 {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {!isMobileViewport ? (isTurnActive ? 'Queue' : 'Send') : null}
               </button>
               {(isTurnActive || isCancelling) ? (
                 <button

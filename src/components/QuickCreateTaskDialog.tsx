@@ -210,15 +210,15 @@ export function QuickCreateTaskDialog({
   return (
     <>
       <div
-        className="fixed inset-0 z-[1004] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+        className={`fixed inset-0 z-[1004] flex bg-slate-950/55 backdrop-blur-sm ${isMobileViewport ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'}`}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget && !isSubmitting) {
             onClose();
           }
         }}
       >
-        <div className="flex h-[min(760px,92vh)] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
+        <div className={`flex w-full flex-col border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26] ${isMobileViewport ? 'h-[100dvh] max-w-none rounded-none border-x-0 border-y-0 shadow-none' : 'h-[min(760px,92vh)] max-w-3xl rounded-2xl'}`}>
+          <div className={`flex items-center justify-between border-b border-slate-100 dark:border-white/10 ${isMobileViewport ? 'px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]' : 'px-5 py-4'}`}>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 {draft ? 'Retry Quick Create Task' : 'Create Task'}
@@ -237,7 +237,7 @@ export function QuickCreateTaskDialog({
             </button>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+          <div className={`flex flex-1 flex-col gap-4 overflow-y-auto ${isMobileViewport ? 'px-4 py-4' : 'p-5'}`}>
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-200">
                 {error}
@@ -343,7 +343,7 @@ export function QuickCreateTaskDialog({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 dark:border-white/10">
+          <div className={`flex items-center justify-end gap-3 border-t border-slate-100 dark:border-white/10 ${isMobileViewport ? 'px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4' : 'px-5 py-4'}`}>
             <button
               type="button"
               className="btn btn-ghost"

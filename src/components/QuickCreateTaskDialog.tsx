@@ -1,12 +1,13 @@
 'use client';
 
-import { saveAttachments } from '@/app/actions/git';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getBaseName } from '@/lib/path';
+import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
+import { uploadAttachments } from '@/lib/upload-attachments';
 import { CloudDownload, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type QuickCreateSubmitInput = {
   draftId?: string | null;
@@ -58,13 +59,17 @@ export function QuickCreateTaskDialog({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPastingAttachments, setIsPastingAttachments] = useState(false);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const mobileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
       setIsAttachmentBrowserOpen(false);
       setIsSubmitting(false);
       setIsPastingAttachments(false);
+      setIsUploadingAttachments(false);
       return;
     }
 
@@ -74,8 +79,20 @@ export function QuickCreateTaskDialog({
     setError(draft?.lastError ?? null);
     setIsSubmitting(false);
     setIsPastingAttachments(false);
+    setIsUploadingAttachments(false);
     setIsAttachmentBrowserOpen(false);
   }, [draft, isOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia(SESSION_MOBILE_VIEWPORT_QUERY);
+    const updateIsMobileViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateIsMobileViewport();
+
+    mediaQuery.addEventListener('change', updateIsMobileViewport);
+    return () => mediaQuery.removeEventListener('change', updateIsMobileViewport);
+  }, []);
 
   const appendAttachmentPaths = useCallback((incomingPaths: string[]) => {
     if (incomingPaths.length === 0) return;
@@ -110,7 +127,7 @@ export function QuickCreateTaskDialog({
         formData.append(`image-${index}`, new File([file], fileName, { type: file.type || 'image/png' }));
       });
 
-      const savedPaths = await saveAttachments(`quick-create-${attachmentNamespaceId}`, formData);
+      const savedPaths = await uploadAttachments(`quick-create-${attachmentNamespaceId}`, formData);
       if (savedPaths.length === 0) {
         throw new Error('Failed to save pasted images.');
       }
@@ -122,6 +139,45 @@ export function QuickCreateTaskDialog({
       setIsPastingAttachments(false);
     }
   }, [appendAttachmentPaths, attachmentNamespaceId]);
+
+  const handleMobileAttachmentSelection = useCallback(async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    setError(null);
+    setIsUploadingAttachments(true);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file, index) => {
+        const fileName = file.name.trim() || `attachment-${Date.now()}-${index + 1}`;
+        formData.append(`attachment-${index}`, file, fileName);
+      });
+
+      const savedPaths = await uploadAttachments(`quick-create-${attachmentNamespaceId}`, formData);
+      if (savedPaths.length === 0) {
+        throw new Error('Failed to upload selected attachments.');
+      }
+
+      appendAttachmentPaths(savedPaths);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload selected attachments.');
+    } finally {
+      setIsUploadingAttachments(false);
+    }
+  }, [appendAttachmentPaths, attachmentNamespaceId]);
+
+  const handleSelectAttachments = useCallback(() => {
+    if (isMobileViewport) {
+      mobileAttachmentInputRef.current?.click();
+      return;
+    }
+
+    setIsAttachmentBrowserOpen(true);
+  }, [isMobileViewport]);
 
   const handleSubmit = useCallback(async () => {
     if (!message.trim() || isSubmitting) return;
@@ -154,15 +210,15 @@ export function QuickCreateTaskDialog({
   return (
     <>
       <div
-        className="fixed inset-0 z-[1004] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[1004] flex bg-slate-950/55 backdrop-blur-sm max-[1023px]:items-stretch max-[1023px]:justify-stretch max-[1023px]:p-0 min-[1024px]:items-center min-[1024px]:justify-center min-[1024px]:p-4"
         onMouseDown={(event) => {
           if (event.target === event.currentTarget && !isSubmitting) {
             onClose();
           }
         }}
       >
-        <div className="flex h-[min(760px,92vh)] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
+        <div className="flex w-full flex-col border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26] max-[1023px]:h-[100dvh] max-[1023px]:w-screen max-[1023px]:min-w-full max-[1023px]:max-w-none max-[1023px]:rounded-none max-[1023px]:border-x-0 max-[1023px]:border-y-0 max-[1023px]:shadow-none min-[1024px]:h-[min(760px,92vh)] min-[1024px]:max-w-3xl min-[1024px]:rounded-2xl">
+          <div className="mx-auto flex w-full items-center justify-between border-b border-slate-100 dark:border-white/10 max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:pb-3 max-[1023px]:pt-[max(1rem,env(safe-area-inset-top))] min-[1024px]:max-w-none min-[1024px]:px-5 min-[1024px]:py-4">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 {draft ? 'Retry Quick Create Task' : 'Create Task'}
@@ -181,7 +237,7 @@ export function QuickCreateTaskDialog({
             </button>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+          <div className="mx-auto flex w-full flex-1 flex-col gap-4 overflow-y-auto max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:py-5 min-[1024px]:max-w-none min-[1024px]:p-5">
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-200">
                 {error}
@@ -227,8 +283,8 @@ export function QuickCreateTaskDialog({
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => setIsAttachmentBrowserOpen(true)}
-                  disabled={isSubmitting}
+                  onClick={handleSelectAttachments}
+                  disabled={isSubmitting || isUploadingAttachments}
                 >
                   <CloudDownload className="h-4 w-4" />
                   Select Attachments
@@ -238,6 +294,12 @@ export function QuickCreateTaskDialog({
               {isPastingAttachments ? (
                 <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">
                   Saving pasted image attachments...
+                </div>
+              ) : null}
+
+              {isUploadingAttachments ? (
+                <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                  Uploading selected attachments...
                 </div>
               ) : null}
 
@@ -270,10 +332,18 @@ export function QuickCreateTaskDialog({
                   ) : null}
                 </div>
               </div>
+
+              <input
+                ref={mobileAttachmentInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleMobileAttachmentSelection}
+              />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 dark:border-white/10">
+          <div className="mx-auto flex w-full items-center justify-end gap-3 border-t border-slate-100 dark:border-white/10 max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:pb-[max(1rem,env(safe-area-inset-bottom))] max-[1023px]:pt-4 min-[1024px]:max-w-none min-[1024px]:px-5 min-[1024px]:py-4">
             <button
               type="button"
               className="btn btn-ghost"

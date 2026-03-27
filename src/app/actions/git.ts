@@ -23,6 +23,7 @@ import {
   isSkillInstalled,
   listInstalledSkillsForProvider,
 } from '@/lib/agent-skills';
+import { saveAttachmentsFromFormData } from '@/lib/attachment-storage';
 import { findProjectsContainingPath } from '@/lib/store';
 import type { AgentProvider } from '@/lib/types';
 
@@ -1224,43 +1225,7 @@ export async function listInstalledAgentSkills(provider: AgentProvider): Promise
 
 export async function saveAttachments(worktreePath: string, formData: FormData): Promise<string[]> {
   try {
-    const worktreeLabel = path.basename(worktreePath.trim() || 'workspace').replace(/[^a-zA-Z0-9._-]/g, '_') || 'workspace';
-    const attachmentsDir = path.join(os.tmpdir(), 'viba-attachments', worktreeLabel);
-    await fs.mkdir(attachmentsDir, { recursive: true });
-
-    const files = Array.from(formData.entries());
-
-    const savePromises = files.map(async ([, entry]) => {
-      if (entry instanceof File) {
-        const buffer = Buffer.from(await entry.arrayBuffer());
-        const rawName = entry.name.trim() || `attachment-${Date.now()}`;
-        const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, '_') || `attachment-${Date.now()}`;
-        const parsed = path.parse(safeName);
-        const baseName = parsed.name || `attachment-${Date.now()}`;
-        const extension = parsed.ext || '';
-        let candidateName = `${baseName}${extension}`;
-        let fullPath = path.join(attachmentsDir, candidateName);
-        let suffix = 1;
-
-        while (true) {
-          try {
-            await fs.access(fullPath);
-            candidateName = `${baseName}-${suffix}${extension}`;
-            fullPath = path.join(attachmentsDir, candidateName);
-            suffix += 1;
-          } catch {
-            break;
-          }
-        }
-
-        await fs.writeFile(fullPath, buffer);
-        return fullPath;
-      }
-      return null;
-    });
-
-    const results = await Promise.all(savePromises);
-    return results.filter((name): name is string => name !== null);
+    return await saveAttachmentsFromFormData(worktreePath, formData);
   } catch (error) {
     console.error('Failed to save attachments:', error);
     return [];

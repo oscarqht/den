@@ -13,7 +13,7 @@ import { AlertCircle, Clock3, FolderOpen, Loader2, Paperclip, PlayCircle, Send, 
 import ReactMarkdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import remarkGfm from 'remark-gfm';
-import { listRepoFiles, saveAttachments } from '@/app/actions/git';
+import { listRepoFiles } from '@/app/actions/git';
 import {
   createOptimisticUserMessage,
   reconcileOptimisticUserMessages,
@@ -24,6 +24,7 @@ import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
+import { uploadAttachments } from '@/lib/upload-attachments';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -1402,7 +1403,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
         formData.append(`image-${index}`, new File([file], fileName, { type: file.type || 'image/png' }));
       });
 
-      const savedPaths = await saveAttachments(workspacePath, formData);
+      const savedPaths = await uploadAttachments(workspacePath, formData);
       if (savedPaths.length === 0) {
         throw new Error('Failed to save pasted images.');
       }

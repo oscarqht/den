@@ -5,6 +5,7 @@ import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middlewar
 const PROXY_HOST = '127.0.0.1';
 const PREVIEW_CLIENT_SCRIPT_PATH = '/__viba_preview_bridge.js';
 const PREVIEW_CLIENT_SCRIPT_VERSION = '1';
+const PREVIEW_RELOAD_SEARCH_PARAM = '__viba_preview_reload';
 
 const PREVIEW_CLIENT_SCRIPT_TEMPLATE = String.raw`(() => {
   if (window.__vibaPreviewBridgeInstalled) {
@@ -186,6 +187,19 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
       });
       response.end(buildPreviewClientScript(targetOrigin));
       return;
+    }
+
+    if (request.url) {
+      try {
+        const host = request.headers.host || `${PROXY_HOST}:${port}`;
+        const parsed = new URL(request.url, `http://${host}`);
+        if (parsed.searchParams.has(PREVIEW_RELOAD_SEARCH_PARAM)) {
+          parsed.searchParams.delete(PREVIEW_RELOAD_SEARCH_PARAM);
+          request.url = `${parsed.pathname}${parsed.search}`;
+        }
+      } catch {
+        // Keep the original proxy path when sanitization fails.
+      }
     }
 
     middleware(request, response, (error) => {

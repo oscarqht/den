@@ -38,6 +38,7 @@ import { sanitizeBranchName } from '@/lib/utils';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import { useTerminalLink, type TerminalWindow } from '@/hooks/useTerminalLink';
 import { inferPreviewUrlFromTerminalText, terminalTranscriptContainsCommand } from '@/lib/dev-server-terminal';
+import { buildPreviewReloadUrl, shouldForcePreviewRemount } from '@/lib/session-preview';
 import { buildShellExportEnvironmentCommand, buildShellSetDirectoryCommand } from '@/lib/shell';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import {
@@ -2094,7 +2095,9 @@ export function SessionView({
                 throw new Error(payload?.error || 'Failed to start preview proxy');
             }
 
-            setPreviewUrl(payload.proxyUrl);
+            setPreviewUrl(shouldForcePreviewRemount(previewUrl, payload.proxyUrl)
+                ? buildPreviewReloadUrl(payload.proxyUrl)
+                : payload.proxyUrl);
             setLoadedPreviewTargetUrl(normalized);
             persistPreviewTargetUrl(normalized);
             if (openPreview) {
@@ -2108,7 +2111,7 @@ export function SessionView({
             setFeedback(`Failed to load preview: ${message}`);
             return false;
         }
-    }, [persistPreviewTargetUrl]);
+    }, [persistPreviewTargetUrl, previewUrl]);
 
     const postPreviewControlMessage = useCallback((payload: { action?: PreviewNavigationAction; type: string }) => {
         const previewWindow = previewIframeRef.current?.contentWindow;
@@ -2127,14 +2130,22 @@ export function SessionView({
             return;
         }
 
-        if (!postPreviewControlMessage({ type: 'viba:preview-navigation', action })) {
+        if (action === 'reload') {
+            const reloadTarget = loadedPreviewTargetUrl.trim() || previewInputUrl.trim();
+            if (!reloadTarget) {
+                setFeedback('Load a preview before using navigation controls');
+                return;
+            }
+
+            setFeedback('Reloading preview...');
+            void loadPreview(reloadTarget, false);
             return;
         }
 
-        if (action === 'reload') {
-            setFeedback('Reloading preview...');
+        if (!postPreviewControlMessage({ type: 'viba:preview-navigation', action })) {
+            return;
         }
-    }, [postPreviewControlMessage, previewUrl]);
+    }, [loadPreview, loadedPreviewTargetUrl, postPreviewControlMessage, previewInputUrl, previewUrl]);
 
     const handleUnloadPreview = useCallback(() => {
         if (!previewUrl) {

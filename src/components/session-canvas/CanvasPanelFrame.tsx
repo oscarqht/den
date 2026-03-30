@@ -428,21 +428,6 @@ function CanvasPanelFrameComponent({
         <div className={isResizePreviewActive ? 'hidden h-full' : 'h-full'}>
           {children}
         </div>
-        {!isStacked && !selected && !isResizePreviewActive ? (
-          <button
-            type="button"
-            className="absolute inset-0 z-10 cursor-default bg-transparent"
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onFocus(panel.id);
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onFocus(panel.id);
-            }}
-            aria-label={`Focus ${panel.title}`}
-          />
-        ) : null}
         {isResizePreviewActive ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-medium tracking-[0.02em] text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-950/85 dark:text-slate-300">

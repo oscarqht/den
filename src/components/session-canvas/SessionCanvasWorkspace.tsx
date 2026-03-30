@@ -332,6 +332,10 @@ function buildPreviewPanelTitle(url: string): string {
   }
 }
 
+function sessionWorkspacePreferenceLabel(workspaceMode: SessionCanvasBootstrapSuccess['metadata']['workspaceMode']): 'Local' | 'Workspace' {
+  return workspaceMode === 'local_source' ? 'Local' : 'Workspace';
+}
+
 function renderHighlightedText(text: string, query: string): React.ReactNode {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {
@@ -2240,6 +2244,10 @@ export function SessionCanvasWorkspace({
     expandedPaths: layout.explorer.expandedPaths,
     selectedPath: layout.explorer.selectedPath,
   };
+  const sessionProjectLabel = bootstrap.repoDisplayName
+    || getBaseName(bootstrap.metadata.projectPath)
+    || 'Project';
+  const sessionWorkspaceLabel = sessionWorkspacePreferenceLabel(bootstrap.metadata.workspaceMode);
   const mobilePanels = useMemo(() => (
     [...layout.panels].sort((a, b) => (
       a.y - b.y
@@ -2306,7 +2314,7 @@ export function SessionCanvasWorkspace({
         <div className="relative z-0 flex h-full flex-col">
           <div className="shrink-0 px-4 pb-2 pt-4">
             <div className="flex items-center justify-between rounded-[1.75rem] border border-white/70 bg-white/80 px-3 py-2 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-950/85">
-              <div className="flex items-center gap-1">
+              <div className="flex min-w-0 items-center gap-2">
                 <button
                   type="button"
                   className={mobileToolbarButtonClass}
@@ -2316,6 +2324,14 @@ export function SessionCanvasWorkspace({
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-900/90">
+                  <div className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-100">
+                    {sessionProjectLabel}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                    {sessionWorkspaceLabel}
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -2445,6 +2461,16 @@ export function SessionCanvasWorkspace({
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                 </button>
+                <div className="flex min-w-0 max-w-[240px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900">
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-100">
+                      {sessionProjectLabel}
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                    {sessionWorkspaceLabel}
+                  </span>
+                </div>
                 <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
                 <button type="button" className={desktopToolbarButtonClass} onClick={openCommandPalette}>
                   <Search className="h-3.5 w-3.5" />

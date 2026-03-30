@@ -22,6 +22,11 @@ export const SESSION_CANVAS_DEFAULT_SCALE = 0.85;
 export const SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH = 280;
 export const SESSION_CANVAS_AGENT_BOOTSTRAP_VERSION = 1;
 export const SESSION_CANVAS_STARTUP_BOOTSTRAP_VERSION = 1;
+const SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_X = 120;
+const SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_Y = 96;
+const SESSION_CANVAS_DEFAULT_TERMINAL_GAP = 36;
+const SESSION_CANVAS_DEFAULT_AGENT_TERMINAL_WIDTH = 860;
+const SESSION_CANVAS_DEFAULT_AGENT_TERMINAL_HEIGHT = 600;
 const SESSION_CANVAS_EDGE_MARGIN = 24;
 const SESSION_CANVAS_TOP_MARGIN = 84;
 const SESSION_CANVAS_MIN_PANEL_WIDTH = 320;
@@ -88,14 +93,17 @@ export function createDefaultSessionCanvasLayout({
   activeRepoPath: _activeRepoPath,
   startupScript,
 }: CreateDefaultSessionCanvasLayoutOptions): SessionCanvasLayout {
+  const startupTerminalX = SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_X
+    + SESSION_CANVAS_DEFAULT_AGENT_TERMINAL_WIDTH
+    + SESSION_CANVAS_DEFAULT_TERMINAL_GAP;
   const drafts: SessionCanvasPanelDraft[] = [
     {
       type: 'agent-terminal',
       title: 'Coding Agent',
-      x: 96,
-      y: 96,
-      width: 860,
-      height: 600,
+      x: SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_X,
+      y: SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_Y,
+      width: SESSION_CANVAS_DEFAULT_AGENT_TERMINAL_WIDTH,
+      height: SESSION_CANVAS_DEFAULT_AGENT_TERMINAL_HEIGHT,
       payload: {
         terminalKey: 'agent',
       },
@@ -103,8 +111,8 @@ export function createDefaultSessionCanvasLayout({
     {
       type: 'terminal',
       title: startupScript?.trim() ? 'Startup Terminal' : 'Terminal',
-      x: 420,
-      y: 740,
+      x: startupTerminalX,
+      y: SESSION_CANVAS_DEFAULT_TERMINAL_GROUP_Y,
       width: 760,
       height: SESSION_CANVAS_DEFAULT_STARTUP_TERMINAL_HEIGHT,
       payload: {
@@ -296,6 +304,44 @@ export function fitSessionCanvasViewportToPanels(
     x: paddingLeft + (availableWidth - boundsWidth * fittedScale) / 2 - minX * fittedScale,
     y: paddingTop + (availableHeight - boundsHeight * fittedScale) / 2 - minY * fittedScale,
     scale: fittedScale,
+  };
+}
+
+export function centerSessionCanvasViewportOnPanels(
+  panels: SessionCanvasPanel[],
+  canvasWidth: number,
+  canvasHeight: number,
+  scale = SESSION_CANVAS_DEFAULT_SCALE,
+): SessionCanvasViewport {
+  const normalizedScale = clampSessionCanvasScale(scale);
+
+  if (!Array.isArray(panels) || panels.length === 0) {
+    return {
+      x: 0,
+      y: 0,
+      scale: normalizedScale,
+    };
+  }
+
+  if (!Number.isFinite(canvasWidth) || !Number.isFinite(canvasHeight) || canvasWidth <= 0 || canvasHeight <= 0) {
+    return {
+      x: 0,
+      y: 0,
+      scale: normalizedScale,
+    };
+  }
+
+  const minX = Math.min(...panels.map((panel) => panel.x));
+  const minY = Math.min(...panels.map((panel) => panel.y));
+  const maxX = Math.max(...panels.map((panel) => panel.x + panel.width));
+  const maxY = Math.max(...panels.map((panel) => panel.y + panel.height));
+  const boundsWidth = Math.max(1, maxX - minX);
+  const boundsHeight = Math.max(1, maxY - minY);
+
+  return {
+    x: (canvasWidth - boundsWidth * normalizedScale) / 2 - minX * normalizedScale,
+    y: (canvasHeight - boundsHeight * normalizedScale) / 2 - minY * normalizedScale,
+    scale: normalizedScale,
   };
 }
 

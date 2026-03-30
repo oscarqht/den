@@ -72,6 +72,23 @@ describe('ad-hoc agent commands', () => {
     assert.doesNotMatch(command, /exec/);
   });
 
+  it('loads the initial prompt from a file before launching the session agent', () => {
+    const command = buildSessionAgentTerminalCommand({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+      shellKind: 'posix',
+      workingDirectory: '/tmp/workspace',
+      prompt: 'Implement the requested change.',
+      promptFilePath: '/tmp/prompt.txt',
+    });
+
+    assert.match(command, /__palx_prompt="\$\(cat '\/tmp\/prompt\.txt'\)"/);
+    assert.match(command, /codex .* -m 'gpt-5\.4'/);
+    assert.match(command, /"\$__palx_prompt"$/);
+    assert.doesNotMatch(command, /'Implement the requested change\.'$/);
+  });
+
   it('builds interactive session agent commands when no initial prompt is provided', () => {
     const command = buildSessionAgentTerminalCommand({
       provider: 'codex',
@@ -101,5 +118,20 @@ describe('ad-hoc agent commands', () => {
     assert.match(command, /\$env:NO_COLOR = '1'/);
     assert.match(command, /(?:^|; )codex -a never -s danger-full-access -m 'gpt-5\.4'/);
     assert.doesNotMatch(command, /NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex/);
+  });
+
+  it('builds PowerShell session agent commands that read prompt files via Get-Content', () => {
+    const command = buildSessionAgentTerminalCommand({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+      shellKind: 'powershell',
+      workingDirectory: 'C:\\workspace',
+      promptFilePath: 'C:\\temp\\prompt.txt',
+    });
+
+    assert.match(command, /\$__palxPrompt = Get-Content -Raw -LiteralPath 'C:\\temp\\prompt\.txt'/);
+    assert.match(command, /(?:^|; )codex -a never -s danger-full-access -m 'gpt-5\.4'/);
+    assert.match(command, /\$__palxPrompt$/);
   });
 });

@@ -2,7 +2,7 @@ import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
 import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-shell/AppPageSurface';
-import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
 import { HomeRepoCard } from './HomeRepoCard';
@@ -19,6 +19,9 @@ export type HomeDashboardProps = {
   themeModeLabel: string;
   nextThemeModeLabel: string;
   ThemeModeIcon: ComponentType<{ className?: string }>;
+  showRestartButton: boolean;
+  restartInProgress: boolean;
+  restartButtonDisabled: boolean;
   filteredRecentProjects: string[];
   isDarkThemeActive: boolean;
   runningSessionCountByProject: Map<string, number>;
@@ -34,6 +37,7 @@ export type HomeDashboardProps = {
   onHomeSearchQueryChange: (value: string) => void;
   onHomeProjectSortChange: (value: HomeProjectSort) => void;
   onOpenCredentials: () => void;
+  onRestartApp: () => void;
   onOpenQuickCreate: () => void;
   onEditQuickCreateDraft: (draft: QuickCreateDraft) => void;
   onDeleteQuickCreateDraft: (draftId: string) => void | Promise<void>;
@@ -60,6 +64,9 @@ export function HomeDashboard({
   themeModeLabel,
   nextThemeModeLabel,
   ThemeModeIcon,
+  showRestartButton,
+  restartInProgress,
+  restartButtonDisabled,
   filteredRecentProjects,
   isDarkThemeActive,
   runningSessionCountByProject,
@@ -75,6 +82,7 @@ export function HomeDashboard({
   onHomeSearchQueryChange,
   onHomeProjectSortChange,
   onOpenCredentials,
+  onRestartApp,
   onOpenQuickCreate,
   onEditQuickCreateDraft,
   onDeleteQuickCreateDraft,
@@ -155,6 +163,21 @@ export function HomeDashboard({
             <KeyRound className="h-4 w-4" />
             <span className="hidden max-w-24 truncate whitespace-nowrap lg:inline">Settings</span>
           </button>
+          {showRestartButton ? (
+            <button
+              type="button"
+              className={compactGhostButtonClass}
+              onClick={onRestartApp}
+              disabled={restartButtonDisabled}
+              title={restartInProgress ? 'Restarting Palx' : 'Restart Palx'}
+              aria-label={restartInProgress ? 'Restarting Palx' : 'Restart Palx'}
+            >
+              <RefreshCw className={`h-4 w-4 ${restartInProgress ? 'animate-spin' : ''}`} />
+              <span className="hidden max-w-24 truncate whitespace-nowrap lg:inline">
+                {restartInProgress ? 'Restarting' : 'Restart'}
+              </span>
+            </button>
+          ) : null}
           {showLogout && logoutEnabled ? (
             <a
               href="/auth/logout"

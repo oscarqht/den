@@ -3212,6 +3212,9 @@ export default function GitRepoSelector({
           themeModeLabel={themeModeLabel}
           nextThemeModeLabel={nextThemeModeLabel}
           ThemeModeIcon={ThemeModeIcon}
+          showRestartButton={false}
+          restartInProgress={false}
+          restartButtonDisabled={true}
           filteredRecentProjects={filteredRecentProjects}
           quickCreateActiveCount={0}
           failedQuickCreateDrafts={[]}
@@ -3227,6 +3230,7 @@ export default function GitRepoSelector({
           onHomeSearchQueryChange={setHomeSearchQuery}
           onHomeProjectSortChange={handleHomeProjectSortChange}
           onOpenCredentials={() => router.push('/settings')}
+          onRestartApp={() => {}}
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}

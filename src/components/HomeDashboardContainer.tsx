@@ -51,6 +51,7 @@ import {
 } from '@/lib/ttyd-theme';
 import type { Project } from '@/lib/types';
 import { useProjects } from '@/hooks/use-git';
+import AppRestartDialog from './AppRestartDialog';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
 import type { RepoCredentialSelection } from './git-repo-selector/types';
 
@@ -76,6 +77,36 @@ const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
 const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
 const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
 const HOME_PROJECT_SORT_STORAGE_KEY = 'palx-home-project-sort';
+const APP_RESTART_OPERATION_STORAGE_KEY = 'palx-app-restart-operation';
+
+type AppRestartStatusResponse = {
+  managed: boolean;
+  runtime: {
+    pid: number | null;
+    running: boolean;
+    mode: 'dev' | 'start' | null;
+    port: number | null;
+    appUrl: string | null;
+    appRoot: string | null;
+    startedAt: string | null;
+    stoppedAt: string | null;
+  };
+  restart: {
+    operationId: string;
+    status: 'queued' | 'stopping' | 'starting' | 'repairing' | 'ready' | 'failed';
+    inProgress: boolean;
+    mode: 'dev' | 'start';
+    targetPort: number;
+    logPath: string;
+    requestedAt: string;
+    updatedAt: string;
+    attempts: number;
+    repairAttempts: number;
+    agentActive: boolean;
+    lastError?: string | null;
+    log: string;
+  } | null;
+};
 
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
@@ -110,6 +141,28 @@ function writeStoredHomeProjectSort(nextSort: HomeProjectSort): void {
   }
 }
 
+function readStoredAppRestartOperationId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(APP_RESTART_OPERATION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAppRestartOperationId(operationId: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (operationId) {
+      window.localStorage.setItem(APP_RESTART_OPERATION_STORAGE_KEY, operationId);
+      return;
+    }
+    window.localStorage.removeItem(APP_RESTART_OPERATION_STORAGE_KEY);
+  } catch {
+    // Ignore localStorage access errors.
+  }
+}
+
 type HomeDashboardContainerProps = {
   showLogout?: boolean;
   logoutEnabled?: boolean;
@@ -137,6 +190,12 @@ export default function HomeDashboardContainer({
   const [themeMode, setThemeMode] = useState<ThemeMode>('auto');
   const [isDarkThemeActive, setIsDarkThemeActive] = useState(false);
   const [isHomePageForegrounded, setIsHomePageForegrounded] = useState<boolean>(() => readIsDocumentForegrounded());
+  const [appRestartStatus, setAppRestartStatus] = useState<AppRestartStatusResponse | null>(null);
+  const [isRequestingAppRestart, setIsRequestingAppRestart] = useState(false);
+  const [appRestartConnectionHealthy, setAppRestartConnectionHealthy] = useState(true);
+  const [visibleAppRestartOperationId, setVisibleAppRestartOperationId] = useState<string | null>(() => (
+    readStoredAppRestartOperationId()
+  ));
 
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
   const [isRepoSettingsDialogOpen, setIsRepoSettingsDialogOpen] = useState(false);
@@ -198,6 +257,29 @@ export default function HomeDashboardContainer({
   const resolveProjectEntry = useCallback((projectReference: string) => (
     resolveClientProjectReference(projects, projectReference)
   ), [projects]);
+
+  const refreshAppRestartStatus = useCallback(async () => {
+    const response = await fetch('/api/app/restart/status', {
+      cache: 'no-store',
+    });
+    const payload = await response.json().catch(() => null) as AppRestartStatusResponse | null;
+    if (!response.ok || !payload) {
+      throw new Error('Failed to load app restart status.');
+    }
+
+    setAppRestartStatus(payload);
+    setAppRestartConnectionHealthy(true);
+
+    const trackedOperationId = readStoredAppRestartOperationId();
+    if (payload.restart?.operationId && (payload.restart.inProgress || trackedOperationId === payload.restart.operationId)) {
+      setVisibleAppRestartOperationId((currentValue) => currentValue ?? payload.restart?.operationId ?? null);
+      writeStoredAppRestartOperationId(payload.restart.operationId);
+    } else if (!payload.restart && !visibleAppRestartOperationId) {
+      writeStoredAppRestartOperationId(null);
+    }
+
+    return payload;
+  }, [visibleAppRestartOperationId]);
 
   const getProjectByReference = useCallback((projectReference: string): Project | null => (
     findClientProjectByReference(projects, projectReference)
@@ -973,6 +1055,39 @@ export default function HomeDashboardContainer({
     };
   }, [getProjectDisplayName, refreshQuickCreateState, router, toast]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const poll = async () => {
+      try {
+        await refreshAppRestartStatus();
+      } catch (statusError) {
+        const trackedOperationId = readStoredAppRestartOperationId();
+        if (!cancelled && trackedOperationId) {
+          setAppRestartConnectionHealthy(false);
+        }
+        if (!cancelled && !trackedOperationId) {
+          console.debug('Failed to refresh app restart status:', statusError);
+        }
+      } finally {
+        if (cancelled) return;
+        const trackedOperationId = readStoredAppRestartOperationId();
+        const inProgress = Boolean(appRestartStatus?.restart?.inProgress) || Boolean(trackedOperationId);
+        timeoutId = window.setTimeout(poll, inProgress ? 1500 : 10000);
+      }
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [appRestartStatus?.restart?.inProgress, refreshAppRestartStatus]);
+
   const sortedRecentProjects = useMemo(() => (
     sortHomeProjects(
       resolvedRecentProjects.map((projectEntry) => projectEntry.key),
@@ -1022,6 +1137,81 @@ export default function HomeDashboardContainer({
   const nextThemeModeLabel =
     nextThemeMode === 'auto' ? 'Auto' : (nextThemeMode === 'light' ? 'Bright' : 'Dark');
   const ThemeModeIcon = themeMode === 'auto' ? Monitor : (themeMode === 'light' ? Sun : Moon);
+  const trackedAppRestartOperationId = visibleAppRestartOperationId ?? readStoredAppRestartOperationId();
+  const appRestartMatchesVisibleOperation = Boolean(
+    trackedAppRestartOperationId
+    && appRestartStatus?.restart?.operationId === trackedAppRestartOperationId,
+  );
+  const isAppRestartDialogOpen = Boolean(
+    trackedAppRestartOperationId
+    && (
+      appRestartMatchesVisibleOperation
+      || !appRestartConnectionHealthy
+    ),
+  );
+  const isAppRestartInProgress = Boolean(
+    appRestartMatchesVisibleOperation && appRestartStatus?.restart?.inProgress,
+  ) || Boolean(trackedAppRestartOperationId && !appRestartConnectionHealthy);
+
+  const handleStartAppRestart = useCallback(async () => {
+    setIsRequestingAppRestart(true);
+    try {
+      const response = await fetch('/api/app/restart', {
+        method: 'POST',
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        error?: string;
+        restart?: AppRestartStatusResponse['restart'];
+      } | null;
+      if (!response.ok || !payload?.success || !payload.restart?.operationId) {
+        throw new Error(payload?.error || 'Failed to restart Palx.');
+      }
+      const restartState = payload.restart;
+
+      setAppRestartStatus((currentValue) => (
+        currentValue ? {
+          ...currentValue,
+          restart: restartState,
+        } : {
+          managed: true,
+          runtime: {
+            pid: null,
+            running: true,
+            mode: restartState.mode,
+            port: restartState.targetPort,
+            appUrl: null,
+            appRoot: null,
+            startedAt: null,
+            stoppedAt: null,
+          },
+          restart: restartState,
+        }
+      ));
+      setVisibleAppRestartOperationId(restartState.operationId);
+      writeStoredAppRestartOperationId(restartState.operationId);
+      setAppRestartConnectionHealthy(true);
+    } catch (restartError) {
+      toast({
+        type: 'error',
+        title: 'Restart failed to start',
+        description: restartError instanceof Error ? restartError.message : 'Failed to restart Palx.',
+      });
+    } finally {
+      setIsRequestingAppRestart(false);
+    }
+  }, [toast]);
+
+  const handleCloseAppRestartDialog = useCallback(() => {
+    const operationId = trackedAppRestartOperationId;
+    if (!operationId) return;
+    if (appRestartStatus?.restart?.operationId === operationId && appRestartStatus.restart.inProgress) {
+      return;
+    }
+    setVisibleAppRestartOperationId(null);
+    writeStoredAppRestartOperationId(null);
+    setAppRestartConnectionHealthy(true);
+  }, [appRestartStatus?.restart, trackedAppRestartOperationId]);
 
   const handleRepoCardMouseMove = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const wrapper = event.currentTarget;
@@ -1152,6 +1342,9 @@ export default function HomeDashboardContainer({
         themeModeLabel={themeModeLabel}
         nextThemeModeLabel={nextThemeModeLabel}
         ThemeModeIcon={ThemeModeIcon}
+        showRestartButton={Boolean(appRestartStatus?.managed)}
+        restartInProgress={isAppRestartInProgress}
+        restartButtonDisabled={isRequestingAppRestart || isAppRestartInProgress}
         filteredRecentProjects={filteredRecentProjects}
         isDarkThemeActive={isDarkThemeActive}
         runningSessionCountByProject={runningSessionCountByProject}
@@ -1167,6 +1360,9 @@ export default function HomeDashboardContainer({
         onHomeSearchQueryChange={setHomeSearchQuery}
         onHomeProjectSortChange={handleHomeProjectSortChange}
         onOpenCredentials={() => router.push('/settings')}
+        onRestartApp={() => {
+          void handleStartAppRestart();
+        }}
         onOpenQuickCreate={() => handleOpenQuickCreateDialog()}
         onEditQuickCreateDraft={handleOpenQuickCreateDialog}
         onDeleteQuickCreateDraft={handleDeleteQuickCreateDraft}
@@ -1179,6 +1375,21 @@ export default function HomeDashboardContainer({
         onRepoCardMouseMove={handleRepoCardMouseMove}
         onRepoCardMouseLeave={handleRepoCardMouseLeave}
         onAddProject={openCreateProjectDialog}
+      />
+
+      <AppRestartDialog
+        isOpen={isAppRestartDialogOpen}
+        status={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.status ?? null : 'starting'}
+        mode={appRestartMatchesVisibleOperation
+          ? appRestartStatus?.restart?.mode ?? appRestartStatus?.runtime.mode ?? null
+          : appRestartStatus?.runtime.mode ?? null}
+        attempts={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.attempts ?? 0 : 0}
+        repairAttempts={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.repairAttempts ?? 0 : 0}
+        agentActive={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.agentActive ?? false : false}
+        connected={appRestartConnectionHealthy}
+        log={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.log ?? '' : ''}
+        lastError={appRestartMatchesVisibleOperation ? appRestartStatus?.restart?.lastError ?? null : null}
+        onClose={handleCloseAppRestartDialog}
       />
 
       <RepoSettingsDialog

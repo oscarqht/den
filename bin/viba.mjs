@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "../src/lib/cli-args.mjs";
 import { syncNextNativeShims } from "../src/lib/next-native-shims.mjs";
+import { clearPalxProcessIfPidMatches, markPalxProcessStarted } from "../scripts/palx-runtime.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -371,8 +372,40 @@ function runNext(args, env = process.env) {
       env,
     });
 
+    if (child.pid && Number.isInteger(child.pid) && child.pid > 0) {
+      const mode = args[0] === "dev" ? "dev" : "start";
+      const portIndex = args.findIndex((value) => value === "-p");
+      const portValue = portIndex >= 0 ? Number.parseInt(args[portIndex + 1] || "", 10) : Number.NaN;
+      const resolvedPortValue = Number.isInteger(portValue) && portValue > 0
+        ? portValue
+        : Number.parseInt(env.PORT || "", 10);
+      const resolvedPort = Number.isInteger(resolvedPortValue) && resolvedPortValue > 0
+        ? resolvedPortValue
+        : null;
+
+      void markPalxProcessStarted({
+        pid: child.pid,
+        mode,
+        port: resolvedPort,
+        appUrl: env.PALX_APP_URL || (Number.isInteger(resolvedPort) ? `http://localhost:${resolvedPort}` : null),
+        appRoot: APP_ROOT,
+        nodePath: process.execPath,
+        npmCommand: process.platform === "win32" ? "npm.cmd" : "npm",
+        restartOperationId: env.PALX_RESTART_OPERATION_ID || null,
+      }).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to persist Palx runtime state: ${detail}`);
+      });
+    }
+
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (child.pid && Number.isInteger(child.pid) && child.pid > 0) {
+        void clearPalxProcessIfPidMatches(child.pid).catch((error) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          console.warn(`Failed to clear Palx runtime state for pid ${child.pid}: ${detail}`);
+        });
+      }
       if (signal) {
         process.kill(process.pid, signal);
         return;

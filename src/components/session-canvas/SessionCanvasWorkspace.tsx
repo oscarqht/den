@@ -1817,8 +1817,8 @@ export function SessionCanvasWorkspace({
 
   const handleAddGitPanel = useCallback(() => {
     const panelSize = {
-      width: 820,
-      height: 560,
+      width: 1000,
+      height: 800,
     };
     const position = getCenteredPanelPosition(panelSize.width, panelSize.height);
     addPanel({

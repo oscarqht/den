@@ -1,5 +1,6 @@
 import type { Project } from './types.ts';
 import { getBaseName } from './path.ts';
+import { pickPreferredProject } from './project-preference.ts';
 
 export type ResolvedProjectReference = {
   key: string;
@@ -44,9 +45,9 @@ export function findClientProjectByReference(
   }
 
   const normalizedReference = normalizeProjectReference(trimmedReference);
-  return projects.find((project) => project.folderPaths.some((folderPath) => (
+  return pickPreferredProject(projects.filter((project) => project.folderPaths.some((folderPath) => (
     normalizeProjectReference(folderPath) === normalizedReference
-  ))) ?? null;
+  ))));
 }
 
 export function resolveClientProjectReference(

@@ -46,4 +46,27 @@ describe('project-client reference resolution', () => {
     assert.equal(resolved.isOpenable, true);
     assert.equal(resolved.secondaryLabel, 'No folders associated');
   });
+
+  it('prefers the newest matching project when duplicate folder paths exist', () => {
+    const duplicatePath = '/tmp/test-project';
+    const resolved = resolveClientProjectReference([
+      {
+        id: 'project-older',
+        name: 'Older Project',
+        folderPaths: [duplicatePath],
+        lastOpenedAt: '2026-03-27T05:10:16.473Z',
+      },
+      {
+        id: 'project-newer',
+        name: 'Newer Project',
+        folderPaths: [duplicatePath],
+        iconPath: '/tmp/icon.png',
+        lastOpenedAt: '2026-03-27T09:57:17.978Z',
+      },
+    ], duplicatePath);
+
+    assert.equal(resolved.project?.id, 'project-newer');
+    assert.equal(resolved.key, 'project-newer');
+    assert.equal(resolved.displayName, 'Newer Project');
+  });
 });

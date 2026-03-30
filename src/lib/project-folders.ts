@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { Project } from '@/lib/types';
+import { pickPreferredProject } from './project-preference.ts';
 
 export type ProjectFolderEntry = {
   sourcePath: string;
@@ -86,5 +87,7 @@ export function findProjectByIdOrFolderPath(projects: Project[], projectIdOrFold
   if (byId) return byId;
 
   const normalizedFolderPath = path.resolve(trimmedValue);
-  return projects.find((project) => project.folderPaths.some((folderPath) => path.resolve(folderPath) === normalizedFolderPath)) ?? null;
+  return pickPreferredProject(projects.filter((project) => (
+    project.folderPaths.some((folderPath) => path.resolve(folderPath) === normalizedFolderPath)
+  )));
 }

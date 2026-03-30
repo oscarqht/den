@@ -44,6 +44,27 @@ describe('terminal input helpers', () => {
     assert.deepEqual(calls, ['\r:true']);
   });
 
+  it('preserves the core service context for direct data events', () => {
+    const term: TerminalInputHandle = {
+      _core: {
+        coreService: {
+          _optionsService: { rawOptions: { disableStdin: false } },
+          triggerDataEvent(this: {
+            _optionsService?: { rawOptions?: { disableStdin?: boolean } };
+          }, text, wasUserInput) {
+            if (this._optionsService?.rawOptions?.disableStdin) {
+              throw new Error('stdin disabled');
+            }
+            assert.equal(text, 'echo hi\r');
+            assert.equal(wasUserInput, true);
+          },
+        },
+      },
+    };
+
+    assert.equal(sendTerminalDataEvent(term, 'echo hi\r'), true);
+  });
+
   it('submits bootstrap commands via direct input when supported', () => {
     const calls: string[] = [];
     let enterCalls = 0;

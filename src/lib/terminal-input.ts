@@ -8,8 +8,14 @@ export type TerminalInputHandle = {
 };
 
 function getTerminalDataEventTrigger(term: TerminalInputHandle) {
-  const triggerDataEvent = term._core?.coreService?.triggerDataEvent;
-  return typeof triggerDataEvent === 'function' ? triggerDataEvent : null;
+  const coreService = term._core?.coreService;
+  const triggerDataEvent = coreService?.triggerDataEvent;
+  if (typeof triggerDataEvent !== 'function') {
+    return null;
+  }
+  return (text: string, wasUserInput?: boolean) => {
+    triggerDataEvent.call(coreService, text, wasUserInput);
+  };
 }
 
 export function sendTerminalInput(

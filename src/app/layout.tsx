@@ -60,12 +60,10 @@ const themeBootstrapScript = `
 
 export const metadata: Metadata = {
   title: {
-    default: "Palx",
-    template: "%s | Palx",
+    default: "Den",
+    template: "%s | Den",
   },
-  icons: {
-    icon: "/palx-icon.png",
-  },
+  description: "Den is a local control center for AI coding work. It gives every task its own isolated workspace, so agents can work in parallel, stay organized, and make changes you can review with confidence.",
 };
 
 import { Providers } from './providers';

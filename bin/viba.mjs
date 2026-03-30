@@ -503,7 +503,7 @@ async function main() {
 
     if (options.mode === "dev") {
       const url = `http://localhost:${port}`;
-      console.log(`Starting Palx in development mode on ${url}`);
+      console.log(`Starting Den in development mode on ${url}`);
       const nextPromise = runNext(getDevServerArgs(port), { ...process.env, PALX_APP_URL: url });
       void autoOpenBrowserWhenReady(url, port, options.mode);
       process.exit(await nextPromise);
@@ -512,13 +512,13 @@ async function main() {
     ensureBuildExists();
     syncNextNativeShims(APP_ROOT);
     const url = `http://localhost:${port}`;
-    console.log(`Starting Palx on ${url}`);
+    console.log(`Starting Den on ${url}`);
     const nextPromise = runNext(["start", "-p", String(port)], { ...process.env, PALX_APP_URL: url });
     void autoOpenBrowserWhenReady(url, port, options.mode);
     process.exit(await nextPromise);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Palx failed to start: ${errorMessage}`);
+    console.error(`Den failed to start: ${errorMessage}`);
     process.exit(1);
   }
 }

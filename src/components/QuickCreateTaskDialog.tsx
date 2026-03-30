@@ -224,7 +224,7 @@ export function QuickCreateTaskDialog({
                 {draft ? 'Retry Quick Create Task' : 'Create Task'}
               </h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Describe the task and attach any relevant files before Palx routes it to the best project.
+                Describe the task and attach any relevant files before Den routes it to the best project.
               </p>
             </div>
             <button

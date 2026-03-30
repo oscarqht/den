@@ -290,7 +290,7 @@ function buildQuickCreateRoutingPrompt(input: {
     : '';
 
   return [
-    'You are routing a new Palx task to the best project.',
+    'You are routing a new Den task to the best project.',
     'Choose exactly one project from the provided candidate list.',
     'Recent projects are only a soft hint. Choose the project that best matches the task.',
     `Return JSON only with this shape: {"projectId":"...","projectPath":"...","reasoningEffort":"...","reason":"..."}.`,

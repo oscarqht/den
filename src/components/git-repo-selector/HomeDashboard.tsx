@@ -5,6 +5,7 @@ import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-s
 import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
+import appIcon from '@/app/icon.png';
 import { HomeRepoCard } from './HomeRepoCard';
 
 export type HomeDashboardProps = {
@@ -98,11 +99,11 @@ export function HomeDashboard({
       <header className={`relative z-10 flex flex-col gap-3 px-4 py-3 transition-colors lg:flex-row lg:items-center lg:justify-between ${APP_PAGE_TOOLBAR_CLASS}`}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-            <Image src="/palx-icon.png" alt="Palx" width={20} height={20} className="h-5 w-5 shrink-0 rounded-sm" />
+            <Image src={appIcon} alt="Den" width={20} height={20} className="h-5 w-5 shrink-0 rounded-sm" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate whitespace-nowrap text-base font-semibold tracking-tight text-slate-900 dark:text-white">Palx</h2>
-            <p className="truncate whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400">AI coding workspace</p>
+            <h2 className="truncate whitespace-nowrap text-base font-semibold tracking-tight text-slate-900 dark:text-white">Den</h2>
+            <p className="truncate whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400">Local control center for AI coding work</p>
           </div>
         </div>
 

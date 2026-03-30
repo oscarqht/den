@@ -2,7 +2,7 @@
   "name": "vibe-pal",
   "version": "1.4.0",
   "private": false,
-  "description": "Local session manager for AI coding agents.",
+  "description": "Den is a local control center for AI coding work. It gives every task its own isolated workspace, so agents can work in parallel, stay organized, and make changes you can review with confidence.",
   "repository": {
     "type": "git",
     "url": "https://github.com/m0o0scar/palx"

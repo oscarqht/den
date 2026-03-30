@@ -439,7 +439,7 @@ class CodexAppServerConnection {
             id: message.id,
             error: {
               code: -32000,
-              message: "Interactive server requests are not supported by Palx.",
+              message: "Interactive server requests are not supported by Den.",
             },
           })}\n`,
           "utf8",

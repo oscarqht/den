@@ -963,7 +963,7 @@ export default function HomeDashboardContainer({
         toast({
           type: 'error',
           title: 'Quick create failed',
-          description: payload.error || 'Palx saved the request as a failed quick create draft.',
+          description: payload.error || 'Den saved the request as a failed quick create draft.',
         });
       }
     });
@@ -1323,7 +1323,7 @@ export default function HomeDashboardContainer({
             </div>
             <div className="space-y-4 p-5">
               <p className="text-sm text-slate-700 dark:text-slate-200">
-                Delete this project from Palx. Associated folders on disk will not be removed.
+                Delete this project from Den. Associated folders on disk will not be removed.
               </p>
               <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">
                 {resolveProjectEntry(projectPendingDeleteId).displayName}

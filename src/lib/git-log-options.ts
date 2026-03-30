@@ -25,7 +25,7 @@ export function createGitLogOptions(limit: number, includeAll: boolean): GitLogO
     format: {
       hash: '%h',
       parents: '%p',
-      date: '%ai',
+      date: '%aI',
       message: '%s',
       refs: '%d',
       author_name: '%an',

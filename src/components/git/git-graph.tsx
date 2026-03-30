@@ -13,6 +13,7 @@ import {
 } from 'react';
 import type { BranchTrackingInfo, Commit } from '@/lib/types';
 import { type GraphNode, generateGraphData } from '@/lib/graph-utils';
+import { formatGitTimestamp } from '@/lib/git-date';
 import { cn } from '@/lib/utils';
 import { ContextMenu, type ContextMenuItem } from '@/components/context-menu';
 import { getBranchTagColors } from '@/lib/branch-colors';
@@ -464,7 +465,7 @@ export const GitGraph = forwardRef<GitGraphHandle, GitGraphProps>(function GitGr
     nodes.map((node) => ({
       node,
       shortHash: node.hash.slice(0, 7),
-      formattedDate: new Date(node.date).toLocaleString(undefined, {
+      formattedDate: formatGitTimestamp(node.date, undefined, {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',

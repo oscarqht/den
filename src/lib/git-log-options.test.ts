@@ -12,6 +12,7 @@ describe('createGitLogOptions', () => {
     assert.ok(!Object.prototype.hasOwnProperty.call(optionRecord, 'decorate'));
     assert.ok(!Object.prototype.hasOwnProperty.call(optionRecord, 'all'));
     assert.strictEqual(options.maxCount, 100);
+    assert.strictEqual(options.format.date, '%aI');
   });
 
   it('omits --all when only current branch history is requested', () => {

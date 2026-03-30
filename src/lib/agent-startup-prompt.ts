@@ -12,6 +12,8 @@ const SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION =
   'For bugfix/debugging tasks, use the `systematic-debugging` skill (https://github.com/obra/superpowers).';
 const OPTIONAL_SKILL_DISCOVERY_INSTRUCTION =
   'If this task would benefit from another specialized workflow, you may use `npx skills` to discover and install additional skills at your discretion. Prefer trusted sources, install only what is needed, read the installed `SKILL.md` before using it, and avoid unnecessary overlapping skills.';
+const TASK_BREAKDOWN_INSTRUCTION =
+  'When a task is large or naturally splits into independent workstreams, break it down into smaller subtasks before implementation. If the runtime supports delegation or subagents, use them for bounded, independent subtasks that can run in parallel when that improves throughput or keeps the critical path moving.';
 const VISUAL_EVIDENCE_INSTRUCTION =
   'When working on a visual-related feature or bugfix in a web project, after coding is complete, use Chrome remote-debug MCP tooling first to test the relevant page and capture screenshot(s) in the user\'s current browser session. If the current session is unavailable, fall back to `agent-browser` or another standalone browser automation option. Do not commit evidence files to the repository; upload them as pull or merge request attachments or comments via GitHub or GitLab APIs.';
 
@@ -185,6 +187,7 @@ export function buildAgentStartupPrompt({
   instructionLines.push(AGENT_BROWSER_SKILL_INSTRUCTION);
   instructionLines.push(SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION);
   instructionLines.push(OPTIONAL_SKILL_DISCOVERY_INSTRUCTION);
+  instructionLines.push(TASK_BREAKDOWN_INSTRUCTION);
   instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
 
   const taskSections: string[] = [trimmedTaskDescription];

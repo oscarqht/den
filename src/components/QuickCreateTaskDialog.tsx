@@ -6,6 +6,7 @@ import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getBaseName } from '@/lib/path';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import { uploadAttachments } from '@/lib/upload-attachments';
+import { shouldUseDeviceFilePicker } from '@/lib/url';
 import { CloudDownload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -171,7 +172,10 @@ export function QuickCreateTaskDialog({
   }, [appendAttachmentPaths, attachmentNamespaceId]);
 
   const handleSelectAttachments = useCallback(() => {
-    if (isMobileViewport) {
+    const shouldUseNativePicker = isMobileViewport
+      || (typeof window !== 'undefined' && shouldUseDeviceFilePicker(window.location.hostname));
+
+    if (shouldUseNativePicker) {
       mobileAttachmentInputRef.current?.click();
       return;
     }

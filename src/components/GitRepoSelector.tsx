@@ -71,6 +71,7 @@ import {
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
+import { shouldUseDeviceFilePicker } from '@/lib/url';
 import { useAppDialog } from '@/hooks/use-app-dialog';
 import {
   APP_PAGE_PANEL_CLASS,
@@ -1813,7 +1814,10 @@ export default function GitRepoSelector({
   const handleSelectAttachments = useCallback(() => {
     if (!selectedRepoFilesystemPath) return;
 
-    if (isMobileViewport) {
+    const shouldUseNativePicker = isMobileViewport
+      || (typeof window !== 'undefined' && shouldUseDeviceFilePicker(window.location.hostname));
+
+    if (shouldUseNativePicker) {
       mobileAttachmentInputRef.current?.click();
       return;
     }

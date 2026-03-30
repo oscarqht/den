@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { isLocalHostname, isTailscaleHostname, normalizePreviewUrl } from './url.ts';
+import { isLocalHostname, isTailscaleHostname, normalizePreviewUrl, shouldUseDeviceFilePicker } from './url.ts';
 
 describe('isLocalHostname', () => {
     it('detects localhost and loopback hostnames', () => {
@@ -48,6 +48,20 @@ describe('normalizePreviewUrl', () => {
         assert.strictEqual(normalizePreviewUrl('localhost:3000'), 'http://localhost:3000');
         assert.strictEqual(normalizePreviewUrl('127.0.0.1:8080'), 'http://127.0.0.1:8080');
         assert.strictEqual(normalizePreviewUrl('app.localhost:3200'), 'http://app.localhost:3200');
+    });
+});
+
+describe('shouldUseDeviceFilePicker', () => {
+    it('prefers the server file browser for localhost and loopback hosts', () => {
+        assert.strictEqual(shouldUseDeviceFilePicker('localhost'), false);
+        assert.strictEqual(shouldUseDeviceFilePicker('127.0.0.1:3200'), false);
+        assert.strictEqual(shouldUseDeviceFilePicker('[::1]:3200'), false);
+    });
+
+    it('prefers the device picker for non-local hosts', () => {
+        assert.strictEqual(shouldUseDeviceFilePicker('palx.nport.link'), true);
+        assert.strictEqual(shouldUseDeviceFilePicker('office-mac.tail3158df.ts.net'), true);
+        assert.strictEqual(shouldUseDeviceFilePicker('example.com'), true);
     });
 });
 

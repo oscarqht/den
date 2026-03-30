@@ -71,7 +71,9 @@ import {
   TERMINAL_THEME_DARK,
   TERMINAL_THEME_LIGHT,
 } from '@/lib/ttyd-theme';
+import { uploadAttachments } from '@/lib/upload-attachments';
 import { normalizePreviewUrl } from '@/lib/url';
+import { shouldUseDeviceFilePicker } from '@/lib/url';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import type {
   SessionCanvasAgentTerminalPanel,
@@ -1111,6 +1113,8 @@ export function SessionCanvasWorkspace({
   const router = useRouter();
   const { confirm: confirmDialog, dialog } = useAppDialog();
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const agentLocalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const agentFileTargetPanelIdRef = useRef<string | null>(null);
   const dragViewportRef = useRef<{
     pointerId: number;
     startClientX: number;
@@ -1782,9 +1786,41 @@ export function SessionCanvasWorkspace({
     delete agentTerminalHandlesRef.current[panelId];
   }, []);
 
+  const insertPathsIntoAgentPanel = useCallback(async (targetPanelId: string | null, paths: string[]) => {
+    const nextText = formatPathsForTerminalInput(paths);
+    if (!targetPanelId || !nextText) {
+      setIsAgentFileBrowserOpen(false);
+      return false;
+    }
+
+    const inserted = agentTerminalHandlesRef.current[targetPanelId]?.insertText(nextText) ?? false;
+    if (!inserted) {
+      await confirmDialog({
+        title: 'Agent terminal not ready',
+        description: 'Wait for the agent terminal to finish loading, then try Add Files again.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
+      return false;
+    }
+
+    setIsAgentFileBrowserOpen(false);
+    return true;
+  }, [confirmDialog]);
+
   const handleOpenAgentFileBrowser = useCallback((panelId: string) => {
     focusPanel(panelId);
+    agentFileTargetPanelIdRef.current = panelId;
     setAgentFileTargetPanelId(panelId);
+
+    const shouldUseNativePicker = typeof window !== 'undefined'
+      && shouldUseDeviceFilePicker(window.location.hostname);
+    if (shouldUseNativePicker) {
+      setIsAgentFileBrowserOpen(false);
+      agentLocalFileInputRef.current?.click();
+      return;
+    }
+
     setIsAgentFileBrowserOpen(true);
   }, [focusPanel]);
 
@@ -1792,30 +1828,58 @@ export function SessionCanvasWorkspace({
     if (isAgentFileInsertPending) {
       return;
     }
-    const targetPanelId = agentFileTargetPanelId;
-    const nextText = formatPathsForTerminalInput(paths);
-    if (!targetPanelId || !nextText) {
-      setIsAgentFileBrowserOpen(false);
+    setIsAgentFileInsertPending(true);
+    try {
+      await insertPathsIntoAgentPanel(agentFileTargetPanelId, paths);
+    } finally {
+      setIsAgentFileInsertPending(false);
+    }
+  }, [agentFileTargetPanelId, insertPathsIntoAgentPanel, isAgentFileInsertPending]);
+
+  const handleAgentLocalFileSelection = useCallback(async (event: FormEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (files.length === 0 || isAgentFileInsertPending) {
+      return;
+    }
+
+    const targetPanelId = agentFileTargetPanelIdRef.current;
+    if (!targetPanelId) {
       return;
     }
 
     setIsAgentFileInsertPending(true);
     try {
-      const inserted = agentTerminalHandlesRef.current[targetPanelId]?.insertText(nextText) ?? false;
-      if (!inserted) {
-        await confirmDialog({
-          title: 'Agent terminal not ready',
-          description: 'Wait for the agent terminal to finish loading, then try Add Files again.',
-          confirmLabel: 'OK',
-          cancelLabel: 'Close',
-        });
-        return;
+      const formData = new FormData();
+      files.forEach((file, index) => {
+        const fileName = file.name.trim() || `attachment-${Date.now()}-${index + 1}`;
+        formData.append(`attachment-${index}`, file, fileName);
+      });
+
+      const savedPaths = await uploadAttachments(bootstrap.workspaceRootPath, formData);
+      if (savedPaths.length === 0) {
+        throw new Error('Failed to upload selected files.');
       }
-      setIsAgentFileBrowserOpen(false);
+
+      await insertPathsIntoAgentPanel(targetPanelId, savedPaths);
+    } catch (error) {
+      const description = error instanceof Error ? error.message : 'Failed to upload selected files.';
+      await confirmDialog({
+        title: 'Failed to upload files',
+        description,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
     } finally {
       setIsAgentFileInsertPending(false);
     }
-  }, [agentFileTargetPanelId, confirmDialog, isAgentFileInsertPending]);
+  }, [
+    bootstrap.workspaceRootPath,
+    confirmDialog,
+    insertPathsIntoAgentPanel,
+    isAgentFileInsertPending,
+  ]);
 
   const handleAddTerminal = useCallback(() => {
     const panelSize = {
@@ -2257,6 +2321,13 @@ export function SessionCanvasWorkspace({
         }
       }}
     >
+      <input
+        ref={agentLocalFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleAgentLocalFileSelection}
+      />
       {isMobileViewport ? (
         <div className="relative z-0 flex h-full flex-col">
           <div className="shrink-0 px-4 pb-2 pt-4">

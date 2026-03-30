@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import SessionCanvasPageClient from './canvas/SessionCanvasPageClient';
 import { getLocalDb } from '@/lib/local-db';
 import { DEFAULT_PROJECT_ICON_PATH, getProjectIconUrl } from '@/lib/project-icons';
-import { getProjectById } from '@/lib/store';
+import { findProjectByFolderPath, getProjectById } from '@/lib/store';
 
 type SessionRouteProps = {
   params: Promise<{ sessionId: string }>;
@@ -43,12 +43,13 @@ async function readSessionRouteContext(sessionId: string): Promise<SessionRouteC
   }
 }
 
-async function resolveSessionFavicon(projectId?: string): Promise<string> {
-  if (projectId) {
-    const project = getProjectById(projectId);
-    if (project?.iconPath) {
-      return getProjectIconUrl(project.iconPath);
-    }
+async function resolveSessionFavicon(projectId?: string, projectPath?: string): Promise<string> {
+  const resolvedProject = (
+    (projectPath ? findProjectByFolderPath(projectPath) : null)
+    ?? (projectId ? getProjectById(projectId) : null)
+  );
+  if (resolvedProject?.iconPath) {
+    return getProjectIconUrl(resolvedProject.iconPath);
   }
 
   return SESSION_FALLBACK_FAVICON_PATH;
@@ -57,7 +58,7 @@ async function resolveSessionFavicon(projectId?: string): Promise<string> {
 export async function generateMetadata({ params }: SessionRouteProps): Promise<Metadata> {
   const { sessionId } = await params;
   const sessionContext = await readSessionRouteContext(sessionId);
-  const sessionFavicon = await resolveSessionFavicon(sessionContext.projectId);
+  const sessionFavicon = await resolveSessionFavicon(sessionContext.projectId, sessionContext.projectPath);
 
   const metadata: Metadata = {
     icons: {

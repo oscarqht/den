@@ -225,6 +225,26 @@ export default function HomeDashboardContainer({
     findClientProjectByReference(projects, projectReference)
   ), [projects]);
 
+  const resolveActivityProjectKey = useCallback((
+    projectId?: string,
+    projectPath?: string,
+    fallbackPath?: string,
+  ): string => {
+    const candidateReferences = [projectPath, projectId, fallbackPath];
+
+    for (const candidateReference of candidateReferences) {
+      const trimmedReference = candidateReference?.trim();
+      if (!trimmedReference) continue;
+
+      const resolvedReference = resolveProjectEntry(trimmedReference);
+      if (resolvedReference.project) {
+        return resolvedReference.key;
+      }
+    }
+
+    return fallbackPath?.trim() || projectPath?.trim() || projectId?.trim() || '';
+  }, [resolveProjectEntry]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -917,40 +937,34 @@ export default function HomeDashboardContainer({
   const runningSessionCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const session of allSessions) {
-      const projectKey = session.projectId
-        || (session.projectPath ? resolveProjectEntry(session.projectPath).key : '')
-        || session.repoPath;
+      const projectKey = resolveActivityProjectKey(session.projectId, session.projectPath, session.repoPath);
       if (!projectKey) continue;
       counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
     }
     return counts;
-  }, [allSessions, resolveProjectEntry]);
+  }, [allSessions, resolveActivityProjectKey]);
 
   const latestRunningSessionIdByProject = useMemo(() => {
     const sessionIds = new Map<string, string>();
     for (const session of allSessions) {
-      const projectKey = session.projectId
-        || (session.projectPath ? resolveProjectEntry(session.projectPath).key : '')
-        || session.repoPath;
+      const projectKey = resolveActivityProjectKey(session.projectId, session.projectPath, session.repoPath);
       if (!projectKey) continue;
       if (!sessionIds.has(projectKey)) {
         sessionIds.set(projectKey, session.sessionName);
       }
     }
     return sessionIds;
-  }, [allSessions, resolveProjectEntry]);
+  }, [allSessions, resolveActivityProjectKey]);
 
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
     for (const draft of allDrafts) {
-      const projectKey = draft.projectId
-        || (draft.projectPath ? resolveProjectEntry(draft.projectPath).key : '')
-        || draft.repoPath;
+      const projectKey = resolveActivityProjectKey(draft.projectId, draft.projectPath, draft.repoPath);
       if (!projectKey) continue;
       counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
     }
     return counts;
-  }, [allDrafts, resolveProjectEntry]);
+  }, [allDrafts, resolveActivityProjectKey]);
 
   const getProjectDisplayName = useCallback((projectReference: string): string => (
     resolveProjectEntry(projectReference).displayName

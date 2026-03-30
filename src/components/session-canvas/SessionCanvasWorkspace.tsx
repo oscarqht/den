@@ -33,7 +33,6 @@ import {
   Search,
   TerminalSquare,
   Trash2,
-  X,
 } from 'lucide-react';
 
 import {
@@ -2286,31 +2285,8 @@ export function SessionCanvasWorkspace({
       );
     }
 
-    if (panel.type === 'preview') {
-      return (
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs btn-square h-6 min-h-6 w-6 text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          onClick={(event) => {
-            event.stopPropagation();
-            updatePanel(panel.id, {
-              title: 'Preview',
-              payload: {
-                ...panel.payload,
-                url: '',
-              },
-            });
-          }}
-          title="Unload preview"
-          aria-label="Unload preview"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      );
-    }
-
     return null;
-  }, [handleOpenAgentFileBrowser, isAgentFileInsertPending, panelHeaderButtonClass, updatePanel]);
+  }, [handleOpenAgentFileBrowser, isAgentFileInsertPending, panelHeaderButtonClass]);
 
   return (
     <div

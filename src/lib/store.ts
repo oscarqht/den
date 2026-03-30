@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppSettings, Project, Repository } from './types.ts';
 import { getLocalDb } from './local-db.ts';
+import { pickPreferredProject } from './project-preference.ts';
 
 type ProjectEntityRow = {
   id: string;
@@ -201,7 +202,7 @@ export function getProjectById(projectId: string): Project | null {
 
 export function findProjectByFolderPath(folderPath: string): Project | null {
   const normalizedFolderPath = normalizeFolderPath(folderPath);
-  return getProjects().find((project) => project.folderPaths.includes(normalizedFolderPath)) ?? null;
+  return pickPreferredProject(getProjects().filter((project) => project.folderPaths.includes(normalizedFolderPath)));
 }
 
 export function findProjectsContainingPath(targetPath: string): Project[] {

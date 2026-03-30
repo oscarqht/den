@@ -57,8 +57,6 @@ export type HomeDashboardProps = {
   onOpenProjectSettings: (event: MouseEvent, project: string) => void | Promise<void>;
   onRemoveRecent: (event: MouseEvent, project: string) => void;
   onProjectIconError: (project: string) => void;
-  onRepoCardMouseMove: (event: MouseEvent<HTMLDivElement>) => void;
-  onRepoCardMouseLeave: (event: MouseEvent<HTMLDivElement>) => void;
   onAddProject: () => void;
 };
 
@@ -102,8 +100,6 @@ export function HomeDashboard({
   onOpenProjectSettings,
   onRemoveRecent,
   onProjectIconError,
-  onRepoCardMouseMove,
-  onRepoCardMouseLeave,
   onAddProject,
 }: HomeDashboardProps) {
   const compactGhostButtonClass =
@@ -311,8 +307,6 @@ export function HomeDashboard({
                 onOpenProjectSettings={onOpenProjectSettings}
                 onRemoveRecent={onRemoveRecent}
                 onProjectIconError={onProjectIconError}
-                onMouseMove={onRepoCardMouseMove}
-                onMouseLeave={onRepoCardMouseLeave}
               />
             ))}
 

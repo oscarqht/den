@@ -112,9 +112,6 @@ const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   gemini: 'Gemini CLI',
   cursor: 'Cursor Agent CLI',
 };
-const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
-const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
-
 function readIsDocumentForegrounded(): boolean {
   if (typeof document === 'undefined') return true;
   return document.visibilityState === 'visible' && document.hasFocus();
@@ -3132,65 +3129,6 @@ export default function GitRepoSelector({
   const handleCycleThemeMode = () => {
     setThemeMode(nextThemeMode);
   };
-  const handleRepoCardMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const wrapper = event.currentTarget;
-    const card = wrapper.firstElementChild;
-    if (!(card instanceof HTMLElement)) return;
-
-    const pendingFrame = repoCardTiltFrameByElement.get(wrapper);
-    if (pendingFrame) {
-      window.cancelAnimationFrame(pendingFrame);
-    }
-
-    const { clientX, clientY } = event;
-    const cachedRect = repoCardTiltRectByElement.get(wrapper);
-    const rect = cachedRect ?? wrapper.getBoundingClientRect();
-    repoCardTiltRectByElement.set(wrapper, rect);
-
-    // Batch decorative tilt updates to one DOM write per frame instead of one per mouse event.
-    const frameId = window.requestAnimationFrame(() => {
-      repoCardTiltFrameByElement.delete(wrapper);
-
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-
-      if (centerX <= 0 || centerY <= 0) return;
-
-      const rotateX = ((y - centerY) / centerY) * -12;
-      const rotateY = ((x - centerX) / centerX) * 12;
-      const bgPosX = 50 + (((x - centerX) / centerX) * 40);
-      const bgPosY = 50 + (((y - centerY) / centerY) * 40);
-
-      card.style.setProperty('--tilt-mouse-x', `${x}px`);
-      card.style.setProperty('--tilt-mouse-y', `${y}px`);
-      card.style.setProperty('--tilt-bg-pos-x', `${bgPosX}%`);
-      card.style.setProperty('--tilt-bg-pos-y', `${bgPosY}%`);
-      card.style.setProperty('--tilt-rotate-x', `${rotateX.toFixed(2)}deg`);
-      card.style.setProperty('--tilt-rotate-y', `${rotateY.toFixed(2)}deg`);
-      card.style.setProperty('--tilt-scale', '1.02');
-    });
-    repoCardTiltFrameByElement.set(wrapper, frameId);
-  }, []);
-  const handleRepoCardMouseLeave = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const wrapper = event.currentTarget;
-    const card = wrapper.firstElementChild;
-    if (!(card instanceof HTMLElement)) return;
-
-    const pendingFrame = repoCardTiltFrameByElement.get(wrapper);
-    if (pendingFrame) {
-      window.cancelAnimationFrame(pendingFrame);
-      repoCardTiltFrameByElement.delete(wrapper);
-    }
-    repoCardTiltRectByElement.delete(wrapper);
-
-    card.style.setProperty('--tilt-rotate-x', '0deg');
-    card.style.setProperty('--tilt-rotate-y', '0deg');
-    card.style.setProperty('--tilt-scale', '1');
-    card.style.setProperty('--tilt-bg-pos-x', '50%');
-    card.style.setProperty('--tilt-bg-pos-y', '50%');
-  }, []);
   const handleRepoIconError = useCallback((repo: string) => {
     setBrokenRepoCardIcons((previous) => {
       if (previous[repo]) return previous;
@@ -3254,8 +3192,6 @@ export default function GitRepoSelector({
           getProjectSecondaryLabel={getProjectSecondaryLabel}
           isProjectOpenable={isProjectOpenable}
           onProjectIconError={handleRepoIconError}
-          onRepoCardMouseMove={handleRepoCardMouseMove}
-          onRepoCardMouseLeave={handleRepoCardMouseLeave}
           onAddProject={openCloneRemoteDialog}
         />
       )}

@@ -185,6 +185,8 @@ function createSchema(db: Database.Database): void {
       agent_reasoning_effort TEXT,
       startup_script TEXT,
       dev_server_script TEXT,
+      service_start_command TEXT,
+      service_stop_command TEXT,
       last_branch TEXT,
       credential_id TEXT,
       credential_preference TEXT,
@@ -198,6 +200,8 @@ function createSchema(db: Database.Database): void {
       agent_reasoning_effort TEXT,
       startup_script TEXT,
       dev_server_script TEXT,
+      service_start_command TEXT,
+      service_stop_command TEXT,
       alias TEXT
     );
 
@@ -208,6 +212,8 @@ function createSchema(db: Database.Database): void {
       agent_reasoning_effort TEXT,
       startup_script TEXT,
       dev_server_script TEXT,
+      service_start_command TEXT,
+      service_stop_command TEXT,
       alias TEXT
     );
 
@@ -506,10 +512,12 @@ function migrateLegacyConfig(db: Database.Database): void {
     const insertRepoSettings = db.prepare(`
       INSERT INTO app_config_repo_settings (
         repo_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, last_branch, credential_id, credential_preference
+        startup_script, dev_server_script, service_start_command, service_stop_command,
+        last_branch, credential_id, credential_preference
       ) VALUES (
         @repoPath, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @lastBranch, @credentialId, @credentialPreference
+        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand,
+        @lastBranch, @credentialId, @credentialPreference
       )
     `);
     for (const [repoPath, rawSettings] of Object.entries(config.repoSettings)) {
@@ -526,6 +534,8 @@ function migrateLegacyConfig(db: Database.Database): void {
         agentReasoningEffort: asOptionalString(settings.agentReasoningEffort ?? settings.reasoningEffort),
         startupScript: asOptionalString(settings.startupScript),
         devServerScript: asOptionalString(settings.devServerScript),
+        serviceStartCommand: asOptionalString(settings.serviceStartCommand),
+        serviceStopCommand: asOptionalString(settings.serviceStopCommand),
         lastBranch: asOptionalString(settings.lastBranch),
         credentialId: asOptionalString(settings.credentialId),
         credentialPreference,
@@ -1048,6 +1058,8 @@ function runSchemaMigrations(db: Database.Database): void {
   if (tableExists(db, 'app_config_repo_settings')) {
     addColumnIfMissing(db, 'app_config_repo_settings', 'alias TEXT');
     addColumnIfMissing(db, 'app_config_repo_settings', 'agent_reasoning_effort TEXT');
+    addColumnIfMissing(db, 'app_config_repo_settings', 'service_start_command TEXT');
+    addColumnIfMissing(db, 'app_config_repo_settings', 'service_stop_command TEXT');
   }
 
   addColumnIfMissing(db, 'projects', 'icon_path TEXT');
@@ -1079,6 +1091,10 @@ function runSchemaMigrations(db: Database.Database): void {
   addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
   addColumnIfMissing(db, 'app_config', "home_project_sort TEXT NOT NULL DEFAULT 'last-update'");
   addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
+  addColumnIfMissing(db, 'app_config_project_settings', 'service_start_command TEXT');
+  addColumnIfMissing(db, 'app_config_project_settings', 'service_stop_command TEXT');
+  addColumnIfMissing(db, 'app_config_project_entity_settings', 'service_start_command TEXT');
+  addColumnIfMissing(db, 'app_config_project_entity_settings', 'service_stop_command TEXT');
   addColumnIfMissing(db, 'session_workspace_preparations', 'project_id TEXT');
 
   rebuildSessionsTableIfLegacyBranchNameIsRequired(db);
@@ -1112,11 +1128,11 @@ function runSchemaMigrations(db: Database.Database): void {
     db.prepare(`
       INSERT OR REPLACE INTO app_config_project_settings (
         project_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, service_start_command, service_stop_command, alias
       )
       SELECT
         repo_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, service_start_command, service_stop_command, alias
       FROM app_config_repo_settings
     `).run();
   }
@@ -1350,7 +1366,7 @@ function runSchemaMigrations(db: Database.Database): void {
     const projectSettingRows = db.prepare(`
       SELECT
         project_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, service_start_command, service_stop_command, alias
       FROM app_config_project_settings
     `).all() as Array<{
       project_path: string;
@@ -1359,16 +1375,18 @@ function runSchemaMigrations(db: Database.Database): void {
       agent_reasoning_effort: string | null;
       startup_script: string | null;
       dev_server_script: string | null;
+      service_start_command: string | null;
+      service_stop_command: string | null;
       alias: string | null;
     }>;
 
     const insertProjectEntitySettings = db.prepare(`
       INSERT OR REPLACE INTO app_config_project_entity_settings (
         project_id, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, service_start_command, service_stop_command, alias
       ) VALUES (
         @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @alias
+        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand, @alias
       )
     `);
 
@@ -1382,6 +1400,8 @@ function runSchemaMigrations(db: Database.Database): void {
         agentReasoningEffort: row.agent_reasoning_effort,
         startupScript: row.startup_script,
         devServerScript: row.dev_server_script,
+        serviceStartCommand: row.service_start_command,
+        serviceStopCommand: row.service_stop_command,
         alias: row.alias,
       });
     }

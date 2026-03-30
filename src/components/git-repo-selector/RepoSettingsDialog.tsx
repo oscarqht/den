@@ -13,8 +13,12 @@ export type RepoSettingsDialogProps = {
   defaultRoot?: string;
   projectStartupCommand: string;
   projectDevServerCommand: string;
+  projectServiceStartCommand: string;
+  projectServiceStopCommand: string;
   defaultProjectStartupCommand: string;
   defaultProjectDevServerCommand: string;
+  defaultProjectServiceStartCommand: string;
+  defaultProjectServiceStopCommand: string;
   projectIconPath: string | null;
   isSavingProjectSettings: boolean;
   isUploadingProjectIcon: boolean;
@@ -24,6 +28,8 @@ export type RepoSettingsDialogProps = {
   onRemoveFolderPath: (path: string) => void;
   onStartupCommandChange: (value: string) => void;
   onDevServerCommandChange: (value: string) => void;
+  onServiceStartCommandChange: (value: string) => void;
+  onServiceStopCommandChange: (value: string) => void;
   onUploadIcon: (iconPath: string) => void;
   onRemoveIcon: () => void;
   onClose: () => void;
@@ -39,8 +45,12 @@ export function RepoSettingsDialog({
   defaultRoot,
   projectStartupCommand,
   projectDevServerCommand,
+  projectServiceStartCommand,
+  projectServiceStopCommand,
   defaultProjectStartupCommand,
   defaultProjectDevServerCommand,
+  defaultProjectServiceStartCommand,
+  defaultProjectServiceStopCommand,
   projectIconPath,
   isSavingProjectSettings,
   isUploadingProjectIcon,
@@ -50,6 +60,8 @@ export function RepoSettingsDialog({
   onRemoveFolderPath,
   onStartupCommandChange,
   onDevServerCommandChange,
+  onServiceStartCommandChange,
+  onServiceStopCommandChange,
   onUploadIcon,
   onRemoveIcon,
   onClose,
@@ -207,6 +219,38 @@ export function RepoSettingsDialog({
             />
             <div className="text-xs text-slate-500 dark:text-slate-400">
               Multi-line commands are supported.
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Service Command</label>
+              <textarea
+                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                rows={3}
+                value={projectServiceStartCommand}
+                onChange={(event) => onServiceStartCommandChange(event.target.value)}
+                placeholder={defaultProjectServiceStartCommand}
+                disabled={isSavingProjectSettings || isUploadingProjectIcon}
+              />
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Projects with a start service command get service controls on the project card.
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Stop Service Command</label>
+              <textarea
+                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                rows={3}
+                value={projectServiceStopCommand}
+                onChange={(event) => onServiceStopCommandChange(event.target.value)}
+                placeholder={defaultProjectServiceStopCommand}
+                disabled={isSavingProjectSettings || isUploadingProjectIcon}
+              />
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Optional. If omitted, stop falls back to terminating the managed service process directly.
+              </div>
             </div>
           </div>
 

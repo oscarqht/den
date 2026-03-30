@@ -4,10 +4,10 @@ import os from 'os';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawn } from 'child_process';
-import { buildTerminalProcessEnv } from './terminal-process-env';
+import { buildTerminalProcessEnv } from './terminal-process-env.ts';
 
-export type SessionTrackedProcessRole = 'startup-script' | 'dev-server';
-export type SessionTrackedProcessSource = 'startup-script' | 'ui-dev-button';
+export type SessionTrackedProcessRole = 'startup-script' | 'dev-server' | 'project-service';
+export type SessionTrackedProcessSource = 'startup-script' | 'ui-dev-button' | 'project-service-ui';
 export type SessionTrackedProcessShellKind = 'posix' | 'powershell';
 
 export type SessionTrackedProcess = {
@@ -114,9 +114,11 @@ function parseTrackedProcess(value: unknown): SessionTrackedProcess | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   const role = record.role === 'startup-script' || record.role === 'dev-server'
+    || record.role === 'project-service'
     ? record.role
     : null;
   const source = record.source === 'startup-script' || record.source === 'ui-dev-button'
+    || record.source === 'project-service-ui'
     ? record.source
     : null;
   const shellKind = record.shellKind === 'powershell' ? 'powershell' : 'posix';
@@ -501,6 +503,24 @@ export async function readTrackedDevServerState(
     process: processEntry,
     previewUrl,
   };
+}
+
+export async function readTrackedSessionProcessLog(
+  projectPath: string,
+  sessionName: string,
+  role: SessionTrackedProcessRole,
+  maxBytes = 64 * 1024,
+): Promise<string> {
+  const logPath = getTrackedProcessLogPath(projectPath, sessionName, role);
+  try {
+    const raw = await fs.readFile(logPath);
+    if (raw.byteLength <= maxBytes) {
+      return raw.toString('utf-8');
+    }
+    return raw.subarray(raw.byteLength - maxBytes).toString('utf-8');
+  } catch {
+    return '';
+  }
 }
 
 export async function cleanupStaleNextDevLock(

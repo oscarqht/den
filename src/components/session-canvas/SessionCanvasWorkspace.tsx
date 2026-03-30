@@ -47,6 +47,7 @@ import { startTtydProcess, terminateTmuxSessionRole } from '@/app/actions/git';
 import {
   buildSessionCanvasTerminalBootstrapCommand,
   buildSessionCanvasTerminalSrc,
+  centerSessionCanvasViewportOnPanels,
   clampSessionCanvasScale,
   createSessionCanvasPanelId,
   fitSessionCanvasLayoutToViewport,
@@ -55,7 +56,6 @@ import {
   SESSION_CANVAS_AGENT_BOOTSTRAP_VERSION,
   SESSION_CANVAS_STARTUP_BOOTSTRAP_VERSION,
   SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH,
-  SESSION_CANVAS_LAYOUT_VERSION,
 } from '@/lib/session-canvas';
 import type { SessionCanvasWorkspaceSearchResult } from '@/lib/session-canvas-search';
 import { normalizeMarkdownLists } from '@/lib/markdown';
@@ -1344,10 +1344,7 @@ export function SessionCanvasWorkspace({
   }, [bootstrap.layout, sessionId]);
 
   useEffect(() => {
-    const shouldFitSavedLayout = bootstrap.restoredFromSavedLayout
-      && bootstrap.savedLayoutVersion !== SESSION_CANVAS_LAYOUT_VERSION;
-
-    if ((!shouldFitSavedLayout && bootstrap.restoredFromSavedLayout) || didFitInitialLayoutRef.current) {
+    if (bootstrap.restoredFromSavedLayout || didFitInitialLayoutRef.current) {
       return;
     }
 
@@ -1358,8 +1355,20 @@ export function SessionCanvasWorkspace({
     if (!rect.width || !rect.height) return;
 
     didFitInitialLayoutRef.current = true;
-    setLayout((previous) => fitSessionCanvasLayoutToViewport(previous, rect.width, rect.height));
-  }, [bootstrap.restoredFromSavedLayout, bootstrap.savedLayoutVersion]);
+    setLayout((previous) => {
+      const fittedLayout = fitSessionCanvasLayoutToViewport(previous, rect.width, rect.height);
+
+      return {
+        ...fittedLayout,
+        viewport: centerSessionCanvasViewportOnPanels(
+          fittedLayout.panels,
+          rect.width,
+          rect.height,
+          fittedLayout.viewport.scale,
+        ),
+      };
+    });
+  }, [bootstrap.restoredFromSavedLayout]);
 
   useEffect(() => {
     let cancelled = false;

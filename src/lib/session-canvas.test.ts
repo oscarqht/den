@@ -5,6 +5,7 @@ import {
   SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH,
   buildSessionCanvasTerminalBootstrapCommand,
   buildSessionCanvasTerminalSrc,
+  centerSessionCanvasViewportOnPanels,
   createDefaultSessionCanvasLayout,
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
@@ -26,6 +27,8 @@ describe('session canvas layout helpers', () => {
       layout.panels.map((panel) => panel.type),
       ['agent-terminal', 'terminal'],
     );
+    assert.equal(layout.panels[0]?.y, layout.panels[1]?.y);
+    assert.equal(layout.panels[1]!.x > layout.panels[0]!.x + layout.panels[0]!.width, true);
     assert.equal(layout.panels[1]?.height, 420);
     assert.equal(layout.panelDefaults?.preview?.width, 900);
     assert.equal(layout.panelDefaults?.preview?.height, 600);
@@ -217,5 +220,24 @@ describe('session canvas layout helpers', () => {
     assert.equal(viewport.scale < 1, true);
     assert.equal(Number.isFinite(viewport.x), true);
     assert.equal(Number.isFinite(viewport.y), true);
+  });
+
+  it('centers default panels while preserving the requested zoom level', () => {
+    const layout = createDefaultSessionCanvasLayout({
+      workspacePath: '/tmp/workspace',
+      startupScript: 'npm run dev',
+    });
+
+    const viewport = centerSessionCanvasViewportOnPanels(layout.panels, 1600, 900, layout.viewport.scale);
+    const minX = Math.min(...layout.panels.map((panel) => panel.x));
+    const minY = Math.min(...layout.panels.map((panel) => panel.y));
+    const maxX = Math.max(...layout.panels.map((panel) => panel.x + panel.width));
+    const maxY = Math.max(...layout.panels.map((panel) => panel.y + panel.height));
+    const scaledCenterX = (minX + maxX) * viewport.scale / 2 + viewport.x;
+    const scaledCenterY = (minY + maxY) * viewport.scale / 2 + viewport.y;
+
+    assert.equal(viewport.scale, layout.viewport.scale);
+    assert.equal(Math.round(scaledCenterX), 800);
+    assert.equal(Math.round(scaledCenterY), 450);
   });
 });

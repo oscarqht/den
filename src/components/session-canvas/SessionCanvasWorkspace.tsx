@@ -128,6 +128,8 @@ type TerminalPanelHandle = {
   insertText: (text: string) => boolean;
 };
 
+type PanelRestoreBounds = NonNullable<NonNullable<SessionCanvasPanel['state']>['restoreBounds']>;
+
 type TerminalPanelProps = {
   sessionId: string;
   panel: SessionCanvasAgentTerminalPanel | SessionCanvasTerminalPanel;
@@ -152,6 +154,12 @@ const CANVAS_FIT_PADDING = {
   bottom: 40,
   left: 40,
 } as const;
+const MAXIMIZED_PANEL_PADDING = {
+  top: 84,
+  right: 24,
+  bottom: 24,
+  left: 24,
+} as const;
 const MOBILE_STACKED_PANEL_HEIGHT = 'calc(100dvh - 8.5rem)';
 const COMMAND_PALETTE_MIN_QUERY_LENGTH = 2;
 const COMMAND_PALETTE_DEBOUNCE_MS = 160;
@@ -164,6 +172,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 function nextPanelZIndex(panels: SessionCanvasPanel[]): number {
   return panels.reduce((maxValue, panel) => Math.max(maxValue, panel.zIndex), 0) + 1;
+}
+
+function isValidRestoreBounds(bounds: unknown): bounds is PanelRestoreBounds {
+  const candidate = bounds as Partial<PanelRestoreBounds> | null;
+  return Boolean(
+    candidate
+    && typeof candidate === 'object'
+    && Number.isFinite(candidate.x)
+    && Number.isFinite(candidate.y)
+    && Number.isFinite(candidate.width)
+    && Number.isFinite(candidate.height),
+  );
 }
 
 function updatePanelInLayout(
@@ -1485,6 +1505,99 @@ export function SessionCanvasWorkspace({
     });
   }, []);
 
+  const getMaximizedPanelBounds = useCallback((currentLayout: SessionCanvasLayout): PanelRestoreBounds | null => {
+    const canvasElement = canvasRef.current;
+    if (!canvasElement || isMobileViewport) {
+      return null;
+    }
+
+    const rect = canvasElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return null;
+    }
+
+    const explorerOffset = currentLayout.explorer.collapsed
+      ? 0
+      : currentLayout.explorer.width || SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH;
+    const leftInsetPx = MAXIMIZED_PANEL_PADDING.left + explorerOffset;
+    const topInsetPx = MAXIMIZED_PANEL_PADDING.top;
+    const availableWidthPx = Math.max(320, rect.width - leftInsetPx - MAXIMIZED_PANEL_PADDING.right);
+    const availableHeightPx = Math.max(220, rect.height - topInsetPx - MAXIMIZED_PANEL_PADDING.bottom);
+
+    return {
+      x: (leftInsetPx - currentLayout.viewport.x) / currentLayout.viewport.scale,
+      y: (topInsetPx - currentLayout.viewport.y) / currentLayout.viewport.scale,
+      width: availableWidthPx / currentLayout.viewport.scale,
+      height: availableHeightPx / currentLayout.viewport.scale,
+    };
+  }, [isMobileViewport]);
+
+  const maximizePanel = useCallback((panelId: string) => {
+    setLayout((previous) => {
+      const panel = previous.panels.find((item) => item.id === panelId);
+      if (!panel || panel.state?.maximized) {
+        return previous;
+      }
+
+      const nextBounds = getMaximizedPanelBounds(previous);
+      if (!nextBounds) {
+        return previous;
+      }
+
+      return updatePanelInLayout(
+        focusPanelInLayout(previous, panelId),
+        panelId,
+        {
+          x: nextBounds.x,
+          y: nextBounds.y,
+          width: nextBounds.width,
+          height: nextBounds.height,
+          state: {
+            ...panel.state,
+            maximized: true,
+            minimized: false,
+            restoreBounds: {
+              x: panel.x,
+              y: panel.y,
+              width: panel.width,
+              height: panel.height,
+            },
+          },
+        } as Partial<SessionCanvasPanel>,
+      );
+    });
+    setActivePanelId(panelId);
+    setSelectedPanelId(panelId);
+  }, [getMaximizedPanelBounds]);
+
+  const restorePanel = useCallback((panelId: string) => {
+    setLayout((previous) => {
+      const panel = previous.panels.find((item) => item.id === panelId);
+      if (!panel?.state?.maximized || !isValidRestoreBounds(panel.state.restoreBounds)) {
+        return previous;
+      }
+
+      return updatePanelInLayout(
+        focusPanelInLayout(previous, panelId),
+        panelId,
+        {
+          x: panel.state.restoreBounds.x,
+          y: panel.state.restoreBounds.y,
+          width: panel.state.restoreBounds.width,
+          height: panel.state.restoreBounds.height,
+          state: {
+            ...panel.state,
+            maximized: false,
+            minimized: false,
+            restoreBounds: undefined,
+          },
+        } as Partial<SessionCanvasPanel>,
+      );
+    });
+    setActivePanelId(panelId);
+    setSelectedPanelId(panelId);
+  }, []);
+
   const closePanel = useCallback((panelId: string) => {
     setLayout((previous) => {
       const remainingPanels = previous.panels.filter((panel) => panel.id !== panelId);
@@ -2322,6 +2435,8 @@ export function SessionCanvasWorkspace({
                   onFocus={focusPanel}
                   onUpdate={updatePanelGeometry}
                   onClose={closePanel}
+                  onMaximize={maximizePanel}
+                  onRestore={restorePanel}
                   headerActions={renderPanelHeaderActions(panel)}
                 >
                     {renderPanel(panel)}
@@ -2438,6 +2553,8 @@ export function SessionCanvasWorkspace({
                   onFocus={focusPanel}
                   onUpdate={updatePanelGeometry}
                   onClose={closePanel}
+                  onMaximize={maximizePanel}
+                  onRestore={restorePanel}
                     headerActions={renderPanelHeaderActions(panel)}
                   >
                     {renderPanel(panel)}

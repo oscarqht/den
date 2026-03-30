@@ -9,7 +9,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { Grip, X } from 'lucide-react';
 
 import type { SessionCanvasPanel } from '@/lib/types';
 
@@ -26,6 +25,8 @@ type CanvasPanelFrameProps = {
     updates: Partial<Pick<SessionCanvasPanel, 'x' | 'y' | 'width' | 'height'>>,
   ) => void;
   onClose: (panelId: string) => void;
+  onMaximize: (panelId: string) => void;
+  onRestore: (panelId: string) => void;
   headerActions?: ReactNode;
   children: ReactNode;
 };
@@ -65,10 +66,13 @@ function CanvasPanelFrameComponent({
   onFocus,
   onUpdate,
   onClose,
+  onMaximize,
+  onRestore,
   headerActions,
   children,
 }: CanvasPanelFrameProps) {
   const isStacked = interactionMode === 'stacked';
+  const isMaximized = Boolean(panel.state?.maximized);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
     pointerId: number;
@@ -337,35 +341,67 @@ function CanvasPanelFrameComponent({
       }}
     >
       <div
-        className={`relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-2.5 py-1.5 text-[12px] dark:border-slate-800 dark:bg-slate-950/80 ${closable ? 'pr-10' : 'pr-2.5'}`}
+        className="relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-3 py-1.5 text-[12px] dark:border-slate-800 dark:bg-slate-950/80"
         onPointerDown={(event) => {
-          if (isStacked) return;
+          if (isStacked || isMaximized) return;
           if (isInteractiveTarget(event.target)) return;
           startPointerTracking(event, 'move');
         }}
       >
-        {!isStacked ? <Grip className="h-3.5 w-3.5 shrink-0 text-slate-400" /> : null}
-        <div className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-slate-100">
-          {panel.title}
-        </div>
-        {headerActions}
-        {closable ? (
+        <div className="flex shrink-0 items-center gap-1.5" data-panel-interactive="true">
           <button
             type="button"
-            className="absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-tr-xl rounded-bl-md text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            className={`h-3 w-3 rounded-full border border-[#d24a43] bg-[#ff5f57] transition ${closable ? 'hover:brightness-95' : 'cursor-not-allowed opacity-50'}`}
             onPointerDown={(event) => {
               event.stopPropagation();
             }}
             onClick={(event) => {
               event.stopPropagation();
+              if (!closable) return;
               onClose(panel.id);
             }}
+            disabled={!closable}
             data-panel-interactive="true"
-            aria-label={`Close ${panel.title}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
+            aria-label={closable ? `Close ${panel.title}` : `${panel.title} cannot be closed`}
+            title={closable ? 'Close panel' : 'This panel cannot be closed'}
+          />
+          <button
+            type="button"
+            className={`h-3 w-3 rounded-full border border-[#c89f19] bg-[#ffbd2f] transition ${isMaximized && !isStacked ? 'hover:brightness-95' : 'cursor-default opacity-50'}`}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!isMaximized || isStacked) return;
+              onRestore(panel.id);
+            }}
+            disabled={!isMaximized || isStacked}
+            data-panel-interactive="true"
+            aria-label={isMaximized ? `Restore ${panel.title}` : `Restore ${panel.title} is unavailable`}
+            title={isMaximized ? 'Restore panel' : 'Restore unavailable'}
+          />
+          <button
+            type="button"
+            className={`h-3 w-3 rounded-full border border-[#4ba443] bg-[#28c840] transition ${!isMaximized && !isStacked ? 'hover:brightness-95' : 'cursor-default opacity-50'}`}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isMaximized || isStacked) return;
+              onMaximize(panel.id);
+            }}
+            disabled={isMaximized || isStacked}
+            data-panel-interactive="true"
+            aria-label={!isMaximized ? `Maximize ${panel.title}` : `Maximize ${panel.title} is unavailable`}
+            title={!isMaximized ? 'Maximize panel' : 'Already maximized'}
+          />
+        </div>
+        <div className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-slate-100">
+          {panel.title}
+        </div>
+        {headerActions}
       </div>
 
       <div
@@ -399,7 +435,7 @@ function CanvasPanelFrameComponent({
         ) : null}
       </div>
 
-      {!isStacked ? (
+      {!isStacked && !isMaximized ? (
         <button
           type="button"
           className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-tl-md bg-slate-100/80 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-900/80 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"

@@ -195,6 +195,13 @@ export type SessionCanvasPanelBase = {
   zIndex: number;
   state?: {
     minimized?: boolean;
+    maximized?: boolean;
+    restoreBounds?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
   };
 };
 

@@ -64,6 +64,15 @@ describe('session canvas layout helpers', () => {
         width: 10,
         height: 20,
         zIndex: Number.NaN,
+        state: {
+          maximized: true,
+          restoreBounds: {
+            x: 10,
+            y: 20,
+            width: 300,
+            height: 240,
+          },
+        },
         payload: {
           terminalKey: 'terminal',
         },
@@ -89,6 +98,13 @@ describe('session canvas layout helpers', () => {
     assert.equal(normalized.panels[0]?.id.startsWith('terminal:'), true);
     assert.equal(normalized.panels[0]?.width, 220);
     assert.equal(normalized.panels[0]?.height, 160);
+    assert.equal(normalized.panels[0]?.state?.maximized, true);
+    assert.deepEqual(normalized.panels[0]?.state?.restoreBounds, {
+      x: 10,
+      y: 20,
+      width: 300,
+      height: 240,
+    });
     assert.equal(normalized.bootstrap.agentStarted, true);
     assert.equal(normalized.panelDefaults?.preview?.width, 320);
     assert.equal(normalized.panelDefaults?.preview?.height, 600);

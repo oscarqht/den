@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGitAction, useGitBranches, useGitLog, useGitMergeBase, useGitStatus } from '@/hooks/use-git';
@@ -52,6 +52,7 @@ type SessionRepoViewerProps = {
   branchHint?: string;
   baseBranchHint?: string;
   repoOptions?: SessionRepoViewerOption[];
+  refreshToken?: number;
 };
 
 type CommitSelectionState =
@@ -66,7 +67,13 @@ export type SessionRepoViewerOption = {
   baseBranchHint?: string;
 };
 
-export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint, repoOptions = [] }: SessionRepoViewerProps) {
+export function SessionRepoViewer({
+  repoPath,
+  branchHint,
+  baseBranchHint,
+  repoOptions = [],
+  refreshToken,
+}: SessionRepoViewerProps) {
   const normalizedRepoOptions = useMemo<SessionRepoViewerOption[]>(() => {
     const explicitOptions = repoOptions
       .map((option) => ({
@@ -104,6 +111,7 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint, repoOp
   const [commitMessage, setCommitMessage] = useState('');
   const [commitMessageError, setCommitMessageError] = useState<string | null>(null);
   const [isRefreshingRepoData, setIsRefreshingRepoData] = useState(false);
+  const lastExternalRefreshTokenRef = useRef<number | undefined>(refreshToken);
   const queryClient = useQueryClient();
   const action = useGitAction();
   const { data: branchData } = useGitBranches(effectiveRepoPath);
@@ -248,6 +256,18 @@ export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint, repoOp
       setIsRefreshingRepoData(false);
     }
   }, [effectiveRepoPath, queryClient, refetchCommitHistoryData]);
+
+  useEffect(() => {
+    if (refreshToken === undefined) {
+      return;
+    }
+    if (lastExternalRefreshTokenRef.current === refreshToken) {
+      return;
+    }
+
+    lastExternalRefreshTokenRef.current = refreshToken;
+    void handleRefreshRepoData();
+  }, [handleRefreshRepoData, refreshToken]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50 dark:bg-[#0d1117]">

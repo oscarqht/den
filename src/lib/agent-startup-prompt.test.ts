@@ -200,6 +200,8 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /If that is unavailable, fall back to the `agent-browser` skill/);
     assert.match(prompt!, /For bugfix\/debugging tasks, use the `systematic-debugging` skill/);
     assert.match(prompt!, /you may use `npx skills` to discover and install additional skills at your discretion/);
+    assert.match(prompt!, /When a task is large or naturally splits into independent workstreams, break it down into smaller subtasks before implementation\./);
+    assert.match(prompt!, /If the runtime supports delegation or subagents, use them for bounded, independent subtasks that can run in parallel/);
     assert.match(prompt!, /# Task\n\nFix the startup prompt$/m);
     assert.doesNotMatch(prompt!, /Attachments:/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
@@ -236,6 +238,8 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /After the user approves that initial plan/);
     assert.match(prompt!, /small or trivial follow-up changes directly without re-requesting approval/);
     assert.match(prompt!, /Request approval again only when a proposed change is substantial/);
+    assert.match(prompt!, /When a task is large or naturally splits into independent workstreams, break it down into smaller subtasks before implementation\./);
+    assert.match(prompt!, /If the runtime supports delegation or subagents, use them for bounded, independent subtasks that can run in parallel/);
     assert.match(prompt!, /Attachments:\n- \/tmp\/spec\.md/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
   });

@@ -43,15 +43,19 @@ export function SessionCanvasGitPanel({
   const [isMerging, setIsMerging] = useState(false);
   const [isRebasing, setIsRebasing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [repoViewerRefreshToken, setRepoViewerRefreshToken] = useState(0);
 
   useEffect(() => {
     setCurrentBaseBranch(selectedRepo?.baseBranch?.trim() || '');
   }, [selectedRepo?.baseBranch, selectedRepo?.sourceRepoPath]);
 
-  const refreshGitState = useCallback(async () => {
+  const refreshGitState = useCallback(async ({ refreshRepoViewer = false }: { refreshRepoViewer?: boolean } = {}) => {
     if (!selectedRepo) return;
 
     setIsRefreshing(true);
+    if (refreshRepoViewer) {
+      setRepoViewerRefreshToken((current) => current + 1);
+    }
     try {
       const [branchResult, divergenceResult] = await Promise.all([
         listSessionBaseBranches(sessionId, selectedRepo.sourceRepoPath),
@@ -97,7 +101,7 @@ export function SessionCanvasGitPanel({
         throw new Error(result.error || 'Failed to update base branch');
       }
       setFeedback(`Base branch set to ${normalized}`);
-      await refreshGitState();
+      await refreshGitState({ refreshRepoViewer: true });
     } catch (error) {
       console.error('Failed to update session base branch:', error);
       setFeedback(error instanceof Error ? error.message : 'Failed to update base branch');
@@ -117,7 +121,7 @@ export function SessionCanvasGitPanel({
         throw new Error(result.error || 'Failed to merge into base branch');
       }
       setFeedback(`Merged ${result.branchName} into ${result.baseBranch}`);
-      await refreshGitState();
+      await refreshGitState({ refreshRepoViewer: true });
     } catch (error) {
       console.error('Failed to merge session branch:', error);
       setFeedback(error instanceof Error ? error.message : 'Failed to merge session branch');
@@ -137,7 +141,7 @@ export function SessionCanvasGitPanel({
         throw new Error(result.error || 'Failed to rebase onto base branch');
       }
       setFeedback(`Rebased ${result.branchName} onto ${result.baseBranch}`);
-      await refreshGitState();
+      await refreshGitState({ refreshRepoViewer: true });
     } catch (error) {
       console.error('Failed to rebase session branch:', error);
       setFeedback(error instanceof Error ? error.message : 'Failed to rebase session branch');
@@ -245,7 +249,7 @@ export function SessionCanvasGitPanel({
             type="button"
             className="btn btn-ghost btn-xs gap-1"
             onClick={() => {
-              void refreshGitState();
+              void refreshGitState({ refreshRepoViewer: true });
             }}
             disabled={isRefreshing}
           >
@@ -288,6 +292,7 @@ export function SessionCanvasGitPanel({
           repoPath={selectedRepo.worktreePath || selectedRepo.sourceRepoPath}
           branchHint={selectedRepo.branchName}
           baseBranchHint={currentBaseBranch || selectedRepo.baseBranch}
+          refreshToken={repoViewerRefreshToken}
         />
       </div>
     </div>

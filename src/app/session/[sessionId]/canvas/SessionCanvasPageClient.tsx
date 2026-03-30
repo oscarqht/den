@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 
 import { getSessionCanvasBootstrap, type SessionCanvasBootstrapResult } from '@/app/actions/session-canvas';
 import { SessionCanvasWorkspace } from '@/components/session-canvas/SessionCanvasWorkspace';
+import { clearPendingSessionNavigation } from '@/lib/session-navigation';
 
 type SessionCanvasBootstrapSuccess = Extract<SessionCanvasBootstrapResult, { success: true }>;
 
@@ -14,6 +15,12 @@ export default function SessionCanvasPageClient() {
   const sessionId = Array.isArray(sessionIdParam) ? sessionIdParam[0] : sessionIdParam;
   const [bootstrap, setBootstrap] = useState<SessionCanvasBootstrapSuccess | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    clearPendingSessionNavigation(sessionId);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;

@@ -4,7 +4,7 @@ Den is a local control center for AI coding work. It gives every task its own is
 
 Not just one chat box. More like a workspace where you can hand off real work, keep it reviewable, and move from idea to shipped changes without playing copy-paste ping-pong all day.
 
-![](./docs/poster.jpeg)
+![](./docs/shrews%20den%20-%20poster.jpeg)
 
 ## Our Philosophy
 

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getInstallStrategies, getBrowserOpenCommand, resolveStartupPort, shouldAutoOpenBrowser } from '../../bin/viba.mjs';
+import { getInstallStrategies, getBrowserOpenCommand, createChildProcessSupervisor, resolveStartupPort, shouldAutoOpenBrowser } from '../../bin/viba.mjs';
 
 describe('getInstallStrategies', () => {
   const originalPlatform = process.platform;
@@ -218,5 +218,84 @@ describe('resolveStartupPort', () => {
 
     assert.strictEqual(allocatorCalled, false);
     assert.deepStrictEqual(result, { preferredPort: 4300, port: 4300 });
+  });
+});
+
+describe('createChildProcessSupervisor', () => {
+  it('targets the child process group on POSIX', () => {
+    const signals = [];
+    const child = { pid: 4321, exitCode: null, killed: false };
+    const supervisor = createChildProcessSupervisor(child, {
+      platform: 'darwin',
+      killDelayMs: 0,
+      killImpl: (target, signal) => {
+        signals.push({ target, signal });
+      },
+    });
+
+    assert.strictEqual(supervisor.terminate(), true);
+    assert.deepStrictEqual(signals, [{ target: -4321, signal: 'SIGTERM' }]);
+  });
+
+  it('targets the child pid directly on Windows', () => {
+    const signals = [];
+    const child = { pid: 4321, exitCode: null, killed: false };
+    const supervisor = createChildProcessSupervisor(child, {
+      platform: 'win32',
+      killDelayMs: 0,
+      killImpl: (target, signal) => {
+        signals.push({ target, signal });
+      },
+    });
+
+    supervisor.terminate();
+    assert.deepStrictEqual(signals, [{ target: 4321, signal: 'SIGTERM' }]);
+  });
+
+  it('escalates to SIGKILL when the child is still alive', () => {
+    const signals = [];
+    const scheduled = [];
+    const child = { pid: 4321, exitCode: null, killed: false };
+    const supervisor = createChildProcessSupervisor(child, {
+      platform: 'darwin',
+      killImpl: (target, signal) => {
+        signals.push({ target, signal });
+      },
+      setTimeoutImpl: (callback) => {
+        const timer = {
+          unref() {},
+          callback,
+        };
+        scheduled.push(timer);
+        return timer;
+      },
+      clearTimeoutImpl: () => {},
+    });
+
+    supervisor.terminate();
+    assert.strictEqual(scheduled.length, 1);
+    scheduled[0].callback();
+    assert.deepStrictEqual(signals, [
+      { target: -4321, signal: 'SIGTERM' },
+      { target: -4321, signal: 'SIGKILL' },
+    ]);
+  });
+
+  it('clears the escalation timer when disposed', () => {
+    const cleared = [];
+    const child = { pid: 4321, exitCode: null, killed: false };
+    const timer = { id: 'timer', unref() {} };
+    const supervisor = createChildProcessSupervisor(child, {
+      platform: 'darwin',
+      killImpl: () => {},
+      setTimeoutImpl: () => timer,
+      clearTimeoutImpl: (timer) => {
+        cleared.push(timer);
+      },
+    });
+
+    supervisor.terminate();
+    supervisor.dispose();
+    assert.deepStrictEqual(cleared, [timer]);
   });
 });

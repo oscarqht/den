@@ -87,6 +87,87 @@ function runCommand(command, args) {
   return result.status === 0;
 }
 
+function isMissingProcessError(error) {
+  return Boolean(error && typeof error === "object" && error.code === "ESRCH");
+}
+
+function getChildTerminationTarget(pid, platform = process.platform) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return null;
+  }
+
+  return platform === "win32" ? pid : -pid;
+}
+
+function supportsDetachedProcessGroup(platform = process.platform) {
+  return platform !== "win32";
+}
+
+export function createChildProcessSupervisor(
+  child,
+  {
+    platform = process.platform,
+    killImpl = process.kill.bind(process),
+    setTimeoutImpl = setTimeout,
+    clearTimeoutImpl = clearTimeout,
+    killDelayMs = 1500,
+  } = {},
+) {
+  let terminated = false;
+  let killTimer = null;
+
+  const clearKillTimer = () => {
+    if (!killTimer) {
+      return;
+    }
+    clearTimeoutImpl(killTimer);
+    killTimer = null;
+  };
+
+  const sendSignal = (signal) => {
+    const target = getChildTerminationTarget(child.pid, platform);
+    if (target === null) {
+      return false;
+    }
+
+    try {
+      killImpl(target, signal);
+      return true;
+    } catch (error) {
+      if (isMissingProcessError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  return {
+    terminate() {
+      if (terminated) {
+        return false;
+      }
+      terminated = true;
+
+      sendSignal("SIGTERM");
+      if (killDelayMs > 0) {
+        killTimer = setTimeoutImpl(() => {
+          killTimer = null;
+          if (child.exitCode !== null || child.killed) {
+            return;
+          }
+          sendSignal("SIGKILL");
+        }, killDelayMs);
+        killTimer.unref?.();
+      }
+
+      return true;
+    },
+    dispose() {
+      clearKillTimer();
+    },
+  };
+}
+
 export function getBrowserOpenCommand(url, platform = process.platform) {
   if (platform === "win32") {
     return {
@@ -369,10 +450,46 @@ function runNext(args, env = process.env) {
       cwd: APP_ROOT,
       stdio: "inherit",
       env,
+      detached: supportsDetachedProcessGroup(),
     });
+    const supervisor = createChildProcessSupervisor(child);
+    const signalHandlers = new Map();
+    const handledSignals =
+      process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"];
 
-    child.on("error", reject);
+    const removeSignalHandlers = () => {
+      for (const [signal, handler] of signalHandlers) {
+        process.off(signal, handler);
+      }
+      signalHandlers.clear();
+    };
+
+    const registerSignalHandlers = () => {
+      for (const signal of handledSignals) {
+        const handler = () => {
+          supervisor.terminate();
+          removeSignalHandlers();
+          process.kill(process.pid, signal);
+        };
+        signalHandlers.set(signal, handler);
+        process.once(signal, handler);
+      }
+
+      process.once("exit", () => {
+        supervisor.terminate();
+      });
+    };
+
+    registerSignalHandlers();
+
+    child.on("error", (error) => {
+      supervisor.dispose();
+      removeSignalHandlers();
+      reject(error);
+    });
     child.on("exit", (code, signal) => {
+      supervisor.dispose();
+      removeSignalHandlers();
       if (signal) {
         process.kill(process.pid, signal);
         return;

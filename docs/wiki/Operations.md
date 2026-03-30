@@ -20,7 +20,7 @@ Alternative CLI run:
 ```bash
 npm run cli
 # or
-npx vibe-pal
+npx den-ai
 ```
 
 CLI can auto-install missing `ttyd`/`tmux` depending on platform strategy ([bin/viba.mjs](../../bin/viba.mjs)).
@@ -81,7 +81,7 @@ This repository uses GitHub Actions release automation:
 
 NPM package expectations:
 - Package includes prebuilt `.next` artifacts per `files` list in [package.json](../../package.json).
-- `vibe-pal` production start assumes `.next/BUILD_ID` exists ([bin/viba.mjs](../../bin/viba.mjs)).
+- `den-ai` production start assumes `.next/BUILD_ID` exists ([bin/viba.mjs](../../bin/viba.mjs)).
 
 ## Config, Secrets, and Environments
 

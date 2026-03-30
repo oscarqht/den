@@ -4,7 +4,7 @@
 
 ```text
 .
-├── bin/                     # CLI launcher (vibe-pal)
+├── bin/                     # CLI launcher (den-ai)
 ├── src/
 │   ├── app/                 # Next.js App Router pages, APIs, server actions
 │   ├── components/          # UI components (session, git, file browsers)
@@ -65,7 +65,7 @@ Primary references:
 - Root middleware and providers are loaded from [src/proxy.ts](../../src/proxy.ts) and [src/app/providers.tsx](../../src/app/providers.tsx).
 
 ### CLI runtime
-- Executable `vibe-pal` points to [bin/viba.mjs](../../bin/viba.mjs) via `bin` field in [package.json](../../package.json).
+- Executable `den-ai` points to [bin/viba.mjs](../../bin/viba.mjs) via `bin` field in [package.json](../../package.json).
 - CLI parses args with [src/lib/cli-args.mjs](../../src/lib/cli-args.mjs), ensures `ttyd`/`tmux`, optionally opens browser.
 
 ## Configuration Locations

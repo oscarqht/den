@@ -3,7 +3,7 @@
 ## What This Feature Does
 
 User-facing behavior:
-- Provides `vibe-pal` CLI to run Palx in dev or production mode.
+- Provides `den-ai` CLI to run Den in dev or production mode.
 - Auto-detects/installs runtime dependencies (`ttyd` and `tmux`).
 - Auto-opens browser in production mode unless disabled (`BROWSER=none|false|0`).
 - Ensures Codex skills are installed globally when missing.
@@ -25,10 +25,10 @@ Core files: [bin/viba.mjs](../../../bin/viba.mjs), [src/lib/cli-args.mjs](../../
 ## Public Interfaces
 
 ### CLI
-- `vibe-pal`
-- `vibe-pal --dev`
-- `vibe-pal --port <n>` or `-p <n>`
-- `vibe-pal --help` / `-h`
+- `den-ai`
+- `den-ai --dev`
+- `den-ai --port <n>` or `-p <n>`
+- `den-ai --help` / `-h`
 
 ### Environment-sensitive behavior
 - `PORT`: default/override unless explicit `--port`.
@@ -46,7 +46,7 @@ Core files: [bin/viba.mjs](../../../bin/viba.mjs), [src/lib/cli-args.mjs](../../
 
 ```mermaid
 flowchart TD
-  A[Run vibe-pal] --> B[parse args]
+  A[Run den-ai] --> B[parse args]
   B --> C[ensure ttyd installed]
   C --> E[ensure tmux installed]
   E --> G[ensure Codex skills]

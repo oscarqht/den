@@ -73,7 +73,7 @@ If `npm run tailscale` had to bring the machine onto the tailnet itself, `npm ru
 ### Run with `npx`
 
 ```bash
-npx vibe-pal
+npx den-ai
 ```
 
 Den starts on an available local port, usually `3200`.

@@ -5,7 +5,7 @@
 This codebase exposes three interface categories:
 - HTTP APIs in `src/app/api/*`.
 - Next.js server actions in `src/app/actions/*` (invoked from client components).
-- CLI interface via `vibe-pal` launcher.
+- CLI interface via `den-ai` launcher.
 
 ## HTTP APIs
 
@@ -77,7 +77,7 @@ These are consumed heavily by:
 
 ## CLI Interface
 
-`vibe-pal` launcher interfaces:
+`den-ai` launcher interfaces:
 - `--dev`
 - `--port <n>` / `-p <n>`
 - `--help` / `-h`

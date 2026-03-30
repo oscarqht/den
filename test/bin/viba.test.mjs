@@ -81,8 +81,8 @@ describe('getInstallStrategies', () => {
     const thisFile = fileURLToPath(import.meta.url);
     const repoRoot = path.resolve(path.dirname(thisFile), '../..');
     const sourceBin = path.join(repoRoot, 'bin', 'viba.mjs');
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-pal-bin-'));
-    const symlinkBin = path.join(tempDir, 'vibe-pal');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'den-ai-bin-'));
+    const symlinkBin = path.join(tempDir, 'den-ai');
 
     try {
       try {
@@ -98,7 +98,7 @@ describe('getInstallStrategies', () => {
       });
 
       assert.strictEqual(result.status, 0);
-      assert.match(result.stdout, /Usage: vibe-pal \[options\]/);
+      assert.match(result.stdout, /Usage: den-ai \[options\]/);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

@@ -8,7 +8,7 @@ import { syncNextNativeShims } from "../src/lib/next-native-shims.mjs";
 const tempDirs = [];
 
 function makeTempDir() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "vibe-pal-next-shims-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-ai-next-shims-"));
   tempDirs.push(tempDir);
   return tempDir;
 }
@@ -38,7 +38,7 @@ describe("syncNextNativeShims", () => {
     );
     const installedPackageRoot = path.join(tempRoot, "node_modules", "better-sqlite3");
 
-    writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "vibe-pal" }));
+    writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "den-ai" }));
     writeFile(path.join(tracedPackageRoot, "package.json"), JSON.stringify({ name: "better-sqlite3" }));
     writeFile(
       path.join(tracedPackageRoot, "build", "Release", "better_sqlite3.node"),
@@ -77,7 +77,7 @@ describe("syncNextNativeShims", () => {
     );
     const installedPackageRoot = path.join(tempRoot, "node_modules", "keytar");
 
-    writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "vibe-pal" }));
+    writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "den-ai" }));
     writeFile(path.join(sourcePackageRoot, "package.json"), JSON.stringify({ name: "keytar" }));
     writeFile(path.join(installedPackageRoot, "package.json"), JSON.stringify({ name: "keytar" }));
     writeFile(path.join(installedPackageRoot, "lib", "keytar.js"), "export default {};");

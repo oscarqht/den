@@ -1,5 +1,5 @@
 {
-  "name": "vibe-pal",
+  "name": "den-ai",
   "version": "1.5.0",
   "private": false,
   "description": "Den is a local control center for AI coding work. It gives every task its own isolated workspace, so agents can work in parallel, stay organized, and make changes you can review with confidence.",
@@ -8,7 +8,7 @@
     "url": "https://github.com/m0o0scar/palx"
   },
   "bin": {
-    "vibe-pal": "bin/viba.mjs"
+    "den-ai": "bin/viba.mjs"
   },
   "files": [
     "bin",

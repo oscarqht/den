@@ -331,7 +331,7 @@ function ensureCodexSkillsInstalled() {
 }
 
 function printHelp() {
-  console.log(`Usage: vibe-pal [options]
+  console.log(`Usage: den-ai [options]
 
 Options:
   -p, --port <port>  Port to run on (default: 3200)

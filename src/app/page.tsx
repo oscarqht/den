@@ -10,7 +10,7 @@ export default async function Home() {
 
   return (
     <AppPageSurface
-      githubHref="https://github.com/m0o0scar/palx"
+      githubHref="https://github.com/m0o0scar/den"
       contentClassName="flex min-h-screen flex-col items-center justify-start p-4 md:p-6"
     >
       <main className="relative z-10 flex w-full flex-col items-center justify-start transition-colors">

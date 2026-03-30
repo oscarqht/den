@@ -8,6 +8,11 @@ import type { ComponentType, MouseEvent } from 'react';
 import appIcon from '@/app/icon.png';
 import { HomeRepoCard } from './HomeRepoCard';
 
+type HomeProjectServiceStatus = {
+  configured: boolean;
+  running: boolean;
+};
+
 export type HomeDashboardProps = {
   error: string | null;
   isLoaded: boolean;
@@ -29,6 +34,8 @@ export type HomeDashboardProps = {
   brokenProjectCardIcons: Record<string, boolean>;
   projectGitReposByPath: Record<string, HomeProjectGitRepo[]>;
   discoveringProjectGitRepos: Record<string, boolean>;
+  projectServiceStatusByProject: Record<string, HomeProjectServiceStatus | undefined>;
+  projectServiceActionStateByProject: Record<string, 'start' | 'stop' | 'restart' | null | undefined>;
   getProjectDisplayName: (project: string) => string;
   getProjectSecondaryLabel: (project: string) => string;
   isProjectOpenable: (project: string) => boolean;
@@ -41,6 +48,12 @@ export type HomeDashboardProps = {
   onCycleThemeMode: () => void;
   onSelectProject: (project: string) => void | Promise<boolean>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
+  onProjectServiceAction: (
+    event: MouseEvent,
+    project: string,
+    action: 'start' | 'stop' | 'restart',
+  ) => void | Promise<void>;
+  onOpenProjectServiceLog: (event: MouseEvent, project: string) => void | Promise<void>;
   onOpenProjectSettings: (event: MouseEvent, project: string) => void | Promise<void>;
   onRemoveRecent: (event: MouseEvent, project: string) => void;
   onProjectIconError: (project: string) => void;
@@ -70,6 +83,8 @@ export function HomeDashboard({
   brokenProjectCardIcons,
   projectGitReposByPath,
   discoveringProjectGitRepos,
+  projectServiceStatusByProject,
+  projectServiceActionStateByProject,
   getProjectDisplayName,
   getProjectSecondaryLabel,
   isProjectOpenable,
@@ -82,6 +97,8 @@ export function HomeDashboard({
   onCycleThemeMode,
   onSelectProject,
   onOpenGitWorkspace,
+  onProjectServiceAction,
+  onOpenProjectServiceLog,
   onOpenProjectSettings,
   onRemoveRecent,
   onProjectIconError,
@@ -284,8 +301,13 @@ export function HomeDashboard({
                 showProjectIcon={!!projectCardIconByPath[project] && !brokenProjectCardIcons[project]}
                 projectGitRepos={projectGitReposByPath[project]}
                 isDiscoveringProjectGitRepos={!!discoveringProjectGitRepos[project]}
+                isProjectServiceConfigured={!!projectServiceStatusByProject[project]?.configured}
+                isProjectServiceRunning={!!projectServiceStatusByProject[project]?.running}
+                projectServiceActionState={projectServiceActionStateByProject[project] ?? null}
                 onSelectProject={onSelectProject}
                 onOpenGitWorkspace={onOpenGitWorkspace}
+                onProjectServiceAction={onProjectServiceAction}
+                onOpenProjectServiceLog={onOpenProjectServiceLog}
                 onOpenProjectSettings={onOpenProjectSettings}
                 onRemoveRecent={onRemoveRecent}
                 onProjectIconError={onProjectIconError}

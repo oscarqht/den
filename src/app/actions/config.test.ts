@@ -127,4 +127,22 @@ describe('config global agent defaults', () => {
     assert.equal(updated.projectSettings[project.id]?.agentReasoningEffort, undefined);
     assert.equal(updated.projectSettings[projectRoot]?.agentReasoningEffort, undefined);
   });
+
+  it('round-trips project service commands', async () => {
+    const projectRoot = path.join(tempHome, 'project-service-config');
+    const project = storeModule.addProject({
+      name: 'Project Service Config',
+      folderPaths: [projectRoot],
+    });
+
+    const updated = await configModule.updateProjectSettings(project.id, {
+      serviceStartCommand: 'npm run service:start',
+      serviceStopCommand: 'npm run service:stop',
+    });
+
+    assert.equal(updated.projectSettings[project.id]?.serviceStartCommand, 'npm run service:start');
+    assert.equal(updated.projectSettings[project.id]?.serviceStopCommand, 'npm run service:stop');
+    assert.equal(updated.projectSettings[projectRoot]?.serviceStartCommand, 'npm run service:start');
+    assert.equal(updated.projectSettings[projectRoot]?.serviceStopCommand, 'npm run service:stop');
+  });
 });

@@ -94,6 +94,8 @@ type SessionMode = 'fast' | 'plan';
 type ThemeMode = 'auto' | 'light' | 'dark';
 const DEFAULT_PROJECT_STARTUP_COMMAND = '';
 const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
+const DEFAULT_PROJECT_SERVICE_START_COMMAND = '';
+const DEFAULT_PROJECT_SERVICE_STOP_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
 const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
 const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
@@ -406,6 +408,8 @@ export default function GitRepoSelector({
   const [repoAlias, setRepoAlias] = useState<string>('');
   const [repoStartupCommand, setRepoStartupCommand] = useState<string>(DEFAULT_PROJECT_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState<string>(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+  const [repoServiceStartCommand, setRepoServiceStartCommand] = useState<string>(DEFAULT_PROJECT_SERVICE_START_COMMAND);
+  const [repoServiceStopCommand, setRepoServiceStopCommand] = useState<string>(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
   const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
@@ -636,6 +640,8 @@ export default function GitRepoSelector({
     setRepoForSettings(null);
     setRepoStartupCommand(DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoServiceStartCommand(DEFAULT_PROJECT_SERVICE_START_COMMAND);
+    setRepoServiceStopCommand(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
     setProjectIconPathForSettings(null);
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
@@ -2039,6 +2045,8 @@ export default function GitRepoSelector({
     setRepoAlias(settings?.alias?.trim() || '');
     setRepoStartupCommand(settings?.startupScript ?? DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoServiceStartCommand(settings?.serviceStartCommand ?? DEFAULT_PROJECT_SERVICE_START_COMMAND);
+    setRepoServiceStopCommand(settings?.serviceStopCommand ?? DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
     setProjectIconPathForSettings(repoCardIconByRepo[repo] ?? null);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
@@ -2048,6 +2056,8 @@ export default function GitRepoSelector({
     if (!repoForSettings) return;
     const startupCommandToSave = repoStartupCommand.trim() || DEFAULT_PROJECT_STARTUP_COMMAND;
     const devServerCommandToSave = repoDevServerCommand.trim() || DEFAULT_PROJECT_DEV_SERVER_COMMAND;
+    const serviceStartCommandToSave = repoServiceStartCommand.trim() || DEFAULT_PROJECT_SERVICE_START_COMMAND;
+    const serviceStopCommandToSave = repoServiceStopCommand.trim() || DEFAULT_PROJECT_SERVICE_STOP_COMMAND;
 
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
@@ -2056,6 +2066,8 @@ export default function GitRepoSelector({
       const newConfig = await updateProjectSettings(repoForSettings, {
         startupScript: startupCommandToSave,
         devServerScript: devServerCommandToSave,
+        serviceStartCommand: serviceStartCommandToSave,
+        serviceStopCommand: serviceStopCommandToSave,
         alias: aliasToSave,
       });
       setConfig(newConfig);
@@ -3230,7 +3242,11 @@ export default function GitRepoSelector({
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}
+          projectServiceStatusByProject={{}}
+          projectServiceActionStateByProject={{}}
           onOpenQuickCreate={() => {}}
+          onProjectServiceAction={async () => {}}
+          onOpenProjectServiceLog={async () => {}}
           onOpenProjectSettings={handleOpenRepoSettings}
           onRemoveRecent={handleRemoveRecent}
           onEditQuickCreateDraft={() => {}}
@@ -3255,8 +3271,12 @@ export default function GitRepoSelector({
           defaultRoot={config?.defaultRoot || undefined}
           projectStartupCommand={repoStartupCommand}
           projectDevServerCommand={repoDevServerCommand}
+          projectServiceStartCommand={repoServiceStartCommand}
+          projectServiceStopCommand={repoServiceStopCommand}
           defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
           defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
+          defaultProjectServiceStartCommand={DEFAULT_PROJECT_SERVICE_START_COMMAND}
+          defaultProjectServiceStopCommand={DEFAULT_PROJECT_SERVICE_STOP_COMMAND}
           projectIconPath={projectIconPathForSettings}
           isSavingProjectSettings={isSavingRepoSettings}
           isUploadingProjectIcon={isUploadingProjectIcon}
@@ -3266,6 +3286,8 @@ export default function GitRepoSelector({
           onRemoveFolderPath={() => {}}
           onStartupCommandChange={setRepoStartupCommand}
           onDevServerCommandChange={setRepoDevServerCommand}
+          onServiceStartCommandChange={setRepoServiceStartCommand}
+          onServiceStopCommandChange={setRepoServiceStopCommand}
           onUploadIcon={(iconPath) => {
             void handleUploadProjectIcon(iconPath);
           }}

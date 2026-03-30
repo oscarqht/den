@@ -1,4 +1,13 @@
-import { ChevronRight, Settings, X, GitBranch as GitBranchIcon } from 'lucide-react';
+import {
+  ChevronRight,
+  MoreHorizontal,
+  Play,
+  RotateCw,
+  Settings,
+  Square,
+  X,
+  GitBranch as GitBranchIcon,
+} from 'lucide-react';
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import { getBaseName } from '@/lib/path';
@@ -19,8 +28,17 @@ export type HomeRepoCardProps = {
   showProjectIcon: boolean;
   projectGitRepos?: HomeProjectGitRepo[];
   isDiscoveringProjectGitRepos: boolean;
+  isProjectServiceConfigured?: boolean;
+  isProjectServiceRunning?: boolean;
+  projectServiceActionState?: 'start' | 'stop' | 'restart' | null;
   onSelectProject: (project: string) => void | Promise<boolean>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
+  onProjectServiceAction: (
+    event: ReactMouseEvent,
+    project: string,
+    action: 'start' | 'stop' | 'restart',
+  ) => void | Promise<void>;
+  onOpenProjectServiceLog: (event: ReactMouseEvent, project: string) => void | Promise<void>;
   onOpenProjectSettings: (event: ReactMouseEvent, project: string) => void | Promise<void>;
   onRemoveRecent: (event: ReactMouseEvent, project: string) => void;
   onProjectIconError: (project: string) => void;
@@ -45,8 +63,13 @@ export function HomeRepoCard({
   showProjectIcon,
   projectGitRepos,
   isDiscoveringProjectGitRepos,
+  isProjectServiceConfigured = false,
+  isProjectServiceRunning = false,
+  projectServiceActionState = null,
   onSelectProject,
   onOpenGitWorkspace,
+  onProjectServiceAction,
+  onOpenProjectServiceLog,
   onOpenProjectSettings,
   onRemoveRecent,
   onProjectIconError,
@@ -57,7 +80,9 @@ export function HomeRepoCard({
   const secondaryLabel = projectSecondaryLabel || project;
   const cardGradient = getStableRepoCardGradient(normalizePathForComparison(project));
   const [isGitRepoMenuOpen, setIsGitRepoMenuOpen] = useState(false);
+  const [isServiceMenuOpen, setIsServiceMenuOpen] = useState(false);
   const gitRepoMenuRef = useRef<HTMLDivElement | null>(null);
+  const serviceMenuRef = useRef<HTMLDivElement | null>(null);
   const hasCustomProjectIcon = showProjectIcon && !!projectIconPath;
   const projectIconUrl = hasCustomProjectIcon
     ? getProjectIconUrl(projectIconPath)
@@ -69,16 +94,18 @@ export function HomeRepoCard({
   const shouldShowGitWorkspaceButton = isDiscoveringProjectGitRepos || !hasDiscoveredGitRepos || hasGitRepos;
 
   useEffect(() => {
-    if (!isGitRepoMenuOpen) return;
+    if (!isGitRepoMenuOpen && !isServiceMenuOpen) return;
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
       if (gitRepoMenuRef.current?.contains(event.target as Node)) return;
+      if (serviceMenuRef.current?.contains(event.target as Node)) return;
       setIsGitRepoMenuOpen(false);
+      setIsServiceMenuOpen(false);
     };
     document.addEventListener('mousedown', handleDocumentClick);
     return () => {
       document.removeEventListener('mousedown', handleDocumentClick);
     };
-  }, [isGitRepoMenuOpen]);
+  }, [isGitRepoMenuOpen, isServiceMenuOpen]);
 
   return (
     <div
@@ -144,11 +171,92 @@ export function HomeRepoCard({
                   {projectName}
                 </h3>
                 <div className="flex shrink-0 items-center gap-2">
+                  {isProjectServiceConfigured ? (
+                    <>
+                      {isProjectServiceRunning ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void onOpenProjectServiceLog(event, project);
+                          }}
+                          className="inline-flex h-6 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+                          title="View service output"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Live
+                        </button>
+                      ) : null}
+                      <div className="relative" ref={serviceMenuRef}>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setIsGitRepoMenuOpen(false);
+                            setIsServiceMenuOpen((previous) => !previous);
+                          }}
+                          className="btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-600 opacity-100 shadow-none transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:bg-white/85 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:disabled:hover:bg-slate-900/90"
+                          title="Service controls"
+                          disabled={projectServiceActionState !== null}
+                        >
+                          {projectServiceActionState ? (
+                            <span className="loading loading-spinner loading-xs" />
+                          ) : (
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        {isServiceMenuOpen ? (
+                          <div className="absolute right-0 top-8 z-30 w-36 rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-[#30363d] dark:bg-[#161b22]">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-[#30363d]/70"
+                              disabled={isProjectServiceRunning}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setIsServiceMenuOpen(false);
+                                void onProjectServiceAction(event, project, 'start');
+                              }}
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Start
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-[#30363d]/70"
+                              disabled={!isProjectServiceRunning}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setIsServiceMenuOpen(false);
+                                void onProjectServiceAction(event, project, 'stop');
+                              }}
+                            >
+                              <Square className="h-3.5 w-3.5" />
+                              Stop
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-[#30363d]/70"
+                              disabled={!isProjectServiceRunning}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setIsServiceMenuOpen(false);
+                                void onProjectServiceAction(event, project, 'restart');
+                              }}
+                            >
+                              <RotateCw className="h-3.5 w-3.5" />
+                              Restart
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
                   {isProjectOpenable && shouldShowGitWorkspaceButton && (
                     <div className="relative" ref={gitRepoMenuRef}>
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
+                          setIsServiceMenuOpen(false);
                           if (isDiscoveringProjectGitRepos) return;
                           if (!hasMultipleGitRepos) {
                             onOpenGitWorkspace(project);

@@ -14,6 +14,14 @@ import {
 import { getConfig, updateConfig, updateProjectSettings, type Config } from '@/app/actions/config';
 import { listCredentials } from '@/app/actions/credentials';
 import { listDrafts, type DraftMetadata } from '@/app/actions/draft';
+import {
+  getProjectServiceLog,
+  getProjectServiceStatuses,
+  restartProjectService,
+  startProjectService,
+  stopProjectService,
+  type ProjectServiceStatus,
+} from '@/app/actions/project-service';
 import { cloneRemoteProject, discoverProjectGitRepos } from '@/app/actions/project';
 import {
   deleteQuickCreateDraft,
@@ -64,6 +72,9 @@ const CreateProjectDialog = dynamic(() =>
 const CloneRemoteDialog = dynamic(() =>
   import('./git-repo-selector/CloneRemoteDialog').then((module) => module.CloneRemoteDialog),
 );
+const ProjectServiceLogModal = dynamic(() =>
+  import('./git-repo-selector/ProjectServiceLogModal').then((module) => module.ProjectServiceLogModal),
+);
 const QuickCreateTaskDialog = dynamic(() =>
   import('./QuickCreateTaskDialog').then((module) => module.QuickCreateTaskDialog),
 );
@@ -72,10 +83,14 @@ type ThemeMode = 'auto' | 'light' | 'dark';
 
 const DEFAULT_PROJECT_STARTUP_COMMAND = '';
 const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
+const DEFAULT_PROJECT_SERVICE_START_COMMAND = '';
+const DEFAULT_PROJECT_SERVICE_STOP_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
 const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 4000;
 const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 3;
 const HOME_PROJECT_SORT_STORAGE_KEY = 'palx-home-project-sort';
+const HOME_PROJECT_SERVICE_STATUS_POLL_MS = 4000;
+const HOME_PROJECT_SERVICE_LOG_POLL_MS = 2000;
 
 const repoCardTiltFrameByElement = new WeakMap<HTMLElement, number>();
 const repoCardTiltRectByElement = new WeakMap<HTMLElement, DOMRect>();
@@ -145,6 +160,8 @@ export default function HomeDashboardContainer({
   const [projectFolderPaths, setProjectFolderPaths] = useState<string[]>([]);
   const [repoStartupCommand, setRepoStartupCommand] = useState(DEFAULT_PROJECT_STARTUP_COMMAND);
   const [repoDevServerCommand, setRepoDevServerCommand] = useState(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+  const [repoServiceStartCommand, setRepoServiceStartCommand] = useState(DEFAULT_PROJECT_SERVICE_START_COMMAND);
+  const [repoServiceStopCommand, setRepoServiceStopCommand] = useState(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
   const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
@@ -170,6 +187,14 @@ export default function HomeDashboardContainer({
     projectLabel: string;
     repos: HomeProjectGitRepo[];
   } | null>(null);
+  const [projectServiceStatusByProject, setProjectServiceStatusByProject] = useState<Record<string, ProjectServiceStatus | undefined>>({});
+  const [projectServiceActionStateByProject, setProjectServiceActionStateByProject] = useState<Record<string, 'start' | 'stop' | 'restart' | null>>({});
+  const [projectServiceLogProject, setProjectServiceLogProject] = useState<string | null>(null);
+  const [projectServiceLogOutput, setProjectServiceLogOutput] = useState('');
+  const [projectServiceLogCommand, setProjectServiceLogCommand] = useState<string | undefined>(undefined);
+  const [projectServiceLogRunning, setProjectServiceLogRunning] = useState(false);
+  const [projectServiceLogError, setProjectServiceLogError] = useState<string | null>(null);
+  const [isProjectServiceLogLoading, setIsProjectServiceLogLoading] = useState(false);
   const [projectPendingDeleteId, setProjectPendingDeleteId] = useState<string | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = useState(false);
@@ -382,6 +407,8 @@ export default function HomeDashboardContainer({
     setProjectFolderPaths([]);
     setRepoStartupCommand(DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoServiceStartCommand(DEFAULT_PROJECT_SERVICE_START_COMMAND);
+    setRepoServiceStopCommand(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
     setProjectIconPathForSettings(null);
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
@@ -405,6 +432,8 @@ export default function HomeDashboardContainer({
     setProjectFolderPaths(resolvedProject.project.folderPaths);
     setRepoStartupCommand(settings?.startupScript ?? DEFAULT_PROJECT_STARTUP_COMMAND);
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
+    setRepoServiceStartCommand(settings?.serviceStartCommand ?? DEFAULT_PROJECT_SERVICE_START_COMMAND);
+    setRepoServiceStopCommand(settings?.serviceStopCommand ?? DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
     setProjectIconPathForSettings(resolvedProject.project.iconPath ?? null);
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
@@ -422,6 +451,10 @@ export default function HomeDashboardContainer({
     const startupCommandToSave = repoStartupCommand.trim() || DEFAULT_PROJECT_STARTUP_COMMAND;
     const devServerCommandToSave =
       repoDevServerCommand.trim() || DEFAULT_PROJECT_DEV_SERVER_COMMAND;
+    const serviceStartCommandToSave =
+      repoServiceStartCommand.trim() || DEFAULT_PROJECT_SERVICE_START_COMMAND;
+    const serviceStopCommandToSave =
+      repoServiceStopCommand.trim() || DEFAULT_PROJECT_SERVICE_STOP_COMMAND;
 
     setIsSavingRepoSettings(true);
     setRepoSettingsError(null);
@@ -445,6 +478,8 @@ export default function HomeDashboardContainer({
       const nextConfig = await updateProjectSettings(projectForSettingsId, {
         startupScript: startupCommandToSave,
         devServerScript: devServerCommandToSave,
+        serviceStartCommand: serviceStartCommandToSave,
+        serviceStopCommand: serviceStopCommandToSave,
         alias: null,
       });
       setConfig(nextConfig);
@@ -466,6 +501,8 @@ export default function HomeDashboardContainer({
   }, [
     dismissRepoSettingsDialog,
     repoDevServerCommand,
+    repoServiceStartCommand,
+    repoServiceStopCommand,
     repoStartupCommand,
     projectFolderPaths,
     projectForSettingsId,
@@ -930,6 +967,17 @@ export default function HomeDashboardContainer({
     resolveProjectEntry(projectReference).isOpenable
   ), [resolveProjectEntry]);
 
+  const getProjectServiceStartCommand = useCallback((projectReference: string): string => {
+    const resolvedProject = resolveProjectEntry(projectReference);
+    const settings = (resolvedProject.project
+      ? (
+        config?.projectSettings?.[resolvedProject.project.id]
+        || (resolvedProject.primaryPath ? config?.projectSettings?.[resolvedProject.primaryPath] : undefined)
+      )
+      : (resolvedProject.primaryPath ? config?.projectSettings?.[resolvedProject.primaryPath] : undefined)) || {};
+    return settings.serviceStartCommand?.trim() || '';
+  }, [config?.projectSettings, resolveProjectEntry]);
+
   useEffect(() => {
     const unsubscribe = subscribeToQuickCreateJobUpdates((payload) => {
       setQuickCreateActiveCount(payload.activeCount);
@@ -994,6 +1042,114 @@ export default function HomeDashboardContainer({
       );
     });
   }, [getProjectDisplayName, getProjectSecondaryLabel, homeSearchQuery, sortedRecentProjects]);
+
+  const trackedProjectServiceReferences = useMemo(() => {
+    const references = filteredRecentProjects.filter((projectReference) => Boolean(getProjectServiceStartCommand(projectReference)));
+    if (projectServiceLogProject && !references.includes(projectServiceLogProject)) {
+      references.push(projectServiceLogProject);
+    }
+    return references;
+  }, [filteredRecentProjects, getProjectServiceStartCommand, projectServiceLogProject]);
+  const trackedProjectServiceReferencesKey = useMemo(
+    () => JSON.stringify(trackedProjectServiceReferences),
+    [trackedProjectServiceReferences],
+  );
+
+  const refreshProjectServiceStatuses = useCallback(async (projectReferences: string[]) => {
+    if (projectReferences.length === 0) {
+      setProjectServiceStatusByProject({});
+      return;
+    }
+
+    const nextStatuses = await getProjectServiceStatuses(projectReferences);
+    setProjectServiceStatusByProject((previous) => {
+      const merged: Record<string, ProjectServiceStatus | undefined> = {};
+      for (const projectReference of projectReferences) {
+        merged[projectReference] = nextStatuses[projectReference];
+      }
+      for (const [key, value] of Object.entries(previous)) {
+        if (!(key in merged)) {
+          merged[key] = value;
+        }
+      }
+      return merged;
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const poll = async () => {
+      try {
+        await refreshProjectServiceStatuses(trackedProjectServiceReferences);
+      } catch (error) {
+        console.error('Failed to refresh project service statuses:', error);
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(poll, HOME_PROJECT_SERVICE_STATUS_POLL_MS);
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [refreshProjectServiceStatuses, trackedProjectServiceReferencesKey]);
+
+  const refreshProjectServiceLog = useCallback(async (projectReference: string) => {
+    setIsProjectServiceLogLoading(true);
+    try {
+      const result = await getProjectServiceLog(projectReference);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load project service log.');
+      }
+
+      setProjectServiceLogOutput(result.output || '');
+      setProjectServiceLogCommand(result.status?.command);
+      setProjectServiceLogRunning(Boolean(result.status?.running));
+      setProjectServiceLogError(null);
+      setProjectServiceStatusByProject((previous) => ({
+        ...previous,
+        [projectReference]: result.status,
+      }));
+    } catch (error) {
+      setProjectServiceLogError(error instanceof Error ? error.message : 'Failed to load project service log.');
+    } finally {
+      setIsProjectServiceLogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!projectServiceLogProject) return;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const poll = async () => {
+      try {
+        await refreshProjectServiceLog(projectServiceLogProject);
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(poll, HOME_PROJECT_SERVICE_LOG_POLL_MS);
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [projectServiceLogProject, refreshProjectServiceLog]);
 
   const handleHomeProjectSortChange = useCallback(async (nextSort: HomeProjectSort) => {
     writeStoredHomeProjectSort(nextSort);
@@ -1091,6 +1247,52 @@ export default function HomeDashboardContainer({
     });
   }, []);
 
+  const handleProjectServiceAction = useCallback(async (
+    event: ReactMouseEvent,
+    projectReference: string,
+    action: 'start' | 'stop' | 'restart',
+  ) => {
+    event.stopPropagation();
+    setProjectServiceActionStateByProject((previous) => ({ ...previous, [projectReference]: action }));
+
+    try {
+      const result = action === 'start'
+        ? await startProjectService(projectReference)
+        : action === 'stop'
+          ? await stopProjectService(projectReference)
+          : await restartProjectService(projectReference);
+
+      if (!result.success) {
+        throw new Error(result.error || `Failed to ${action} service.`);
+      }
+
+      setProjectServiceStatusByProject((previous) => ({
+        ...previous,
+        [projectReference]: result.status,
+      }));
+      await refreshProjectServiceStatuses([projectReference]);
+    } catch (error) {
+      toast({
+        type: 'error',
+        title: 'Service action failed',
+        description: error instanceof Error ? error.message : `Failed to ${action} service.`,
+      });
+    } finally {
+      setProjectServiceActionStateByProject((previous) => ({ ...previous, [projectReference]: null }));
+    }
+  }, [refreshProjectServiceStatuses, toast]);
+
+  const handleOpenProjectServiceLog = useCallback(async (
+    event: ReactMouseEvent,
+    projectReference: string,
+  ) => {
+    event.stopPropagation();
+    setProjectServiceLogProject(projectReference);
+    setProjectServiceLogError(null);
+    setProjectServiceLogOutput('');
+    await refreshProjectServiceLog(projectReference);
+  }, [refreshProjectServiceLog]);
+
   const handleOpenQuickCreateDialog = useCallback((draft?: QuickCreateDraft | null) => {
     setQuickCreateDraftForEdit(draft ?? null);
     setIsQuickCreateDialogOpen(true);
@@ -1161,6 +1363,8 @@ export default function HomeDashboardContainer({
         brokenProjectCardIcons={brokenRepoCardIcons}
         projectGitReposByPath={projectGitReposByPath}
         discoveringProjectGitRepos={discoveringHomeProjectGitRepos}
+        projectServiceStatusByProject={projectServiceStatusByProject}
+        projectServiceActionStateByProject={projectServiceActionStateByProject}
         getProjectDisplayName={getProjectDisplayName}
         getProjectSecondaryLabel={getProjectSecondaryLabel}
         isProjectOpenable={isProjectOpenable}
@@ -1173,6 +1377,8 @@ export default function HomeDashboardContainer({
         onCycleThemeMode={() => setThemeMode(nextThemeMode)}
         onSelectProject={handleSelectProject}
         onOpenGitWorkspace={handleOpenProjectGitWorkspace}
+        onProjectServiceAction={handleProjectServiceAction}
+        onOpenProjectServiceLog={handleOpenProjectServiceLog}
         onOpenProjectSettings={handleOpenRepoSettings}
         onRemoveRecent={handleRemoveRecent}
         onProjectIconError={handleRepoIconError}
@@ -1191,8 +1397,12 @@ export default function HomeDashboardContainer({
         defaultRoot={config?.defaultRoot || undefined}
         projectStartupCommand={repoStartupCommand}
         projectDevServerCommand={repoDevServerCommand}
+        projectServiceStartCommand={repoServiceStartCommand}
+        projectServiceStopCommand={repoServiceStopCommand}
         defaultProjectStartupCommand={DEFAULT_PROJECT_STARTUP_COMMAND}
         defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
+        defaultProjectServiceStartCommand={DEFAULT_PROJECT_SERVICE_START_COMMAND}
+        defaultProjectServiceStopCommand={DEFAULT_PROJECT_SERVICE_STOP_COMMAND}
         projectIconPath={projectIconPathForSettings}
         isSavingProjectSettings={isSavingRepoSettings}
         isUploadingProjectIcon={isUploadingProjectIcon}
@@ -1208,6 +1418,8 @@ export default function HomeDashboardContainer({
         }}
         onStartupCommandChange={setRepoStartupCommand}
         onDevServerCommandChange={setRepoDevServerCommand}
+        onServiceStartCommandChange={setRepoServiceStartCommand}
+        onServiceStopCommandChange={setRepoServiceStopCommand}
         onUploadIcon={(iconPath) => {
           void handleUploadProjectIcon(iconPath);
         }}
@@ -1217,6 +1429,23 @@ export default function HomeDashboardContainer({
         onClose={dismissRepoSettingsDialog}
         onSave={() => {
           void handleSaveRepoSettings();
+        }}
+      />
+
+      <ProjectServiceLogModal
+        isOpen={projectServiceLogProject !== null}
+        projectName={projectServiceLogProject ? getProjectDisplayName(projectServiceLogProject) : 'Project'}
+        command={projectServiceLogCommand}
+        output={projectServiceLogOutput}
+        running={projectServiceLogRunning}
+        isLoading={isProjectServiceLogLoading}
+        error={projectServiceLogError}
+        onClose={() => {
+          setProjectServiceLogProject(null);
+          setProjectServiceLogError(null);
+          setProjectServiceLogOutput('');
+          setProjectServiceLogCommand(undefined);
+          setProjectServiceLogRunning(false);
         }}
       />
 

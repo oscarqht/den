@@ -20,6 +20,8 @@ export interface ProjectSettings {
   agentReasoningEffort?: ReasoningEffort;
   startupScript?: string;
   devServerScript?: string;
+  serviceStartCommand?: string;
+  serviceStopCommand?: string;
   alias?: string | null;
   // Deprecated compatibility fields.
   lastBranch?: string;
@@ -73,6 +75,8 @@ type ProjectSettingsRow = {
   agent_reasoning_effort: string | null;
   startup_script: string | null;
   dev_server_script: string | null;
+  service_start_command: string | null;
+  service_stop_command: string | null;
   alias: string | null;
 };
 
@@ -87,6 +91,8 @@ function toProjectSettings(row: ProjectSettingsRow): ProjectSettings {
   if (normalizedReasoning) settings.agentReasoningEffort = normalizedReasoning;
   if (row.startup_script !== null) settings.startupScript = row.startup_script;
   if (row.dev_server_script !== null) settings.devServerScript = row.dev_server_script;
+  if (row.service_start_command !== null) settings.serviceStartCommand = row.service_start_command;
+  if (row.service_stop_command !== null) settings.serviceStopCommand = row.service_stop_command;
   if (row.alias !== null) settings.alias = row.alias;
   return settings;
 }
@@ -213,10 +219,10 @@ function writeConfig(config: Config): void {
     const insertProjectSettings = db.prepare(`
       INSERT INTO app_config_project_entity_settings (
         project_id, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, alias
+        startup_script, dev_server_script, service_start_command, service_stop_command, alias
       ) VALUES (
         @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @alias
+        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand, @alias
       )
     `);
     const normalizedProjectSettingsEntries = new Map<string, ProjectSettings>();
@@ -238,6 +244,8 @@ function writeConfig(config: Config): void {
         ),
         startupScript: normalizedProjectSettings.startupScript ?? null,
         devServerScript: normalizedProjectSettings.devServerScript ?? null,
+        serviceStartCommand: normalizedProjectSettings.serviceStartCommand ?? null,
+        serviceStopCommand: normalizedProjectSettings.serviceStopCommand ?? null,
         alias: normalizedProjectSettings.alias ?? null,
       });
     }
@@ -272,7 +280,7 @@ export async function getConfig(): Promise<Config> {
   const projectSettingsRows = db.prepare(`
     SELECT
       project_id, agent_provider, agent_model, agent_reasoning_effort,
-      startup_script, dev_server_script, alias
+      startup_script, dev_server_script, service_start_command, service_stop_command, alias
     FROM app_config_project_entity_settings
   `).all() as ProjectSettingsRow[];
 

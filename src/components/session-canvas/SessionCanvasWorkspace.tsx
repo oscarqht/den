@@ -1091,6 +1091,12 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
         return;
       }
 
+      const submitted = sendTerminalInput(runtime.term, `${bootstrapCommand}\r`);
+      if (submitted) {
+        onBootstrapComplete();
+        return;
+      }
+
       const pasted = sendTerminalInput(runtime.term, bootstrapCommand);
       const entered = sendTerminalEnter(runtime);
       if (pasted || entered) {

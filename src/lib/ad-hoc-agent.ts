@@ -55,6 +55,7 @@ export type BuildSessionAgentTerminalCommandOptions = {
   shellKind: TerminalShellKind;
   workingDirectory: string;
   prompt?: string | null;
+  promptFilePath?: string | null;
 };
 
 function buildCodexReasoningArgs(
@@ -144,10 +145,16 @@ function buildInteractiveProviderCommand(
   reasoningEffort: ReasoningEffort | undefined,
   shellKind: TerminalShellKind,
   prompt?: string,
+  promptReference?: string,
 ): string {
   const normalizedModel = model.trim();
   const normalizedReasoning = normalizeProviderReasoningEffort(provider, reasoningEffort);
   const normalizedPrompt = prompt?.trim() || '';
+  const resolvedPromptArgument = promptReference || (
+    normalizedPrompt
+      ? quoteShellArg(normalizedPrompt, shellKind)
+      : null
+  );
 
   if (provider === 'gemini') {
     return [
@@ -155,8 +162,8 @@ function buildInteractiveProviderCommand(
       normalizedModel
         ? `--model ${quoteShellArg(normalizedModel, shellKind)}`
         : null,
-      normalizedPrompt
-        ? `-p ${quoteShellArg(normalizedPrompt, shellKind)}`
+      resolvedPromptArgument
+        ? `-p ${resolvedPromptArgument}`
         : null,
     ]
       .filter(Boolean)
@@ -169,8 +176,8 @@ function buildInteractiveProviderCommand(
       normalizedModel
         ? `--model ${quoteShellArg(normalizedModel, shellKind)}`
         : null,
-      normalizedPrompt
-        ? `-p ${quoteShellArg(normalizedPrompt, shellKind)}`
+      resolvedPromptArgument
+        ? `-p ${resolvedPromptArgument}`
         : null,
     ]
       .filter(Boolean)
@@ -188,12 +195,29 @@ function buildInteractiveProviderCommand(
       ? `-m ${quoteShellArg(normalizedModel, shellKind)}`
       : null,
     ...buildCodexReasoningArgs(shellKind, normalizedReasoning),
-    normalizedPrompt
-      ? quoteShellArg(normalizedPrompt, shellKind)
+    resolvedPromptArgument
+      ? resolvedPromptArgument
       : null,
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+function buildPromptFileBootstrap(
+  shellKind: TerminalShellKind,
+  promptFilePath: string,
+): { setupStatement: string; promptReference: string } {
+  if (shellKind === 'powershell') {
+    return {
+      setupStatement: `$__palxPrompt = Get-Content -Raw -LiteralPath ${quoteShellArg(promptFilePath, shellKind)}`,
+      promptReference: '$__palxPrompt',
+    };
+  }
+
+  return {
+    setupStatement: `__palx_prompt="$(cat ${quoteShellArg(promptFilePath, shellKind)})"`,
+    promptReference: '"$__palx_prompt"',
+  };
 }
 
 export function buildAutoCommitAgentPrompt(
@@ -351,14 +375,20 @@ export function buildSessionAgentTerminalCommand({
   shellKind,
   workingDirectory,
   prompt,
+  promptFilePath,
 }: BuildSessionAgentTerminalCommandOptions): string {
   const normalizedPrompt = prompt?.trim() || '';
+  const normalizedPromptFilePath = promptFilePath?.trim() || '';
+  const promptBootstrap = normalizedPromptFilePath
+    ? buildPromptFileBootstrap(shellKind, normalizedPromptFilePath)
+    : null;
   const providerCommand = buildInteractiveProviderCommand(
     provider,
     model,
     reasoningEffort,
     shellKind,
-    normalizedPrompt,
+    promptBootstrap ? '' : normalizedPrompt,
+    promptBootstrap?.promptReference,
   );
 
   if (shellKind === 'powershell') {
@@ -368,6 +398,7 @@ export function buildSessionAgentTerminalCommand({
         "$env:NO_COLOR = '1'",
         "$env:FORCE_COLOR = '0'",
         "$env:TERM = 'xterm'",
+        promptBootstrap?.setupStatement,
         provider === 'codex'
           ? "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key | Out-Null }"
           : null,
@@ -380,6 +411,7 @@ export function buildSessionAgentTerminalCommand({
   return joinShellStatements(
     [
       buildShellSetDirectoryCommand(workingDirectory, shellKind),
+      promptBootstrap?.setupStatement,
       provider === 'codex'
         ? 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null 2>&1 || true; fi'
         : null,

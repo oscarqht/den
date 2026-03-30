@@ -15,6 +15,7 @@ import {
   getSessionMetadata,
   readSessionLaunchContext,
   terminateSessionStartupScript,
+  writeSessionPromptFile,
   type SessionLaunchContext,
   type SessionMetadata,
 } from './session';
@@ -414,6 +415,15 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       gitRepos: metadata.gitRepos,
       discoveredRepoRelativePaths: projectGitRepoRelativePaths,
     });
+    let initialPromptFilePath: string | null = null;
+    if (initialPrompt) {
+      const promptFileResult = await writeSessionPromptFile(sessionId, initialPrompt);
+      if (promptFileResult.success) {
+        initialPromptFilePath = promptFileResult.filePath ?? null;
+      } else {
+        console.warn('Failed to persist initial session prompt file; falling back to inline terminal bootstrap.', promptFileResult.error);
+      }
+    }
 
     const agentProvider = (
       parsedLaunch.launchContext?.agentProvider
@@ -430,6 +440,7 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       shellKind: terminalSources.shellKind,
       workingDirectory: metadata.workspacePath,
       prompt: initialPrompt,
+      promptFilePath: initialPromptFilePath,
     });
 
     return {

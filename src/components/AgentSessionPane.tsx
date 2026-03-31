@@ -712,7 +712,7 @@ function createPendingMessage(text: string, attachmentPaths: string[]): PendingM
   };
 }
 
-type VirtualHistoryRowProps = {
+type MeasuredHistoryRowProps = {
   item: SessionAgentHistoryItem;
   onMeasure: (key: string, height: number) => void;
   expandedItems: Record<string, boolean>;
@@ -728,7 +728,7 @@ type RenderHistoryItemOptions = {
   planFallbackStepsById?: Record<string, PlanStep[]>;
 };
 
-function VirtualHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded, planFallbackStepsById }: VirtualHistoryRowProps) {
+function MeasuredHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded, planFallbackStepsById }: MeasuredHistoryRowProps) {
   const itemKey = item.id;
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -1881,14 +1881,14 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           ) : !shouldVirtualizeHistory ? (
             <div className="space-y-3">
               {displayHistory.map((item) => (
-                <div key={item.id}>
-                  {renderHistoryItem(item, {
-                    ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
-                    expandedItems: expandedHistoryItems,
-                    onToggleExpanded: handleToggleExpanded,
-                    planFallbackStepsById,
-                  })}
-                </div>
+                <MeasuredHistoryRow
+                  key={item.id}
+                  item={item}
+                  onMeasure={handleMeasureHistoryItem}
+                  expandedItems={expandedHistoryItems}
+                  onToggleExpanded={handleToggleExpanded}
+                  planFallbackStepsById={planFallbackStepsById}
+                />
               ))}
             </div>
           ) : (
@@ -1907,7 +1907,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                       className="absolute left-0 right-0"
                       style={{ top }}
                     >
-                      <VirtualHistoryRow
+                      <MeasuredHistoryRow
                         item={item}
                         onMeasure={handleMeasureHistoryItem}
                         expandedItems={expandedHistoryItems}
@@ -1921,14 +1921,14 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               {liveTailHistory.length > 0 ? (
                 <div className="space-y-3">
                   {liveTailHistory.map((item) => (
-                    <div key={item.id}>
-                      {renderHistoryItem(item, {
-                        ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
-                        expandedItems: expandedHistoryItems,
-                        onToggleExpanded: handleToggleExpanded,
-                        planFallbackStepsById,
-                      })}
-                    </div>
+                    <MeasuredHistoryRow
+                      key={item.id}
+                      item={item}
+                      onMeasure={handleMeasureHistoryItem}
+                      expandedItems={expandedHistoryItems}
+                      onToggleExpanded={handleToggleExpanded}
+                      planFallbackStepsById={planFallbackStepsById}
+                    />
                   ))}
                 </div>
               ) : null}

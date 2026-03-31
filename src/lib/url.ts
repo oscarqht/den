@@ -52,6 +52,10 @@ export function isTailscaleHostname(rawValue: string): boolean {
         || hostname.startsWith('fd7a:115c:a1e0:');
 }
 
+export function shouldUseDeviceFilePicker(rawValue: string): boolean {
+    return !isLocalHostname(rawValue);
+}
+
 export const normalizePreviewUrl = (rawValue: string): string | null => {
     const trimmed = rawValue.trim();
     if (!trimmed) return null;

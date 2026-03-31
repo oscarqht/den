@@ -1,5 +1,5 @@
-import { createKeytarLoader, type KeytarModule } from './keytar-loader';
-import { getLocalDb } from './local-db';
+import { createKeytarLoader, type KeytarModule } from './keytar-loader.ts';
+import { readLocalState, updateLocalState } from './local-db.ts';
 
 const SERVICE_NAME = 'viba-agent-api-credentials';
 const SUPPORTED_AGENT_APIS = ['codex'] as const;
@@ -73,59 +73,31 @@ function toAgentApiCredential(
 async function writeAgentApiCredentialMetadata(
   metadata: AgentApiCredentialMetadata[],
 ): Promise<void> {
-  const db = getLocalDb();
-  const tx = db.transaction((rows: AgentApiCredentialMetadata[]) => {
-    db.prepare('DELETE FROM agent_api_credentials_metadata').run();
-    const insert = db.prepare(`
-      INSERT INTO agent_api_credentials_metadata (
-        agent, api_proxy, created_at, updated_at, keytar_account
-      ) VALUES (
-        @agent, @apiProxy, @createdAt, @updatedAt, @keytarAccount
-      )
-    `);
-    for (const row of rows) {
-      insert.run({
-        agent: row.agent,
-        apiProxy: row.apiProxy ?? null,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        keytarAccount: row.keytarAccount ?? null,
-      });
-    }
+  updateLocalState((state) => {
+    state.agentApiCredentialsMetadata = metadata.map((row) => ({
+      agent: row.agent,
+      apiProxy: row.apiProxy ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      keytarAccount: row.keytarAccount ?? null,
+    }));
   });
-  tx(metadata);
 }
 
 async function readAgentApiCredentialMetadata(): Promise<
   AgentApiCredentialMetadata[]
 > {
   try {
-    const db = getLocalDb();
-    const rows = db
-      .prepare(
-        `
-      SELECT agent, api_proxy, created_at, updated_at, keytar_account
-      FROM agent_api_credentials_metadata
-    `,
-      )
-      .all() as Array<{
-      agent: string;
-      api_proxy: string | null;
-      created_at: string;
-      updated_at: string;
-      keytar_account: string | null;
-    }>;
-
-    return rows
+    return readLocalState().agentApiCredentialsMetadata
       .filter((row): row is typeof row & { agent: AgentApiCredentialAgent } =>
         isSupportedAgentApi(row.agent),
       )
       .map((row) => ({
         agent: row.agent,
-        apiProxy: row.api_proxy ?? undefined,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        keytarAccount: row.keytar_account ?? undefined,
+        apiProxy: row.apiProxy ?? undefined,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        keytarAccount: row.keytarAccount ?? undefined,
       }));
   } catch (error) {
     console.error('Failed to read agent API credential metadata:', error);

@@ -4,9 +4,9 @@ import path from 'node:path';
 import {
   getFallbackKeytarAccountsForCredential,
   type CredentialLookupMetadata,
-} from './credential-token-fallback';
-import { createKeytarLoader, type KeytarModule } from './keytar-loader';
-import { getLocalDb } from './local-db';
+} from './credential-token-fallback.ts';
+import { createKeytarLoader, type KeytarModule } from './keytar-loader.ts';
+import { readLocalState, updateLocalState } from './local-db.ts';
 
 const SERVICE_NAME = 'viba-git-credentials';
 const LEGACY_CREDENTIALS_PATH = path.join(os.homedir(), '.viba', 'credentials.json');
@@ -152,57 +152,31 @@ function toCredential(metadata: CredentialMetadata): Credential {
 }
 
 async function writeCredentialsMetadata(metadata: CredentialMetadata[]): Promise<void> {
-  const db = getLocalDb();
-  const writeTx = db.transaction((rows: CredentialMetadata[]) => {
-    db.prepare('DELETE FROM credentials_metadata').run();
-    const insert = db.prepare(`
-      INSERT INTO credentials_metadata (
-        id, type, username, server_url, created_at, updated_at, keytar_account
-      ) VALUES (
-        @id, @type, @username, @serverUrl, @createdAt, @updatedAt, @keytarAccount
-      )
-    `);
-    for (const row of rows) {
-      insert.run({
-        id: row.id,
-        type: row.type,
-        username: row.username,
-        serverUrl: row.serverUrl ?? null,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        keytarAccount: row.keytarAccount ?? null,
-      });
-    }
+  updateLocalState((state) => {
+    state.credentialsMetadata = metadata.map((row) => ({
+      id: row.id,
+      type: row.type,
+      username: row.username,
+      serverUrl: row.serverUrl ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      keytarAccount: row.keytarAccount ?? null,
+    }));
   });
-  writeTx(metadata);
 }
 
 async function readCredentialsMetadata(): Promise<CredentialMetadata[]> {
   try {
-    const db = getLocalDb();
-    const rows = db.prepare(`
-      SELECT id, type, username, server_url, created_at, updated_at, keytar_account
-      FROM credentials_metadata
-    `).all() as Array<{
-      id: string;
-      type: CredentialType;
-      username: string;
-      server_url: string | null;
-      created_at: string;
-      updated_at: string;
-      keytar_account: string | null;
-    }>;
-
-    return rows
+    return readLocalState().credentialsMetadata
       .filter((row) => row.type === 'github' || row.type === 'gitlab')
       .map((row) => ({
         id: row.id,
-        type: row.type,
+        type: row.type as CredentialType,
         username: row.username,
-        serverUrl: row.server_url ?? undefined,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        keytarAccount: row.keytar_account ?? undefined,
+        serverUrl: row.serverUrl ?? undefined,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        keytarAccount: row.keytarAccount ?? undefined,
       }));
   } catch (error) {
     console.error('Failed to read credentials metadata:', error);

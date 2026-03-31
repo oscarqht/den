@@ -9,7 +9,7 @@ User-facing behavior:
 - Supports merge/rebase back to base branch and base branch reassignment.
 
 System-facing behavior:
-- Manages session metadata in local SQLite and prompt files in `~/.viba`.
+- Manages session metadata in the local JSON state file and prompt files in `~/.viba`.
 - Coordinates worktree creation/removal and terminal cleanup.
 
 Core implementation: [src/app/actions/session.ts](../../../src/app/actions/session.ts), [src/app/actions/git.ts](../../../src/app/actions/git.ts).
@@ -40,10 +40,10 @@ All from [src/app/actions/session.ts](../../../src/app/actions/session.ts).
 
 ## Data Model and Storage Touches
 
-- `~/.viba/palx.db`:
-  - `sessions` table for `SessionMetadata`.
-  - `session_launch_contexts` table for `SessionLaunchContext`.
-  - `drafts` table for saved draft metadata.
+- `~/.viba/palx-state.json`:
+  - `sessions` section for `SessionMetadata`.
+  - `sessionLaunchContexts` section for `SessionLaunchContext`.
+  - `drafts` section for saved draft metadata.
 - `~/.viba/session-prompts/<session>.txt` (full prompt passed to codex on first run).
 
 Schemas are defined in [src/app/actions/session.ts](../../../src/app/actions/session.ts) and [src/app/actions/draft.ts](../../../src/app/actions/draft.ts).

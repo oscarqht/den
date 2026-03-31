@@ -1,15 +1,15 @@
 import simpleGit from 'simple-git';
 
-import { getGitRepoCredential } from '@/app/actions/config';
+import { getGitRepoCredential } from '../app/actions/config.ts';
 import {
   getAllCredentials,
   getCredentialById,
   getCredentialToken,
-} from '@/lib/credentials';
+} from './credentials.ts';
 import {
   resolveGitSessionEnvironmentsWithDeps,
   type GitSessionAuthDependencies,
-} from '@/lib/git-session-auth-core';
+} from './git-session-auth-core.ts';
 
 async function getPrimaryRemoteUrl(repoPath: string): Promise<string | null> {
   const git = simpleGit(repoPath);

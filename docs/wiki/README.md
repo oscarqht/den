@@ -32,8 +32,8 @@ All claims in this wiki are grounded in concrete code references.
 
 ## Glossary
 
-- `Repository`: A source repository recorded by Palx, persisted in SQLite (`~/.viba/palx.db`) via [src/lib/store.ts](../../src/lib/store.ts).
-- `Session`: A task workspace with metadata and launch context persisted in SQLite (`~/.viba/palx.db`) ([src/app/actions/session.ts](../../src/app/actions/session.ts)).
+- `Repository`: A source repository recorded by Palx, persisted in the local JSON state file (`~/.viba/palx-state.json`) via [src/lib/store.ts](../../src/lib/store.ts).
+- `Session`: A task workspace with metadata and launch context persisted in the local JSON state file (`~/.viba/palx-state.json`) ([src/app/actions/session.ts](../../src/app/actions/session.ts)).
 - `Worktree`: The git worktree created per session under `<repo-parent>/.viba/<repo-name>/<session>` ([src/app/actions/git.ts](../../src/app/actions/git.ts)).
 - `Session Branch`: Branch named `palx/<session>` created with each worktree ([src/app/actions/git.ts](../../src/app/actions/git.ts)).
 - `Base Branch`: Branch from which the session branch/worktree is created and later merged/rebased ([src/app/actions/session.ts](../../src/app/actions/session.ts)).
@@ -41,6 +41,6 @@ All claims in this wiki are grounded in concrete code references.
 - `Floating Terminal`: Secondary ttyd/tmux terminal panel for dev server and ad-hoc commands ([src/components/SessionView.tsx](../../src/components/SessionView.tsx)).
 - `Preview Proxy`: Local HTTP proxy used to load app previews and inject a DOM picker script ([src/lib/previewProxyServer.ts](../../src/lib/previewProxyServer.ts)).
 - `Session Notification`: Event delivered via local WebSocket keyed by `sessionId` ([src/lib/sessionNotificationServer.ts](../../src/lib/sessionNotificationServer.ts)).
-- `Repo Settings`: Per-repo preferences persisted in SQLite (`~/.viba/palx.db`) (`agentProvider`, scripts, credential selection, etc.) ([src/app/actions/config.ts](../../src/app/actions/config.ts)).
-- `Credential`: Git host credential metadata in SQLite and token in OS keychain via `keytar` ([src/lib/credentials.ts](../../src/lib/credentials.ts)).
-- `Agent API Credential`: API key/proxy metadata in SQLite and secret in keychain ([src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
+- `Repo Settings`: Per-repo preferences persisted in the local JSON state file (`~/.viba/palx-state.json`) (`agentProvider`, scripts, credential selection, etc.) ([src/app/actions/config.ts](../../src/app/actions/config.ts)).
+- `Credential`: Git host credential metadata in the local JSON state file and token in OS keychain via `keytar` ([src/lib/credentials.ts](../../src/lib/credentials.ts)).
+- `Agent API Credential`: API key/proxy metadata in the local JSON state file and secret in keychain ([src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).

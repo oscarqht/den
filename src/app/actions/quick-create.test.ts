@@ -45,8 +45,10 @@ before(async () => {
 
 beforeEach(async () => {
   await mkdir(getProjectPath(), { recursive: true });
-  const db = localDbModule.getLocalDb();
-  db.prepare('DELETE FROM quick_create_drafts').run();
+  localDbModule.resetLocalStateForTests();
+  localDbModule.updateLocalState((state) => {
+    state.quickCreateDrafts = {};
+  });
   await configModule.updateConfig({
     recentProjects: [getProjectId()],
     defaultRoot: getWorkspaceRoot(),

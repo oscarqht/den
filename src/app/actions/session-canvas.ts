@@ -22,7 +22,7 @@ import {
 import { buildSessionAgentTerminalCommand } from '@/lib/ad-hoc-agent';
 import { buildAgentStartupPrompt } from '@/lib/agent-startup-prompt';
 import { getErrorMessage } from '@/lib/error-utils';
-import { getLocalDb } from '@/lib/local-db';
+import { readLocalState, updateLocalState } from '@/lib/local-db';
 import {
   clampSessionCanvasScale,
   createDefaultSessionCanvasLayout,
@@ -223,12 +223,12 @@ function toExplorerRoots(metadata: SessionMetadata): SessionCanvasExplorerRoot[]
 }
 
 function readSavedSessionCanvasLayout(sessionName: string): SessionCanvasLayout | null {
-  const db = getLocalDb();
-  const row = db.prepare(`
-    SELECT session_name, layout_json, updated_at
-    FROM session_canvas_layouts
-    WHERE session_name = ?
-  `).get(sessionName) as SessionCanvasLayoutRow | undefined;
+  const stored = readLocalState().sessionCanvasLayouts[sessionName];
+  const row = stored ? {
+    session_name: stored.sessionName,
+    layout_json: stored.layoutJson,
+    updated_at: stored.updatedAt,
+  } : undefined;
 
   if (!row?.layout_json) {
     return null;
@@ -314,14 +314,13 @@ export async function saveSessionCanvasLayout(
       panels: normalizeCanvasPanels(normalizedLayout.panels),
     };
 
-    const db = getLocalDb();
-    db.prepare(`
-      INSERT INTO session_canvas_layouts (session_name, layout_json, updated_at)
-      VALUES (?, ?, datetime('now'))
-      ON CONFLICT(session_name) DO UPDATE SET
-        layout_json = excluded.layout_json,
-        updated_at = excluded.updated_at
-    `).run(sessionId, JSON.stringify(sanitizedLayout));
+    updateLocalState((state) => {
+      state.sessionCanvasLayouts[sessionId] = {
+        sessionName: sessionId,
+        layoutJson: JSON.stringify(sanitizedLayout),
+        updatedAt: new Date().toISOString(),
+      };
+    });
 
     return { success: true };
   } catch (error) {

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { getLocalDb } from './local-db.ts';
+import { readLocalState, updateLocalState } from './local-db.ts';
 import { getProjectPrimaryFolderPath, isSameOrNestedPath, normalizeProjectFolderPath } from './project-folders.ts';
 import { findProjectByFolderPath, getProjectById } from './store.ts';
 
@@ -77,7 +77,6 @@ function matchesStoredProjectFolder(
 
 function repairMissingProjectIds(
   tableName: 'sessions' | 'drafts',
-  rowIdColumn: 'session_name' | 'id',
   projectReference?: string | null,
 ): void {
   const resolvedFilter = resolveProjectActivityFilter(projectReference);
@@ -85,44 +84,46 @@ function repairMissingProjectIds(
     return;
   }
 
-  const db = getLocalDb();
-  const rows = db.prepare(`
-    SELECT ${rowIdColumn} AS row_id, project_path, repo_path
-    FROM ${tableName}
-    WHERE project_id IS NULL OR TRIM(project_id) = ''
-  `).all() as Array<{
-    row_id: string;
-    project_path: string | null;
-    repo_path: string | null;
-  }>;
+  updateLocalState((state) => {
+    if (tableName === 'sessions') {
+      for (const session of Object.values(state.sessions)) {
+        if (session.projectId && session.projectId.trim()) {
+          continue;
+        }
 
-  if (rows.length === 0) return;
+        if (
+          !matchesStoredProjectFolder(resolvedFilter.folderPaths, session.projectPath)
+          && !matchesStoredProjectFolder(resolvedFilter.folderPaths, session.repoPath)
+        ) {
+          continue;
+        }
 
-  const updateProjectId = db.prepare(`
-    UPDATE ${tableName}
-    SET project_id = @projectId
-    WHERE ${rowIdColumn} = @rowId
-  `);
-
-  for (const row of rows) {
-    if (
-      !matchesStoredProjectFolder(resolvedFilter.folderPaths, row.project_path)
-      && !matchesStoredProjectFolder(resolvedFilter.folderPaths, row.repo_path)
-    ) {
-      continue;
+        session.projectId = resolvedFilter.projectId;
+      }
+      return;
     }
 
-    updateProjectId.run({
-      projectId: resolvedFilter.projectId,
-      rowId: row.row_id,
-    });
-  }
+    for (const draft of Object.values(state.drafts)) {
+      if (draft.projectId && draft.projectId.trim()) {
+        continue;
+      }
+
+      if (
+        !matchesStoredProjectFolder(resolvedFilter.folderPaths, draft.projectPath)
+        && !matchesStoredProjectFolder(resolvedFilter.folderPaths, draft.repoPath)
+      ) {
+        continue;
+      }
+
+      draft.projectId = resolvedFilter.projectId;
+    }
+  });
 }
 
 export function repairMissingSessionProjectIds(projectReference?: string | null): void {
-  repairMissingProjectIds('sessions', 'session_name', projectReference);
+  repairMissingProjectIds('sessions', projectReference);
 }
 
 export function repairMissingDraftProjectIds(projectReference?: string | null): void {
-  repairMissingProjectIds('drafts', 'id', projectReference);
+  repairMissingProjectIds('drafts', projectReference);
 }

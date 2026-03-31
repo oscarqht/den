@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import SessionCanvasPageClient from './canvas/SessionCanvasPageClient';
-import { getLocalDb } from '@/lib/local-db';
+import { readLocalState } from '@/lib/local-db';
 import { DEFAULT_PROJECT_ICON_PATH, getProjectIconUrl } from '@/lib/project-icons';
 import { findProjectByFolderPath, getProjectById } from '@/lib/store';
 
@@ -18,16 +18,12 @@ const SESSION_FALLBACK_FAVICON_PATH = DEFAULT_PROJECT_ICON_PATH;
 
 async function readSessionRouteContext(sessionId: string): Promise<SessionRouteContext> {
   try {
-    const db = getLocalDb();
-    const row = db.prepare(`
-      SELECT title, project_id, project_path
-      FROM sessions
-      WHERE session_name = ?
-    `).get(sessionId) as {
-      title: string | null;
-      project_id: string | null;
-      project_path: string | null;
-    } | undefined;
+    const record = readLocalState().sessions[sessionId];
+    const row = record ? {
+      title: record.title ?? null,
+      project_id: record.projectId ?? null,
+      project_path: record.projectPath ?? null,
+    } : undefined;
 
     const trimmedTitle = row?.title?.trim();
     const trimmedProjectId = row?.project_id?.trim();

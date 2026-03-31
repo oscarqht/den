@@ -25,44 +25,6 @@ afterEach(() => {
 });
 
 describe("syncNextNativeShims", () => {
-  it("replaces traced native binaries with the installed package runtime files", () => {
-    const tempRoot = makeTempDir();
-    const appRoot = path.join(tempRoot, "package");
-    const tracedPackageRoot = path.join(
-      appRoot,
-      ".next",
-      "server",
-      "chunks",
-      "node_modules",
-      "better-sqlite3-deadbeef",
-    );
-    const installedPackageRoot = path.join(tempRoot, "node_modules", "better-sqlite3");
-
-    writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "den-ai" }));
-    writeFile(path.join(tracedPackageRoot, "package.json"), JSON.stringify({ name: "better-sqlite3" }));
-    writeFile(
-      path.join(tracedPackageRoot, "build", "Release", "better_sqlite3.node"),
-      "linux-binary",
-    );
-    writeFile(path.join(installedPackageRoot, "package.json"), JSON.stringify({ name: "better-sqlite3" }));
-    writeFile(path.join(installedPackageRoot, "lib", "index.js"), "module.exports = {};");
-    writeFile(
-      path.join(installedPackageRoot, "build", "Release", "better_sqlite3.node"),
-      "darwin-binary",
-    );
-
-    syncNextNativeShims(appRoot);
-
-    assert.strictEqual(
-      fs.readFileSync(path.join(tracedPackageRoot, "build", "Release", "better_sqlite3.node"), "utf8"),
-      "darwin-binary",
-    );
-    assert.strictEqual(
-      fs.readFileSync(path.join(tracedPackageRoot, "lib", "index.js"), "utf8"),
-      "module.exports = {};",
-    );
-  });
-
   it("creates shim directories from .next/node_modules during postbuild sync", () => {
     const tempRoot = makeTempDir();
     const appRoot = path.join(tempRoot, "package");

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { getConfig, updateConfig, type Config } from './config.ts';
 import { buildAgentStartupPrompt } from '../../lib/agent-startup-prompt.ts';
 import { normalizeProviderReasoningEffort } from '../../lib/agent/reasoning.ts';
-import { getLocalDb } from '../../lib/local-db.ts';
+import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
 import {
   deriveQuickCreateTitle,
   KNOWN_QUICK_CREATE_REASONING_EFFORTS,
@@ -430,40 +430,34 @@ async function upsertQuickCreateDraft(input: {
   attachmentPaths: string[];
   error: string;
 }): Promise<QuickCreateDraft> {
-  const db = getLocalDb();
   const now = new Date().toISOString();
   const draftId = input.draftId?.trim() || randomUUID();
   const title = deriveQuickCreateTitle(input.message);
   const attachmentPaths = normalizeAttachmentPaths(input.attachmentPaths);
 
-  db.prepare(`
-    INSERT INTO quick_create_drafts (
-      id, title, message, attachment_paths_json, last_error, created_at, updated_at
-    ) VALUES (
-      @id, @title, @message, @attachmentPathsJson, @lastError, @createdAt, @updatedAt
-    )
-    ON CONFLICT(id) DO UPDATE SET
-      title = excluded.title,
-      message = excluded.message,
-      attachment_paths_json = excluded.attachment_paths_json,
-      last_error = excluded.last_error,
-      updated_at = excluded.updated_at
-  `).run({
-    id: draftId,
-    title,
-    message: input.message,
-    attachmentPathsJson: JSON.stringify(attachmentPaths),
-    lastError: input.error,
-    createdAt: now,
-    updatedAt: now,
+  updateLocalState((state) => {
+    const existing = state.quickCreateDrafts[draftId];
+    state.quickCreateDrafts[draftId] = {
+      id: draftId,
+      title,
+      message: input.message,
+      attachmentPathsJson: JSON.stringify(attachmentPaths),
+      lastError: input.error,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
   });
 
-  const row = db.prepare(`
-    SELECT
-      id, title, message, attachment_paths_json, last_error, created_at, updated_at
-    FROM quick_create_drafts
-    WHERE id = ?
-  `).get(draftId) as QuickCreateDraftRow | undefined;
+  const stored = readLocalState().quickCreateDrafts[draftId];
+  const row = stored ? {
+    id: stored.id,
+    title: stored.title,
+    message: stored.message,
+    attachment_paths_json: stored.attachmentPathsJson,
+    last_error: stored.lastError,
+    created_at: stored.createdAt,
+    updated_at: stored.updatedAt,
+  } : undefined;
 
   if (!row) {
     throw new Error('Failed to persist quick create draft.');
@@ -475,8 +469,9 @@ async function upsertQuickCreateDraft(input: {
 async function removeQuickCreateDraftIfPresent(draftId: string | null | undefined): Promise<void> {
   const normalizedDraftId = draftId?.trim();
   if (!normalizedDraftId) return;
-  const db = getLocalDb();
-  db.prepare(`DELETE FROM quick_create_drafts WHERE id = ?`).run(normalizedDraftId);
+  updateLocalState((state) => {
+    delete state.quickCreateDrafts[normalizedDraftId];
+  });
 }
 
 async function moveProjectToRecent(projectId: string, deps: QuickCreateDependencies): Promise<void> {
@@ -692,13 +687,17 @@ export async function getHomeQuickCreateState(): Promise<{
 }
 
 export async function listQuickCreateDrafts(): Promise<QuickCreateDraft[]> {
-  const db = getLocalDb();
-  const rows = db.prepare(`
-    SELECT
-      id, title, message, attachment_paths_json, last_error, created_at, updated_at
-    FROM quick_create_drafts
-    ORDER BY updated_at DESC
-  `).all() as QuickCreateDraftRow[];
+  const rows = Object.values(readLocalState().quickCreateDrafts)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map((draft) => ({
+      id: draft.id,
+      title: draft.title,
+      message: draft.message,
+      attachment_paths_json: draft.attachmentPathsJson,
+      last_error: draft.lastError,
+      created_at: draft.createdAt,
+      updated_at: draft.updatedAt,
+    } satisfies QuickCreateDraftRow));
 
   return sortQuickCreateDrafts(rows.map(rowToQuickCreateDraft));
 }
@@ -710,8 +709,9 @@ export async function deleteQuickCreateDraft(draftId: string): Promise<{ success
   }
 
   try {
-    const db = getLocalDb();
-    db.prepare(`DELETE FROM quick_create_drafts WHERE id = ?`).run(normalizedDraftId);
+    updateLocalState((state) => {
+      delete state.quickCreateDrafts[normalizedDraftId];
+    });
     return { success: true };
   } catch (error) {
     return {

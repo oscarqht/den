@@ -1,4 +1,4 @@
-import { getLocalDb } from '@/lib/local-db';
+import { readLocalState, updateLocalState } from '@/lib/local-db';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
@@ -263,14 +263,18 @@ function mergeHistoryEntry(existing: HistoryEntry | null, next: HistoryEntry): H
 }
 
 export function readSessionRuntime(sessionName: string): SessionAgentRuntimeState | null {
-  const db = getLocalDb();
-  const row = db.prepare(`
-    SELECT
-      session_name, agent, model, reasoning_effort, thread_id, active_turn_id,
-      run_state, last_error, last_activity_at
-    FROM sessions
-    WHERE session_name = ?
-  `).get(sessionName) as SessionRuntimeRow | undefined;
+  const record = readLocalState().sessions[sessionName];
+  const row = record ? {
+    session_name: record.sessionName,
+    agent: record.agent,
+    model: record.model,
+    reasoning_effort: record.reasoningEffort ?? null,
+    thread_id: record.threadId ?? null,
+    active_turn_id: record.activeTurnId ?? null,
+    run_state: record.runState ?? null,
+    last_error: record.lastError ?? null,
+    last_activity_at: record.lastActivityAt ?? null,
+  } satisfies SessionRuntimeRow : undefined;
 
   return row ? toRuntimeState(row) : null;
 }
@@ -288,83 +292,70 @@ export function updateSessionRuntime(
     lastActivityAt?: string | null;
   },
 ): SessionAgentRuntimeState | null {
-  const db = getLocalDb();
   const currentRuntime = readSessionRuntime(sessionName);
-  const setters: string[] = [];
-  const params: Record<string, string | null> = { sessionName };
-
-  if (updates.agentProvider !== undefined) {
-    const value = normalizeOptionalText(updates.agentProvider);
-    if (value) {
-      setters.push('agent = @agentProvider');
-      params.agentProvider = value;
-    }
-  }
-
-  if (updates.model !== undefined) {
-    const value = normalizeOptionalText(updates.model);
-    if (value) {
-      setters.push('model = @model');
-      params.model = value;
-    }
-  }
-
-  if (updates.reasoningEffort !== undefined) {
-    setters.push('reasoning_effort = @reasoningEffort');
-    params.reasoningEffort = normalizeNullableProviderReasoningEffort(
-      updates.agentProvider ?? currentRuntime?.agentProvider,
-      updates.reasoningEffort,
-    );
-  }
-
-  if (updates.threadId !== undefined) {
-    setters.push('thread_id = @threadId');
-    params.threadId = normalizeNullableText(updates.threadId);
-  }
-
-  if (updates.activeTurnId !== undefined) {
-    setters.push('active_turn_id = @activeTurnId');
-    params.activeTurnId = normalizeNullableText(updates.activeTurnId);
-  }
-
-  if (updates.runState !== undefined) {
-    setters.push('run_state = @runState');
-    params.runState = normalizeNullableText(updates.runState);
-  }
-
-  if (updates.lastError !== undefined) {
-    setters.push('last_error = @lastError');
-    params.lastError = normalizeNullableText(updates.lastError);
-  }
-
-  if (updates.lastActivityAt !== undefined) {
-    setters.push('last_activity_at = @lastActivityAt');
-    params.lastActivityAt = normalizeNullableText(updates.lastActivityAt);
-  }
-
-  if (setters.length === 0) {
+  if (Object.keys(updates).length === 0) {
     return readSessionRuntime(sessionName);
   }
-
-  db.prepare(`
-    UPDATE sessions
-    SET ${setters.join(', ')}
-    WHERE session_name = @sessionName
-  `).run(params);
+  updateLocalState((state) => {
+    const session = state.sessions[sessionName];
+    if (!session) return;
+    if (updates.agentProvider !== undefined) {
+      const value = normalizeOptionalText(updates.agentProvider);
+      if (value) {
+        session.agent = value;
+      }
+    }
+    if (updates.model !== undefined) {
+      const value = normalizeOptionalText(updates.model);
+      if (value) {
+        session.model = value;
+      }
+    }
+    if (updates.reasoningEffort !== undefined) {
+      session.reasoningEffort = normalizeNullableProviderReasoningEffort(
+        updates.agentProvider ?? currentRuntime?.agentProvider,
+        updates.reasoningEffort,
+      );
+    }
+    if (updates.threadId !== undefined) {
+      session.threadId = normalizeNullableText(updates.threadId);
+    }
+    if (updates.activeTurnId !== undefined) {
+      session.activeTurnId = normalizeNullableText(updates.activeTurnId);
+    }
+    if (updates.runState !== undefined) {
+      session.runState = normalizeNullableText(updates.runState);
+    }
+    if (updates.lastError !== undefined) {
+      session.lastError = normalizeNullableText(updates.lastError);
+    }
+    if (updates.lastActivityAt !== undefined) {
+      session.lastActivityAt = normalizeNullableText(updates.lastActivityAt);
+    }
+  });
 
   return readSessionRuntime(sessionName);
 }
 
 export function listSessionHistory(sessionName: string): SessionAgentHistoryItem[] {
-  const db = getLocalDb();
-  const rows = db.prepare(`
-    SELECT
-      session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-      payload_json, created_at, updated_at
-    FROM session_agent_history_items
-    WHERE session_name = ?
-    ORDER BY ordinal ASC, created_at ASC, item_id ASC
-  `).all(sessionName) as SessionAgentHistoryRow[];
+  const rows = Object.values(readLocalState().sessionAgentHistoryItems[sessionName] ?? {})
+    .map((record) => ({
+      session_name: record.sessionName,
+      item_id: record.itemId,
+      thread_id: record.threadId ?? null,
+      turn_id: record.turnId ?? null,
+      ordinal: record.ordinal,
+      kind: record.kind,
+      status: record.status ?? null,
+      payload_json: record.payloadJson,
+      created_at: record.createdAt,
+      updated_at: record.updatedAt,
+    } satisfies SessionAgentHistoryRow))
+    .sort((left, right) => (
+      left.ordinal - right.ordinal
+      || left.created_at.localeCompare(right.created_at)
+      || left.item_id.localeCompare(right.item_id)
+    ));
 
   return sortSessionHistoryForTimeline(rows
     .map((row) => toHistoryItem(row))
@@ -372,14 +363,9 @@ export function listSessionHistory(sessionName: string): SessionAgentHistoryItem
 }
 
 export function getNextHistoryOrdinal(sessionName: string): number {
-  const db = getLocalDb();
-  const row = db.prepare(`
-    SELECT COALESCE(MAX(ordinal), -1) AS max_ordinal
-    FROM session_agent_history_items
-    WHERE session_name = ?
-  `).get(sessionName) as { max_ordinal: number } | undefined;
-
-  return (row?.max_ordinal ?? -1) + 1;
+  const items = Object.values(readLocalState().sessionAgentHistoryItems[sessionName] ?? {});
+  const maxOrdinal = items.reduce((max, item) => Math.max(max, item.ordinal), -1);
+  return maxOrdinal + 1;
 }
 
 export function upsertSessionHistoryEntries(sessionName: string, entries: SessionAgentHistoryInput[]) {
@@ -391,32 +377,27 @@ export function upsertSessionHistoryEntries(sessionName: string, entries: Sessio
     return;
   }
 
-  const db = getLocalDb();
-  const selectExisting = db.prepare(`
-    SELECT
-      session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-      payload_json, created_at, updated_at
-    FROM session_agent_history_items
-    WHERE session_name = ? AND item_id = ?
-  `);
-  const insertOrReplace = db.prepare(`
-    INSERT OR REPLACE INTO session_agent_history_items (
-      session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-      payload_json, created_at, updated_at
-    ) VALUES (
-      @sessionName, @itemId, @threadId, @turnId, @ordinal, @kind, @status,
-      @payloadJson, @createdAt, @updatedAt
-    )
-  `);
-
-  const transaction = db.transaction((writes: NormalizedHistoryWrite[]) => {
-    for (const write of writes) {
-      const existing = selectExisting.get(sessionName, write.itemId) as SessionAgentHistoryRow | undefined;
+  updateLocalState((state) => {
+    const sessionHistory = state.sessionAgentHistoryItems[sessionName] ?? {};
+    for (const write of normalizedEntries) {
+      const existingRecord = sessionHistory[write.itemId];
+      const existing = existingRecord ? {
+        session_name: existingRecord.sessionName,
+        item_id: existingRecord.itemId,
+        thread_id: existingRecord.threadId ?? null,
+        turn_id: existingRecord.turnId ?? null,
+        ordinal: existingRecord.ordinal,
+        kind: existingRecord.kind,
+        status: existingRecord.status ?? null,
+        payload_json: existingRecord.payloadJson,
+        created_at: existingRecord.createdAt,
+        updated_at: existingRecord.updatedAt,
+      } satisfies SessionAgentHistoryRow : undefined;
       const mergedEntry = mergeHistoryEntry(
         existing ? parseHistoryEntryPayload(existing.payload_json) : null,
         write.entry,
       );
-      insertOrReplace.run({
+      sessionHistory[write.itemId] = {
         sessionName,
         itemId: write.itemId,
         threadId: write.threadIdProvided ? write.threadId : (existing?.thread_id ?? null),
@@ -427,14 +408,14 @@ export function upsertSessionHistoryEntries(sessionName: string, entries: Sessio
         payloadJson: JSON.stringify(mergedEntry),
         createdAt: existing?.created_at ?? write.createdAt,
         updatedAt: write.updatedAt,
-      });
+      };
     }
+    state.sessionAgentHistoryItems[sessionName] = sessionHistory;
   });
-
-  transaction(normalizedEntries);
 }
 
 export function clearSessionHistory(sessionName: string) {
-  const db = getLocalDb();
-  db.prepare(`DELETE FROM session_agent_history_items WHERE session_name = ?`).run(sessionName);
+  updateLocalState((state) => {
+    delete state.sessionAgentHistoryItems[sessionName];
+  });
 }

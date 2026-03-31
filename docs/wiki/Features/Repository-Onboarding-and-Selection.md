@@ -43,7 +43,7 @@ Primary implementation: [src/components/GitRepoSelector.tsx](../../../src/compon
 
 ## Data Model and Storage Touches
 
-- `~/.viba/palx.db` stores:
+- `~/.viba/palx-state.json` stores:
   - app config (`recentRepos`, `repoSettings`, pinned shortcuts) via [src/app/actions/config.ts](../../../src/app/actions/config.ts)
   - draft payload metadata via [src/app/actions/draft.ts](../../../src/app/actions/draft.ts)
   - session metadata + launch context via [src/app/actions/session.ts](../../../src/app/actions/session.ts)

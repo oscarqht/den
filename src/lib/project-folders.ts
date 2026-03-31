@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { Project } from '@/lib/types';
+import type { Project } from './types.ts';
 import { pickPreferredProject } from './project-preference.ts';
 
 export type ProjectFolderEntry = {

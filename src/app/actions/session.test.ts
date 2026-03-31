@@ -10,10 +10,6 @@ import {
   type SessionMetadata,
 } from './session.ts';
 
-type FakeDbStatement = {
-  run: (value: string) => void;
-};
-
 function createSessionMetadata(): SessionMetadata {
   return {
     sessionName: 'session-1',
@@ -38,7 +34,7 @@ function createSessionMetadata(): SessionMetadata {
 }
 
 function createDeleteDeps(overrides: Partial<DeleteSessionDependencies> = {}) {
-  const dbCalls: string[] = [];
+  const deletedSessions: string[] = [];
   const promptDirs: string[] = [];
   const removeWorktreeCalls: string[] = [];
   let cleanupCalled = false;
@@ -75,13 +71,9 @@ function createDeleteDeps(overrides: Partial<DeleteSessionDependencies> = {}) {
     cleanupSessionWorkspace: async () => {
       cleanupCalled = true;
     },
-    getLocalDb: () => ({
-      prepare: (sql: string): FakeDbStatement => ({
-        run: (value: string) => {
-          dbCalls.push(`${sql} :: ${value}`);
-        },
-      }),
-    }) as ReturnType<DeleteSessionDependencies['getLocalDb']>,
+    deleteSessionState: (value: string) => {
+      deletedSessions.push(value);
+    },
     getSessionPromptsDir: async () => {
       const dir = await mkdtemp(path.join(os.tmpdir(), 'palx-session-delete-prompts-'));
       promptDirs.push(dir);
@@ -97,7 +89,7 @@ function createDeleteDeps(overrides: Partial<DeleteSessionDependencies> = {}) {
 
   return {
     deps,
-    dbCalls,
+    deletedSessions,
     promptDirs,
     removeWorktreeCalls,
     get cleanupCalled() {
@@ -221,7 +213,7 @@ describe('deleteSessionWithDependencies', () => {
     assert.match(result.error || '', /still alive/);
     assert.deepEqual(harness.removeWorktreeCalls, []);
     assert.equal(harness.cleanupCalled, false);
-    assert.deepEqual(harness.dbCalls, []);
+    assert.deepEqual(harness.deletedSessions, []);
     await access(promptPath);
   });
 });

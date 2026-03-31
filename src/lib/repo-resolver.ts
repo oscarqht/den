@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import type { Dirent } from 'fs';
 import path from 'path';
-import { getConfig } from '@/app/actions/config';
+import { getConfig } from '../app/actions/config.ts';
 
 const MAX_SCAN_DEPTH = 5;
 const MAX_SCANNED_DIRECTORIES = 5000;

@@ -4,14 +4,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import simpleGit from 'simple-git';
-import { resolveRepositoryPathByName } from '@/lib/repo-resolver';
-import { addProject, findProjectByFolderPath, getProjectById, getProjects } from '@/lib/store';
-import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '@/lib/project-folders';
-import { getAllCredentials, getCredentialById, getCredentialToken } from '@/lib/credentials';
-import type { Credential } from '@/lib/credentials';
-import { detectGitRemoteProvider, parseGitRemoteHost } from '@/lib/terminal-session';
-import { listDrafts, type DraftMetadata } from './draft';
-import { listSessions, type SessionMetadata } from './session';
+import { resolveRepositoryPathByName } from '../../lib/repo-resolver.ts';
+import { addProject, findProjectByFolderPath, getProjectById, getProjects } from '../../lib/store.ts';
+import { buildProjectFolderEntries, getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '../../lib/project-folders.ts';
+import { getAllCredentials, getCredentialById, getCredentialToken } from '../../lib/credentials.ts';
+import type { Credential } from '../../lib/credentials.ts';
+import { detectGitRemoteProvider, parseGitRemoteHost } from '../../lib/terminal-session.ts';
+import { listDrafts, type DraftMetadata } from './draft.ts';
+import { listSessions, type SessionMetadata } from './session.ts';
 
 type GitBranch = {
   name: string;

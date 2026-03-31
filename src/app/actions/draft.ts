@@ -1,16 +1,16 @@
 'use server';
 
 import path from 'node:path';
-import { getLocalDb } from '@/lib/local-db';
+import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
 import {
   repairMissingDraftProjectIds,
   resolveProjectActivityFilter,
-} from '@/lib/project-activity-server';
+} from '../../lib/project-activity-server.ts';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
-} from '@/lib/agent/reasoning';
-import type { AgentProvider, ReasoningEffort, SessionGitRepoContext } from '@/lib/types';
+} from '../../lib/agent/reasoning.ts';
+import type { AgentProvider, ReasoningEffort, SessionGitRepoContext } from '../../lib/types.ts';
 
 export type DraftMetadata = {
   id: string;
@@ -166,7 +166,6 @@ function normalizeGitContexts(draft: DraftMetadata): SessionGitRepoContext[] {
 
 export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = getLocalDb();
     const safeId = path.basename(draft.id);
     const projectPath = draft.projectPath?.trim() || draft.repoPath?.trim() || '';
     const projectId = draft.projectId?.trim() || null;
@@ -181,36 +180,28 @@ export async function saveDraft(draft: DraftMetadata): Promise<{ success: boolea
       draft.reasoningEffort,
     );
 
-    db.prepare(`
-      INSERT OR REPLACE INTO drafts (
-        id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
-        attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
-        startup_script, dev_server_script, session_mode
-      ) VALUES (
-        @id, @projectId, @projectPath, @repoPath, @branchName, @gitContextsJson, @message,
-        @attachmentPathsJson, @agentProvider, @model, @reasoningEffort, @timestamp, @title,
-        @startupScript, @devServerScript, @sessionMode
-      )
-    `).run({
-      id: safeId,
-      projectId,
-      projectPath,
-      repoPath: primaryContext?.sourceRepoPath ?? null,
-      branchName: primaryContext?.branchName ?? null,
-      gitContextsJson: JSON.stringify(gitContexts),
-      message: draft.message,
-      attachmentPathsJson: JSON.stringify(draft.attachmentPaths),
-      agentProvider: draft.agentProvider,
-      model: draft.model,
-      reasoningEffort: normalizeNullableProviderReasoningEffort(
-        draft.agentProvider,
-        normalizedReasoningEffort,
-      ),
-      timestamp: draft.timestamp,
-      title: draft.title,
-      startupScript: draft.startupScript,
-      devServerScript: draft.devServerScript,
-      sessionMode: draft.sessionMode,
+    updateLocalState((state) => {
+      state.drafts[safeId] = {
+        id: safeId,
+        projectId,
+        projectPath,
+        repoPath: primaryContext?.sourceRepoPath ?? null,
+        branchName: primaryContext?.branchName ?? null,
+        gitContextsJson: JSON.stringify(gitContexts),
+        message: draft.message,
+        attachmentPathsJson: JSON.stringify(draft.attachmentPaths),
+        agentProvider: draft.agentProvider,
+        model: draft.model,
+        reasoningEffort: normalizeNullableProviderReasoningEffort(
+          draft.agentProvider,
+          normalizedReasoningEffort,
+        ),
+        timestamp: draft.timestamp,
+        title: draft.title,
+        startupScript: draft.startupScript,
+        devServerScript: draft.devServerScript,
+        sessionMode: draft.sessionMode,
+      };
     });
     return { success: true };
   } catch (e) {
@@ -223,33 +214,38 @@ export async function listDrafts(projectReference?: string): Promise<DraftMetada
   try {
     repairMissingDraftProjectIds(projectReference);
 
-    const db = getLocalDb();
     const resolvedFilter = resolveProjectActivityFilter(projectReference);
-    const filterValue = resolvedFilter?.filterValue ?? null;
-    const query = projectReference
-      ? `
-        SELECT
-          id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
-          attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
-          startup_script, dev_server_script, session_mode
-        FROM drafts
-        WHERE ${resolvedFilter?.filterColumn === 'project_id' ? 'project_id = ?' : 'project_path = ?'}
-        ORDER BY timestamp DESC
-      `
-      : `
-        SELECT
-          id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
-          attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
-          startup_script, dev_server_script, session_mode
-        FROM drafts
-        ORDER BY timestamp DESC
-      `;
+    const filterValue = resolvedFilter?.filterValue;
 
-    const rows = projectReference && filterValue
-      ? (db.prepare(query).all(filterValue) as DraftRow[])
-      : (db.prepare(query).all() as DraftRow[]);
+    return Object.values(readLocalState().drafts)
+      .filter((draft) => {
+        if (!projectReference || !resolvedFilter || !filterValue) {
+          return true;
+        }
 
-    return rows.map(rowToDraft);
+        return resolvedFilter.filterColumn === 'project_id'
+          ? draft.projectId === filterValue
+          : draft.projectPath === filterValue;
+      })
+      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+      .map((draft) => rowToDraft({
+        id: draft.id,
+        project_id: draft.projectId ?? null,
+        project_path: draft.projectPath ?? null,
+        repo_path: draft.repoPath ?? null,
+        branch_name: draft.branchName ?? null,
+        git_contexts_json: draft.gitContextsJson ?? null,
+        message: draft.message,
+        attachment_paths_json: draft.attachmentPathsJson,
+        agent_provider: draft.agentProvider,
+        model: draft.model,
+        reasoning_effort: draft.reasoningEffort ?? null,
+        timestamp: draft.timestamp,
+        title: draft.title,
+        startup_script: draft.startupScript,
+        dev_server_script: draft.devServerScript,
+        session_mode: draft.sessionMode,
+      }));
   } catch (e) {
     console.error('Failed to list drafts:', e);
     return [];
@@ -258,11 +254,10 @@ export async function listDrafts(projectReference?: string): Promise<DraftMetada
 
 export async function deleteDraft(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = getLocalDb();
     const safeId = path.basename(id);
-    db.prepare(`
-      DELETE FROM drafts WHERE id = ?
-    `).run(safeId);
+    updateLocalState((state) => {
+      delete state.drafts[safeId];
+    });
     return { success: true };
   } catch (e) {
     console.error('Failed to delete draft:', e);

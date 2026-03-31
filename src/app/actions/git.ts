@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
-import { getAgentApiCredentialSecret } from '@/lib/agent-api-credentials';
+import { getAgentApiCredentialSecret } from '../../lib/agent-api-credentials.ts';
 import {
   buildTtydTerminalSrc,
   getTmuxSessionName,
@@ -13,19 +13,19 @@ import {
   TerminalPersistenceMode,
   TerminalSessionRole,
   TerminalShellKind,
-} from '@/lib/terminal-session';
-import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
-import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
-import { listRepoEntries } from '@/lib/repo-entry-list';
+} from '../../lib/terminal-session.ts';
+import { buildTerminalProcessEnv } from '../../lib/terminal-process-env.ts';
+import { resolveGitSessionEnvironments } from '../../lib/git-session-auth.ts';
+import { listRepoEntries } from '../../lib/repo-entry-list.ts';
 import {
   getCodexSkillsDirectory,
   getGlobalAgentsSkillsDirectory,
   isSkillInstalled,
   listInstalledSkillsForProvider,
-} from '@/lib/agent-skills';
-import { saveAttachmentsFromFormData } from '@/lib/attachment-storage';
-import { findProjectsContainingPath } from '@/lib/store';
-import type { AgentProvider } from '@/lib/types';
+} from '../../lib/agent-skills.ts';
+import { saveAttachmentsFromFormData } from '../../lib/attachment-storage.ts';
+import { findProjectsContainingPath } from '../../lib/store.ts';
+import type { AgentProvider } from '../../lib/types.ts';
 
 export type FileSystemItem = {
   name: string;

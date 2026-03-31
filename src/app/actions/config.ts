@@ -1,7 +1,11 @@
 'use server';
 
-import { getLocalDb } from '../../lib/local-db.ts';
-import { findProjectByFolderPath, getProjectById, getProjects } from '../../lib/store.ts';
+import {
+  readLocalState,
+  updateLocalState,
+  type LocalProjectSettingsRecord,
+} from '../../lib/local-db.ts';
+import { findProjectByFolderPath, getProjectById } from '../../lib/store.ts';
 import { getProjectPrimaryFolderPath } from '../../lib/project-folders.ts';
 import {
   normalizeNullableProviderReasoningEffort,
@@ -23,7 +27,6 @@ export interface ProjectSettings {
   serviceStartCommand?: string;
   serviceStopCommand?: string;
   alias?: string | null;
-  // Deprecated compatibility fields.
   lastBranch?: string;
   credentialId?: string | null;
   credentialPreference?: 'auto' | 'github' | 'gitlab';
@@ -31,7 +34,6 @@ export interface ProjectSettings {
 
 export interface Config {
   recentProjects: string[];
-  // Backward compatibility for callers that have not migrated yet.
   recentRepos: string[];
   homeProjectSort: HomeProjectSort;
   defaultRoot: string;
@@ -41,7 +43,6 @@ export interface Config {
   defaultAgentModel?: string;
   defaultAgentReasoningEffort?: ReasoningEffort;
   projectSettings: Record<string, ProjectSettings>;
-  // Backward compatibility for callers that have not migrated yet.
   repoSettings: Record<string, ProjectSettings>;
   pinnedFolderShortcuts: string[];
 }
@@ -58,43 +59,37 @@ const DEFAULT_CONFIG: Config = {
   pinnedFolderShortcuts: [],
 };
 
-type ConfigRow = {
-  home_project_sort: string | null;
-  default_root: string;
-  selected_ide: string;
-  agent_width: number;
-  default_agent_provider: string | null;
-  default_agent_model: string | null;
-  default_agent_reasoning_effort: string | null;
-};
-
-type ProjectSettingsRow = {
-  project_id: string;
-  agent_provider: string | null;
-  agent_model: string | null;
-  agent_reasoning_effort: string | null;
-  startup_script: string | null;
-  dev_server_script: string | null;
-  service_start_command: string | null;
-  service_stop_command: string | null;
-  alias: string | null;
-};
-
-function toProjectSettings(row: ProjectSettingsRow): ProjectSettings {
+function toProjectSettings(record: LocalProjectSettingsRecord): ProjectSettings {
   const settings: ProjectSettings = {};
-  if (row.agent_provider !== null) settings.agentProvider = row.agent_provider as AgentProvider;
-  if (row.agent_model !== null) settings.agentModel = row.agent_model;
+  if (record.agentProvider != null) settings.agentProvider = record.agentProvider as AgentProvider;
+  if (record.agentModel != null) settings.agentModel = record.agentModel;
   const normalizedReasoning = normalizeProviderReasoningEffort(
-    row.agent_provider,
-    row.agent_reasoning_effort,
+    record.agentProvider,
+    record.agentReasoningEffort,
   );
   if (normalizedReasoning) settings.agentReasoningEffort = normalizedReasoning;
-  if (row.startup_script !== null) settings.startupScript = row.startup_script;
-  if (row.dev_server_script !== null) settings.devServerScript = row.dev_server_script;
-  if (row.service_start_command !== null) settings.serviceStartCommand = row.service_start_command;
-  if (row.service_stop_command !== null) settings.serviceStopCommand = row.service_stop_command;
-  if (row.alias !== null) settings.alias = row.alias;
+  if (record.startupScript != null) settings.startupScript = record.startupScript;
+  if (record.devServerScript != null) settings.devServerScript = record.devServerScript;
+  if (record.serviceStartCommand != null) settings.serviceStartCommand = record.serviceStartCommand;
+  if (record.serviceStopCommand != null) settings.serviceStopCommand = record.serviceStopCommand;
+  if (record.alias != null) settings.alias = record.alias;
   return settings;
+}
+
+function toLocalProjectSettings(settings: ProjectSettings): LocalProjectSettingsRecord {
+  return {
+    agentProvider: settings.agentProvider ?? null,
+    agentModel: settings.agentModel ?? null,
+    agentReasoningEffort: normalizeNullableProviderReasoningEffort(
+      settings.agentProvider,
+      settings.agentReasoningEffort,
+    ),
+    startupScript: settings.startupScript ?? null,
+    devServerScript: settings.devServerScript ?? null,
+    serviceStartCommand: settings.serviceStartCommand ?? null,
+    serviceStopCommand: settings.serviceStopCommand ?? null,
+    alias: settings.alias ?? null,
+  };
 }
 
 function normalizeProjectSettings(settings: ProjectSettings): ProjectSettings {
@@ -168,20 +163,25 @@ function getProjectCompatibilityKeys(projectId: string): string[] {
 }
 
 function writeConfig(config: Config): void {
-  const db = getLocalDb();
-  const tx = db.transaction((nextConfig: Config) => {
-    const normalizedConfig = normalizeConfig(nextConfig);
-    db.prepare(`
-      INSERT OR REPLACE INTO app_config (
-        singleton_id, default_root, selected_ide, agent_width,
-        default_agent_provider, default_agent_model, default_agent_reasoning_effort,
-        home_project_sort
-      ) VALUES (
-        1, @defaultRoot, @selectedIde, @agentWidth,
-        @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort,
-        @homeProjectSort
-      )
-    `).run({
+  const normalizedConfig = normalizeConfig(config);
+
+  updateLocalState((state) => {
+    const recentProjectIds = Array.from(new Set(
+      normalizedConfig.recentProjects
+        .map((projectEntry) => resolveProjectId(projectEntry))
+        .filter((projectId): projectId is string => Boolean(projectId)),
+    ));
+
+    const normalizedProjectSettingsEntries = new Map<string, ProjectSettings>();
+    for (const [projectIdOrPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
+      const projectId = resolveProjectId(projectIdOrPath);
+      if (!projectId) continue;
+      normalizedProjectSettingsEntries.set(projectId, projectSettings);
+    }
+
+    state.appConfig = {
+      recentProjects: recentProjectIds,
+      homeProjectSort: normalizeHomeProjectSort(normalizedConfig.homeProjectSort),
       defaultRoot: normalizedConfig.defaultRoot,
       selectedIde: normalizedConfig.selectedIde,
       agentWidth: normalizedConfig.agentWidth,
@@ -191,133 +191,50 @@ function writeConfig(config: Config): void {
         normalizedConfig.defaultAgentProvider,
         normalizedConfig.defaultAgentReasoningEffort,
       ),
-      homeProjectSort: normalizeHomeProjectSort(normalizedConfig.homeProjectSort),
-    });
-
-    db.prepare('DELETE FROM app_config_recent_project_entities').run();
-    const insertRecentProject = db.prepare(`
-      INSERT INTO app_config_recent_project_entities (position, project_id) VALUES (?, ?)
-    `);
-    const recentProjectIds = Array.from(new Set(
-      normalizedConfig.recentProjects
-        .map((projectEntry) => resolveProjectId(projectEntry))
-        .filter((projectId): projectId is string => Boolean(projectId)),
-    ));
-    recentProjectIds.forEach((projectId, index) => {
-      insertRecentProject.run(index, projectId);
-    });
-
-    db.prepare('DELETE FROM app_config_pinned_folder_shortcuts').run();
-    const insertPinnedShortcut = db.prepare(`
-      INSERT INTO app_config_pinned_folder_shortcuts (position, folder_path) VALUES (?, ?)
-    `);
-    normalizedConfig.pinnedFolderShortcuts.forEach((folderPath, index) => {
-      insertPinnedShortcut.run(index, folderPath);
-    });
-
-    db.prepare('DELETE FROM app_config_project_entity_settings').run();
-    const insertProjectSettings = db.prepare(`
-      INSERT INTO app_config_project_entity_settings (
-        project_id, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command, alias
-      ) VALUES (
-        @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand, @alias
-      )
-    `);
-    const normalizedProjectSettingsEntries = new Map<string, ProjectSettings>();
-    for (const [projectIdOrPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
-      const projectId = resolveProjectId(projectIdOrPath);
-      if (!projectId) continue;
-      normalizedProjectSettingsEntries.set(projectId, projectSettings);
-    }
-
-    for (const [projectId, projectSettings] of normalizedProjectSettingsEntries.entries()) {
-      const normalizedProjectSettings = normalizeProjectSettings(projectSettings);
-      insertProjectSettings.run({
-        projectId,
-        agentProvider: normalizedProjectSettings.agentProvider ?? null,
-        agentModel: normalizedProjectSettings.agentModel ?? null,
-        agentReasoningEffort: normalizeNullableProviderReasoningEffort(
-          normalizedProjectSettings.agentProvider,
-          normalizedProjectSettings.agentReasoningEffort,
-        ),
-        startupScript: normalizedProjectSettings.startupScript ?? null,
-        devServerScript: normalizedProjectSettings.devServerScript ?? null,
-        serviceStartCommand: normalizedProjectSettings.serviceStartCommand ?? null,
-        serviceStopCommand: normalizedProjectSettings.serviceStopCommand ?? null,
-        alias: normalizedProjectSettings.alias ?? null,
-      });
-    }
+      pinnedFolderShortcuts: [...normalizedConfig.pinnedFolderShortcuts],
+      projectSettings: Object.fromEntries(
+        Array.from(normalizedProjectSettingsEntries.entries()).map(([projectId, projectSettings]) => (
+          [projectId, toLocalProjectSettings(normalizeProjectSettings(projectSettings))]
+        )),
+      ),
+    };
   });
-
-  tx(config);
 }
 
 export async function getConfig(): Promise<Config> {
-  const db = getLocalDb();
-  const configRow = db.prepare(`
-    SELECT
-      default_root, selected_ide, agent_width,
-      default_agent_provider, default_agent_model, default_agent_reasoning_effort,
-      home_project_sort
-    FROM app_config
-    WHERE singleton_id = 1
-  `).get() as ConfigRow | undefined;
-
-  const recentProjects = db.prepare(`
-    SELECT project_id
-    FROM app_config_recent_project_entities
-    ORDER BY position ASC
-  `).all() as Array<{ project_id: string }>;
-
-  const pinnedFolderShortcuts = db.prepare(`
-    SELECT folder_path
-    FROM app_config_pinned_folder_shortcuts
-    ORDER BY position ASC
-  `).all() as Array<{ folder_path: string }>;
-
-  const projectSettingsRows = db.prepare(`
-    SELECT
-      project_id, agent_provider, agent_model, agent_reasoning_effort,
-      startup_script, dev_server_script, service_start_command, service_stop_command, alias
-    FROM app_config_project_entity_settings
-  `).all() as ProjectSettingsRow[];
+  const state = readLocalState();
+  const appConfig = state.appConfig;
 
   const projectSettings = Object.fromEntries(
-    projectSettingsRows.flatMap((row) => {
-      const projectId = row.project_id.trim();
-      if (!projectId) return [];
-
-      const projectSettings = toProjectSettings(row);
-      return getProjectCompatibilityKeys(projectId).map((key) => [key, projectSettings] as const);
+    Object.entries(appConfig.projectSettings).flatMap(([projectId, record]) => {
+      const trimmedProjectId = projectId.trim();
+      if (!trimmedProjectId) return [];
+      const projectSettings = toProjectSettings(record);
+      return getProjectCompatibilityKeys(trimmedProjectId).map((key) => [key, projectSettings] as const);
     }),
   );
 
-  const recentProjectIds = recentProjects
-    .map((entry) => entry.project_id)
-    .filter((projectId) => projectId.trim().length > 0);
-  const recentProjectPaths = recentProjectIds
+  const recentProjectPaths = appConfig.recentProjects
     .map((projectId) => getProjectPrimaryFolderPath(getProjectById(projectId) ?? { folderPaths: [] }) || projectId)
     .filter((projectPath) => projectPath.trim().length > 0);
 
   return {
     ...DEFAULT_CONFIG,
-    homeProjectSort: normalizeHomeProjectSort(configRow?.home_project_sort),
-    defaultRoot: configRow?.default_root ?? DEFAULT_CONFIG.defaultRoot,
-    selectedIde: configRow?.selected_ide ?? DEFAULT_CONFIG.selectedIde,
-    agentWidth: configRow?.agent_width ?? DEFAULT_CONFIG.agentWidth,
-    defaultAgentProvider: configRow?.default_agent_provider
-      ? configRow.default_agent_provider as AgentProvider
+    homeProjectSort: normalizeHomeProjectSort(appConfig.homeProjectSort),
+    defaultRoot: appConfig.defaultRoot ?? DEFAULT_CONFIG.defaultRoot,
+    selectedIde: appConfig.selectedIde ?? DEFAULT_CONFIG.selectedIde,
+    agentWidth: appConfig.agentWidth ?? DEFAULT_CONFIG.agentWidth,
+    defaultAgentProvider: appConfig.defaultAgentProvider
+      ? appConfig.defaultAgentProvider as AgentProvider
       : undefined,
-    defaultAgentModel: configRow?.default_agent_model ?? undefined,
+    defaultAgentModel: appConfig.defaultAgentModel ?? undefined,
     defaultAgentReasoningEffort: normalizeProviderReasoningEffort(
-      configRow?.default_agent_provider,
-      configRow?.default_agent_reasoning_effort,
+      appConfig.defaultAgentProvider,
+      appConfig.defaultAgentReasoningEffort,
     ),
-    recentProjects: recentProjectIds,
+    recentProjects: [...appConfig.recentProjects],
     recentRepos: recentProjectPaths,
-    pinnedFolderShortcuts: pinnedFolderShortcuts.map((entry) => entry.folder_path),
+    pinnedFolderShortcuts: [...appConfig.pinnedFolderShortcuts],
     projectSettings,
     repoSettings: projectSettings,
   };
@@ -385,27 +302,18 @@ export async function updateProjectSettings(projectId: string, updates: Partial<
 }
 
 export async function getGitRepoCredential(repoPath: string): Promise<string | null> {
-  const db = getLocalDb();
-  const row = db.prepare(`
-    SELECT credential_id
-    FROM git_repo_credentials
-    WHERE repo_path = ?
-  `).get(repoPath) as { credential_id: string | null } | undefined;
-
-  return row?.credential_id ?? null;
+  const credential = readLocalState().gitRepoCredentials[repoPath];
+  return credential ?? null;
 }
 
 export async function setGitRepoCredential(repoPath: string, credentialId: string | null): Promise<void> {
-  const db = getLocalDb();
   const normalizedCredentialId = credentialId?.trim() || null;
+  updateLocalState((state) => {
+    if (!normalizedCredentialId) {
+      delete state.gitRepoCredentials[repoPath];
+      return;
+    }
 
-  if (!normalizedCredentialId) {
-    db.prepare('DELETE FROM git_repo_credentials WHERE repo_path = ?').run(repoPath);
-    return;
-  }
-
-  db.prepare(`
-    INSERT OR REPLACE INTO git_repo_credentials (repo_path, credential_id)
-    VALUES (?, ?)
-  `).run(repoPath, normalizedCredentialId);
+    state.gitRepoCredentials[repoPath] = normalizedCredentialId;
+  });
 }

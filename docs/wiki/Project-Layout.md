@@ -85,4 +85,4 @@ Primary references:
 ## Notable Layout Observations
 
 - `src/components/repo-list.tsx` appears unused by current route tree and references `/api/fs` browsing APIs that are not present in this branch; active repository onboarding uses `GitRepoSelector` + server actions instead.
-- `src/lib/local-db.ts` is the centralized local metadata/config persistence layer (`~/.viba/palx.db`), while `src/app/actions/session.ts` still writes prompt text files under `~/.viba/session-prompts`.
+- `src/lib/local-db.ts` is the centralized local metadata/config persistence layer (`~/.viba/palx-state.json`), while `src/app/actions/session.ts` still writes prompt text files under `~/.viba/session-prompts`.

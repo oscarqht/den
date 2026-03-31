@@ -116,12 +116,12 @@ References:
 
 ### Local state locations
 
-- `~/.viba/palx.db` (SQLite metadata/config database)
+- `~/.viba/palx-state.json` (local metadata/config state file)
 - `~/.viba/session-prompts/*`
 - `~/.viba/repos/*` (default clone destination for remote repository onboarding)
 
 Legacy note:
-- old JSON metadata files (for example `config.json`, `sessions/*`, `drafts/*`, credential metadata JSON) are migration inputs only; runtime source of truth is `palx.db` once migration has run.
+- `palx-state.json` is the runtime source of truth for local metadata. Prompt text files and keychain secrets remain separate on purpose.
 
 ## Troubleshooting Guide
 
@@ -142,9 +142,9 @@ Legacy note:
 - Re-save credential from credentials page to verify token with provider API.
 - Check repository-level `credentialId` selection in config/repo settings.
 
-### Local metadata DB issues
-- Verify `~/.viba/palx.db` exists and is writable by the current user.
-- If migration was interrupted, restart Palx to re-run DB initialization/migration logic in [src/lib/local-db.ts](../../src/lib/local-db.ts).
+### Local metadata state issues
+- Verify `~/.viba/palx-state.json` exists or can be created by the current user.
+- If the file becomes corrupted, stop Palx, back up or remove `palx-state.json`, then restart so [src/lib/local-db.ts](../../src/lib/local-db.ts) can recreate normalized defaults.
 
 ### Preview not loading
 - Preview URL must normalize to `http/https`; invalid schemes are rejected.

@@ -2,12 +2,12 @@
 
 ## Persistence Overview
 
-Palx now uses a local SQLite database for metadata/config persistence.
+Palx now uses a local JSON state file for metadata/config persistence.
 
 Primary storage location:
-- `~/.viba/palx.db` (single-file SQLite database), initialized by [src/lib/local-db.ts](../../src/lib/local-db.ts).
+- `~/.viba/palx-state.json` (single-file JSON state store), initialized by [src/lib/local-db.ts](../../src/lib/local-db.ts).
 
-What is persisted in SQLite:
+What is persisted in the state file:
 - repository records and UI repository state.
 - app settings and app config.
 - per-repo settings.
@@ -21,29 +21,31 @@ What remains file-based:
 - repository clones and worktree directories on disk ([src/app/actions/repository.ts](../../src/app/actions/repository.ts), [src/app/actions/git.ts](../../src/app/actions/git.ts)).
 
 Secret material:
-- secrets are still stored in OS keychain via `keytar` (tokens/API keys), not in SQLite ([src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
+- secrets are still stored in OS keychain via `keytar` (tokens/API keys), not in the JSON state file ([src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts)).
 
-## SQLite Schema Groups
+## State File Groups
 
 Defined in [src/lib/local-db.ts](../../src/lib/local-db.ts).
 
-- Repository/settings tables:
+- Repository/settings sections:
   - `repositories`
-  - `app_settings`
-- App config tables:
-  - `app_config`
-  - `app_config_recent_repos`
-  - `app_config_pinned_folder_shortcuts`
-  - `app_config_repo_settings`
-- Credential metadata tables:
-  - `credentials_metadata`
-  - `agent_api_credentials_metadata`
-- Session/draft tables:
+  - `appSettings`
+- App config sections:
+  - `appConfig`
+  - `gitRepoCredentials`
+- Credential metadata sections:
+  - `credentialsMetadata`
+  - `agentApiCredentialsMetadata`
+- Session/draft sections:
   - `sessions`
-  - `session_launch_contexts`
+  - `sessionLaunchContexts`
+  - `sessionCanvasLayouts`
+  - `sessionWorkspacePreparations`
   - `drafts`
-- Migration/versioning table:
-  - `schema_meta`
+  - `quickCreateDrafts`
+  - `sessionAgentHistoryItems`
+- Versioning:
+  - top-level `version`
 
 ## Entities and Schemas
 
@@ -57,7 +59,7 @@ Key fields:
 - tree visibility/expansion fields (`visibilityMap`, `expandedFolders`, etc.)
 
 ### App settings (store)
-Defined in [src/lib/types.ts](../../src/lib/types.ts), persisted by [src/lib/store.ts](../../src/lib/store.ts) into `app_settings`.
+Defined in [src/lib/types.ts](../../src/lib/types.ts), persisted by [src/lib/store.ts](../../src/lib/store.ts) into `appSettings`.
 
 Key fields:
 - `defaultRootFolder`
@@ -66,10 +68,8 @@ Key fields:
 
 ### App config
 Defined in [src/app/actions/config.ts](../../src/app/actions/config.ts), persisted into:
-- `app_config`
-- `app_config_recent_repos`
-- `app_config_pinned_folder_shortcuts`
-- `app_config_repo_settings`
+- `appConfig`
+- `gitRepoCredentials`
 
 Key fields:
 - `recentRepos[]`
@@ -93,7 +93,7 @@ Key fields:
 - `timestamp`
 
 ### Session launch context
-Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted in `session_launch_contexts`.
+Defined in [src/app/actions/session.ts](../../src/app/actions/session.ts), persisted in `sessionLaunchContexts`.
 
 Key fields:
 - `initialMessage`, `rawInitialMessage`
@@ -105,7 +105,7 @@ Key fields:
 Defined in [src/app/actions/draft.ts](../../src/app/actions/draft.ts), persisted in `drafts`.
 
 ### Git credential metadata
-Defined in [src/lib/credentials.ts](../../src/lib/credentials.ts), persisted in `credentials_metadata`.
+Defined in [src/lib/credentials.ts](../../src/lib/credentials.ts), persisted in `credentialsMetadata`.
 
 Key fields:
 - `id`, `type`, `username`, optional `serverUrl`
@@ -115,7 +115,7 @@ Key fields:
 Secret value (token) is stored in keychain service `viba-git-credentials`.
 
 ### Agent API credential metadata
-Defined in [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts), persisted in `agent_api_credentials_metadata`.
+Defined in [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts), persisted in `agentApiCredentialsMetadata`.
 
 Secret value (api key) is stored in keychain service `viba-agent-api-credentials`.
 
@@ -178,20 +178,21 @@ erDiagram
 
 ## Concurrency and Consistency Notes
 
-- SQLite writes are transactional and centralized through the local DB layer.
-- DB is initialized with pragmas for local robustness/performance: WAL mode, foreign keys enabled, busy timeout, and `synchronous=NORMAL` ([src/lib/local-db.ts](../../src/lib/local-db.ts)).
+- Writes are centralized through the local state layer in [src/lib/local-db.ts](../../src/lib/local-db.ts).
+- State writes are atomic at the file level: the new payload is written to a temporary file and then renamed into place.
+- The in-process cache is authoritative during a running server action, so concurrent multi-process writes are weaker than the old SQLite transactions.
 - In-memory global maps are still used for long-lived process state:
   - preview proxy instances (`__vibaPreviewProxyStates`)
   - notification socket state (`__vibaSessionNotificationServerState`)
   - git client instance cache (`gitInstances` in [src/lib/git.ts](../../src/lib/git.ts))
 
-## Indexes and Migrations
+## Normalization and Versioning
 
-- Indexes exist for key query paths (for example `sessions_repo_path_idx`, `sessions_timestamp_idx`, `drafts_repo_path_idx`, `drafts_timestamp_idx`) in [src/lib/local-db.ts](../../src/lib/local-db.ts).
-- A one-time legacy migration imports prior JSON-backed metadata into SQLite on first DB initialization (`schema_meta` key `legacy_migration_v1`).
-- Legacy JSON files are migration sources only and are no longer the source of truth after migration.
+- `src/lib/local-db.ts` normalizes partial or malformed state back to the current `version: 1` structure when reading.
+- There are no relational indexes; callers work against in-memory objects and arrays after the file is loaded.
+- There is no SQLite migration layer anymore. If the state file is missing, Palx recreates defaults on first write.
 
 ## Gotchas
 
-- Session prompts intentionally remain text files (`~/.viba/session-prompts`), so session persistence is split between SQLite metadata and prompt files.
+- Session prompts intentionally remain text files (`~/.viba/session-prompts`), so session persistence is split between JSON metadata and prompt files.
 - Credential metadata may exist without keychain secret if keytar is unavailable or secrets were removed; callers treat missing token as unauthenticated.

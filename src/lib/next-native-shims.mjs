@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const RUNTIME_COPY_RULES = new Map([
-  ["better-sqlite3", ["package.json", "lib", path.join("build", "Release")]],
   ["keytar", ["package.json", "lib", path.join("build", "Release")]],
 ]);
 const require = createRequire(import.meta.url);

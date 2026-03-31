@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
-import type { AgentProvider } from '@/lib/types';
+import type { AgentProvider } from './types.ts';
 
 const SUPPORTED_SKILL_PROVIDERS = new Set<AgentProvider>(['codex', 'gemini', 'cursor']);
 

@@ -28,11 +28,12 @@ before(async () => {
 });
 
 beforeEach(() => {
-  const db = localDbModule.getLocalDb();
-  db.prepare('DELETE FROM sessions').run();
-  db.prepare('DELETE FROM drafts').run();
-  db.prepare('DELETE FROM project_entity_folders').run();
-  db.prepare('DELETE FROM project_entities').run();
+  localDbModule.resetLocalStateForTests();
+  localDbModule.updateLocalState((state) => {
+    state.sessions = {};
+    state.drafts = {};
+    state.projects = {};
+  });
 });
 
 after(async () => {
@@ -49,22 +50,20 @@ function insertSessionRow(input: {
   projectPath?: string | null;
   repoPath?: string | null;
 }) {
-  const db = localDbModule.getLocalDb();
-  db.prepare(`
-    INSERT INTO sessions (
-      session_name, project_id, project_path, workspace_path, workspace_mode,
-      active_repo_path, repo_path, agent, model, timestamp
-    ) VALUES (
-      @sessionName, @projectId, @projectPath, @workspacePath, 'folder',
-      @activeRepoPath, @repoPath, 'codex', 'gpt-5.4', '2026-03-30T07:00:00.000Z'
-    )
-  `).run({
-    sessionName: input.sessionName,
-    projectId: input.projectId ?? null,
-    projectPath: input.projectPath ?? '',
-    workspacePath: input.projectPath ?? input.repoPath ?? '',
-    activeRepoPath: input.repoPath ?? null,
-    repoPath: input.repoPath ?? null,
+  localDbModule.updateLocalState((state) => {
+    state.sessions[input.sessionName] = {
+      sessionName: input.sessionName,
+      projectId: input.projectId ?? null,
+      projectPath: input.projectPath ?? '',
+      workspacePath: input.projectPath ?? input.repoPath ?? '',
+      workspaceMode: 'folder',
+      activeRepoPath: input.repoPath ?? null,
+      repoPath: input.repoPath ?? null,
+      agent: 'codex',
+      model: 'gpt-5.4',
+      timestamp: '2026-03-30T07:00:00.000Z',
+      gitRepos: [],
+    };
   });
 }
 
@@ -74,22 +73,25 @@ function insertDraftRow(input: {
   projectPath?: string | null;
   repoPath?: string | null;
 }) {
-  const db = localDbModule.getLocalDb();
-  db.prepare(`
-    INSERT INTO drafts (
-      id, project_id, project_path, repo_path, branch_name, git_contexts_json, message,
-      attachment_paths_json, agent_provider, model, reasoning_effort, timestamp, title,
-      startup_script, dev_server_script, session_mode
-    ) VALUES (
-      @id, @projectId, @projectPath, @repoPath, 'main', NULL, 'Draft body',
-      '[]', 'codex', 'gpt-5.4', 'medium', '2026-03-30T07:00:00.000Z', 'Draft title',
-      '', '', 'fast'
-    )
-  `).run({
-    id: input.id,
-    projectId: input.projectId ?? null,
-    projectPath: input.projectPath ?? '',
-    repoPath: input.repoPath ?? null,
+  localDbModule.updateLocalState((state) => {
+    state.drafts[input.id] = {
+      id: input.id,
+      projectId: input.projectId ?? null,
+      projectPath: input.projectPath ?? '',
+      repoPath: input.repoPath ?? null,
+      branchName: 'main',
+      gitContextsJson: null,
+      message: 'Draft body',
+      attachmentPathsJson: '[]',
+      agentProvider: 'codex',
+      model: 'gpt-5.4',
+      reasoningEffort: 'medium',
+      timestamp: '2026-03-30T07:00:00.000Z',
+      title: 'Draft title',
+      startupScript: '',
+      devServerScript: '',
+      sessionMode: 'fast',
+    };
   });
 }
 
@@ -141,10 +143,8 @@ describe('project activity server helpers', () => {
 
     projectActivityServerModule.repairMissingSessionProjectIds(project.id);
 
-    const repairedRow = localDbModule.getLocalDb()
-      .prepare('SELECT project_id FROM sessions WHERE session_name = ?')
-      .get('session-legacy') as { project_id: string };
-    assert.equal(repairedRow.project_id, project.id);
+    const repairedRow = localDbModule.readLocalState().sessions['session-legacy'];
+    assert.equal(repairedRow?.projectId, project.id);
   });
 
   it('backfills legacy draft rows using nested repo paths under associated folders', () => {
@@ -163,9 +163,7 @@ describe('project activity server helpers', () => {
 
     projectActivityServerModule.repairMissingDraftProjectIds(secondaryPath);
 
-    const repairedRow = localDbModule.getLocalDb()
-      .prepare('SELECT project_id FROM drafts WHERE id = ?')
-      .get('draft-legacy') as { project_id: string };
-    assert.equal(repairedRow.project_id, project.id);
+    const repairedRow = localDbModule.readLocalState().drafts['draft-legacy'];
+    assert.equal(repairedRow?.projectId, project.id);
   });
 });

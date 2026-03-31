@@ -1,1481 +1,609 @@
-import Database from 'better-sqlite3';
-import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getAppDataDir } from './platform-utils.ts';
 
-type JsonObject = Record<string, unknown>;
-
-const DB_FILE_NAME = 'palx.db';
-const LEGACY_MIGRATION_KEY = 'legacy_migration_v1';
-const SUPPORTED_AGENT_APIS = new Set(['codex', 'gemini', 'cursor']);
+const STATE_FILE_NAME = 'palx-state.json';
 const VIBA_DIR = path.join(os.homedir(), '.viba');
-const DB_PATH = path.join(VIBA_DIR, DB_FILE_NAME);
+const STATE_PATH = path.join(VIBA_DIR, STATE_FILE_NAME);
 
-let dbInstance: Database.Database | null = null;
+export type LocalProjectRecord = {
+  id: string;
+  name: string;
+  folderPaths: string[];
+  iconPath?: string | null;
+  lastOpenedAt?: string | null;
+};
 
-const SESSION_TABLE_COLUMN_SQL = `
-  session_name TEXT PRIMARY KEY,
-  project_id TEXT,
-  project_path TEXT NOT NULL DEFAULT '',
-  workspace_path TEXT NOT NULL DEFAULT '',
-  workspace_folders_json TEXT,
-  workspace_mode TEXT NOT NULL DEFAULT 'folder',
-  active_repo_path TEXT,
-  repo_path TEXT,
-  worktree_path TEXT,
-  branch_name TEXT,
-  base_branch TEXT,
-  agent TEXT NOT NULL,
-  model TEXT NOT NULL,
-  reasoning_effort TEXT,
-  thread_id TEXT,
-  active_turn_id TEXT,
-  run_state TEXT,
-  last_error TEXT,
-  last_activity_at TEXT,
-  title TEXT,
-  dev_server_script TEXT,
-  initialized INTEGER,
-  timestamp TEXT NOT NULL
-`;
+export type LocalRepositoryRecord = {
+  path: string;
+  name: string;
+  displayName?: string | null;
+  expandedFolders?: string[] | null;
+  visibilityMap?: Record<string, 'visible' | 'hidden'> | null;
+  localGroupExpanded?: boolean | null;
+  remotesGroupExpanded?: boolean | null;
+  worktreesGroupExpanded?: boolean | null;
+};
 
-const SESSION_TABLE_COLUMN_NAMES = [
-  'session_name',
-  'project_id',
-  'project_path',
-  'workspace_path',
-  'workspace_folders_json',
-  'workspace_mode',
-  'active_repo_path',
-  'repo_path',
-  'worktree_path',
-  'branch_name',
-  'base_branch',
-  'agent',
-  'model',
-  'reasoning_effort',
-  'thread_id',
-  'active_turn_id',
-  'run_state',
-  'last_error',
-  'last_activity_at',
-  'title',
-  'dev_server_script',
-  'initialized',
-  'timestamp',
-] as const;
+export type LocalAppSettingsRecord = {
+  defaultRootFolder?: string | null;
+  sidebarCollapsed?: boolean | null;
+  historyPanelHeight?: number | null;
+};
+
+export type LocalProjectSettingsRecord = {
+  agentProvider?: string | null;
+  agentModel?: string | null;
+  agentReasoningEffort?: string | null;
+  startupScript?: string | null;
+  devServerScript?: string | null;
+  serviceStartCommand?: string | null;
+  serviceStopCommand?: string | null;
+  alias?: string | null;
+};
+
+export type LocalAppConfigRecord = {
+  recentProjects: string[];
+  homeProjectSort: string;
+  defaultRoot: string;
+  selectedIde: string;
+  agentWidth: number;
+  defaultAgentProvider?: string | null;
+  defaultAgentModel?: string | null;
+  defaultAgentReasoningEffort?: string | null;
+  pinnedFolderShortcuts: string[];
+  projectSettings: Record<string, LocalProjectSettingsRecord>;
+};
+
+export type LocalCredentialMetadataRecord = {
+  id: string;
+  type: string;
+  username: string;
+  serverUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  keytarAccount?: string | null;
+};
+
+export type LocalAgentApiCredentialMetadataRecord = {
+  agent: string;
+  apiProxy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  keytarAccount?: string | null;
+};
+
+export type LocalSessionGitRepoRecord = {
+  sourceRepoPath: string;
+  relativeRepoPath: string;
+  worktreePath: string;
+  branchName: string;
+  baseBranch?: string | null;
+};
+
+export type LocalSessionRecord = {
+  sessionName: string;
+  projectId?: string | null;
+  projectPath: string;
+  workspacePath: string;
+  workspaceFoldersJson?: string | null;
+  workspaceMode: string;
+  activeRepoPath?: string | null;
+  repoPath?: string | null;
+  worktreePath?: string | null;
+  branchName?: string | null;
+  baseBranch?: string | null;
+  agent: string;
+  model: string;
+  reasoningEffort?: string | null;
+  threadId?: string | null;
+  activeTurnId?: string | null;
+  runState?: string | null;
+  lastError?: string | null;
+  lastActivityAt?: string | null;
+  title?: string | null;
+  devServerScript?: string | null;
+  initialized?: boolean | null;
+  timestamp: string;
+  gitRepos: LocalSessionGitRepoRecord[];
+};
+
+export type LocalSessionLaunchContextRecord = {
+  sessionName: string;
+  title?: string | null;
+  initialMessage?: string | null;
+  rawInitialMessage?: string | null;
+  startupScript?: string | null;
+  attachmentPathsJson?: string | null;
+  attachmentNamesJson?: string | null;
+  projectRepoPathsJson?: string | null;
+  projectRepoRelativePathsJson?: string | null;
+  agentProvider?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  sessionMode?: string | null;
+  isResume?: boolean | null;
+  timestamp: string;
+};
+
+export type LocalSessionCanvasLayoutRecord = {
+  sessionName: string;
+  layoutJson: string;
+  updatedAt: string;
+};
+
+export type LocalSessionWorkspacePreparationRecord = {
+  preparationId: string;
+  projectId?: string | null;
+  projectPath: string;
+  contextFingerprint: string;
+  sessionName: string;
+  payloadJson: string;
+  status: string;
+  cancelRequested: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  releasedAt?: string | null;
+};
+
+export type LocalDraftRecord = {
+  id: string;
+  projectId?: string | null;
+  projectPath?: string | null;
+  repoPath?: string | null;
+  branchName?: string | null;
+  gitContextsJson?: string | null;
+  message: string;
+  attachmentPathsJson: string;
+  agentProvider: string;
+  model: string;
+  reasoningEffort?: string | null;
+  timestamp: string;
+  title: string;
+  startupScript: string;
+  devServerScript: string;
+  sessionMode: string;
+};
+
+export type LocalQuickCreateDraftRecord = {
+  id: string;
+  title: string;
+  message: string;
+  attachmentPathsJson: string;
+  lastError: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalSessionAgentHistoryRecord = {
+  sessionName: string;
+  itemId: string;
+  threadId?: string | null;
+  turnId?: string | null;
+  ordinal: number;
+  kind: string;
+  status?: string | null;
+  payloadJson: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalState = {
+  version: 1;
+  projects: Record<string, LocalProjectRecord>;
+  repositories: Record<string, LocalRepositoryRecord>;
+  appSettings: LocalAppSettingsRecord;
+  appConfig: LocalAppConfigRecord;
+  gitRepoCredentials: Record<string, string>;
+  credentialsMetadata: LocalCredentialMetadataRecord[];
+  agentApiCredentialsMetadata: LocalAgentApiCredentialMetadataRecord[];
+  sessions: Record<string, LocalSessionRecord>;
+  sessionLaunchContexts: Record<string, LocalSessionLaunchContextRecord>;
+  sessionCanvasLayouts: Record<string, LocalSessionCanvasLayoutRecord>;
+  sessionWorkspacePreparations: Record<string, LocalSessionWorkspacePreparationRecord>;
+  drafts: Record<string, LocalDraftRecord>;
+  quickCreateDrafts: Record<string, LocalQuickCreateDraftRecord>;
+  sessionAgentHistoryItems: Record<string, Record<string, LocalSessionAgentHistoryRecord>>;
+};
+
+let stateCache: LocalState | null = null;
+
+function createDefaultState(): LocalState {
+  return {
+    version: 1,
+    projects: {},
+    repositories: {},
+    appSettings: {},
+    appConfig: {
+      recentProjects: [],
+      homeProjectSort: 'last-update',
+      defaultRoot: '',
+      selectedIde: 'vscode',
+      agentWidth: 66.666,
+      pinnedFolderShortcuts: [],
+      projectSettings: {},
+    },
+    gitRepoCredentials: {},
+    credentialsMetadata: [],
+    agentApiCredentialsMetadata: [],
+    sessions: {},
+    sessionLaunchContexts: {},
+    sessionCanvasLayouts: {},
+    sessionWorkspacePreparations: {},
+    drafts: {},
+    quickCreateDrafts: {},
+    sessionAgentHistoryItems: {},
+  };
+}
+
+function cloneState<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function normalizeRecord<T>(value: unknown, mapper: (entry: unknown, key: string) => T | null): Record<string, T> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const result: Record<string, T> = {};
+  for (const [key, entry] of entries) {
+    const mapped = mapper(entry, key);
+    if (mapped) {
+      result[key] = mapped;
+    }
+  }
+  return result;
+}
+
+function normalizeState(raw: unknown): LocalState {
+  const defaults = createDefaultState();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return defaults;
+  }
+
+  const input = raw as Record<string, unknown>;
+  const appConfigInput = input.appConfig && typeof input.appConfig === 'object' && !Array.isArray(input.appConfig)
+    ? input.appConfig as Record<string, unknown>
+    : {};
+
+  return {
+    version: 1,
+    projects: normalizeRecord(input.projects, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        id: typeof record.id === 'string' ? record.id : key,
+        name: typeof record.name === 'string' ? record.name : key,
+        folderPaths: normalizeStringArray(record.folderPaths),
+        iconPath: typeof record.iconPath === 'string' || record.iconPath === null ? record.iconPath : undefined,
+        lastOpenedAt: typeof record.lastOpenedAt === 'string' || record.lastOpenedAt === null
+          ? record.lastOpenedAt
+          : undefined,
+      };
+    }),
+    repositories: normalizeRecord(input.repositories, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        path: typeof record.path === 'string' ? record.path : key,
+        name: typeof record.name === 'string' ? record.name : key,
+        displayName: typeof record.displayName === 'string' || record.displayName === null
+          ? record.displayName
+          : undefined,
+        expandedFolders: Array.isArray(record.expandedFolders)
+          ? normalizeStringArray(record.expandedFolders)
+          : undefined,
+        visibilityMap: record.visibilityMap && typeof record.visibilityMap === 'object' && !Array.isArray(record.visibilityMap)
+          ? record.visibilityMap as Record<string, 'visible' | 'hidden'>
+          : undefined,
+        localGroupExpanded: typeof record.localGroupExpanded === 'boolean' || record.localGroupExpanded === null
+          ? record.localGroupExpanded
+          : undefined,
+        remotesGroupExpanded: typeof record.remotesGroupExpanded === 'boolean' || record.remotesGroupExpanded === null
+          ? record.remotesGroupExpanded
+          : undefined,
+        worktreesGroupExpanded: typeof record.worktreesGroupExpanded === 'boolean' || record.worktreesGroupExpanded === null
+          ? record.worktreesGroupExpanded
+          : undefined,
+      };
+    }),
+    appSettings: input.appSettings && typeof input.appSettings === 'object' && !Array.isArray(input.appSettings)
+      ? input.appSettings as LocalAppSettingsRecord
+      : defaults.appSettings,
+    appConfig: {
+      recentProjects: normalizeStringArray(appConfigInput.recentProjects),
+      homeProjectSort: typeof appConfigInput.homeProjectSort === 'string'
+        ? appConfigInput.homeProjectSort
+        : defaults.appConfig.homeProjectSort,
+      defaultRoot: typeof appConfigInput.defaultRoot === 'string' ? appConfigInput.defaultRoot : defaults.appConfig.defaultRoot,
+      selectedIde: typeof appConfigInput.selectedIde === 'string' ? appConfigInput.selectedIde : defaults.appConfig.selectedIde,
+      agentWidth: typeof appConfigInput.agentWidth === 'number' ? appConfigInput.agentWidth : defaults.appConfig.agentWidth,
+      defaultAgentProvider: typeof appConfigInput.defaultAgentProvider === 'string' || appConfigInput.defaultAgentProvider === null
+        ? appConfigInput.defaultAgentProvider
+        : undefined,
+      defaultAgentModel: typeof appConfigInput.defaultAgentModel === 'string' || appConfigInput.defaultAgentModel === null
+        ? appConfigInput.defaultAgentModel
+        : undefined,
+      defaultAgentReasoningEffort:
+        typeof appConfigInput.defaultAgentReasoningEffort === 'string'
+        || appConfigInput.defaultAgentReasoningEffort === null
+          ? appConfigInput.defaultAgentReasoningEffort
+          : undefined,
+      pinnedFolderShortcuts: normalizeStringArray(appConfigInput.pinnedFolderShortcuts),
+      projectSettings: normalizeRecord(appConfigInput.projectSettings, (entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+        return entry as LocalProjectSettingsRecord;
+      }),
+    },
+    gitRepoCredentials: normalizeRecord(input.gitRepoCredentials, (entry) => (
+      typeof entry === 'string' ? entry : null
+    )),
+    credentialsMetadata: Array.isArray(input.credentialsMetadata)
+      ? input.credentialsMetadata.filter((entry): entry is LocalCredentialMetadataRecord => (
+        Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      ))
+      : [],
+    agentApiCredentialsMetadata: Array.isArray(input.agentApiCredentialsMetadata)
+      ? input.agentApiCredentialsMetadata.filter((entry): entry is LocalAgentApiCredentialMetadataRecord => (
+        Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      ))
+      : [],
+    sessions: normalizeRecord(input.sessions, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        sessionName: typeof record.sessionName === 'string' ? record.sessionName : key,
+        projectId: typeof record.projectId === 'string' || record.projectId === null ? record.projectId : undefined,
+        projectPath: typeof record.projectPath === 'string' ? record.projectPath : '',
+        workspacePath: typeof record.workspacePath === 'string' ? record.workspacePath : '',
+        workspaceFoldersJson: typeof record.workspaceFoldersJson === 'string' || record.workspaceFoldersJson === null
+          ? record.workspaceFoldersJson
+          : undefined,
+        workspaceMode: typeof record.workspaceMode === 'string' ? record.workspaceMode : 'folder',
+        activeRepoPath: typeof record.activeRepoPath === 'string' || record.activeRepoPath === null
+          ? record.activeRepoPath
+          : undefined,
+        repoPath: typeof record.repoPath === 'string' || record.repoPath === null ? record.repoPath : undefined,
+        worktreePath: typeof record.worktreePath === 'string' || record.worktreePath === null
+          ? record.worktreePath
+          : undefined,
+        branchName: typeof record.branchName === 'string' || record.branchName === null
+          ? record.branchName
+          : undefined,
+        baseBranch: typeof record.baseBranch === 'string' || record.baseBranch === null
+          ? record.baseBranch
+          : undefined,
+        agent: typeof record.agent === 'string' ? record.agent : 'codex',
+        model: typeof record.model === 'string' ? record.model : '',
+        reasoningEffort: typeof record.reasoningEffort === 'string' || record.reasoningEffort === null
+          ? record.reasoningEffort
+          : undefined,
+        threadId: typeof record.threadId === 'string' || record.threadId === null ? record.threadId : undefined,
+        activeTurnId: typeof record.activeTurnId === 'string' || record.activeTurnId === null
+          ? record.activeTurnId
+          : undefined,
+        runState: typeof record.runState === 'string' || record.runState === null ? record.runState : undefined,
+        lastError: typeof record.lastError === 'string' || record.lastError === null ? record.lastError : undefined,
+        lastActivityAt: typeof record.lastActivityAt === 'string' || record.lastActivityAt === null
+          ? record.lastActivityAt
+          : undefined,
+        title: typeof record.title === 'string' || record.title === null ? record.title : undefined,
+        devServerScript: typeof record.devServerScript === 'string' || record.devServerScript === null
+          ? record.devServerScript
+          : undefined,
+        initialized: typeof record.initialized === 'boolean' || record.initialized === null
+          ? record.initialized
+          : undefined,
+        timestamp: typeof record.timestamp === 'string' ? record.timestamp : new Date(0).toISOString(),
+        gitRepos: Array.isArray(record.gitRepos)
+          ? record.gitRepos.filter((gitRepo): gitRepo is LocalSessionGitRepoRecord => (
+            Boolean(gitRepo) && typeof gitRepo === 'object' && !Array.isArray(gitRepo)
+          ))
+          : [],
+      };
+    }),
+    sessionLaunchContexts: normalizeRecord(input.sessionLaunchContexts, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        sessionName: typeof record.sessionName === 'string' ? record.sessionName : key,
+        title: typeof record.title === 'string' || record.title === null ? record.title : undefined,
+        initialMessage: typeof record.initialMessage === 'string' || record.initialMessage === null
+          ? record.initialMessage
+          : undefined,
+        rawInitialMessage: typeof record.rawInitialMessage === 'string' || record.rawInitialMessage === null
+          ? record.rawInitialMessage
+          : undefined,
+        startupScript: typeof record.startupScript === 'string' || record.startupScript === null
+          ? record.startupScript
+          : undefined,
+        attachmentPathsJson:
+          typeof record.attachmentPathsJson === 'string' || record.attachmentPathsJson === null
+            ? record.attachmentPathsJson
+            : undefined,
+        attachmentNamesJson:
+          typeof record.attachmentNamesJson === 'string' || record.attachmentNamesJson === null
+            ? record.attachmentNamesJson
+            : undefined,
+        projectRepoPathsJson:
+          typeof record.projectRepoPathsJson === 'string' || record.projectRepoPathsJson === null
+            ? record.projectRepoPathsJson
+            : undefined,
+        projectRepoRelativePathsJson:
+          typeof record.projectRepoRelativePathsJson === 'string' || record.projectRepoRelativePathsJson === null
+            ? record.projectRepoRelativePathsJson
+            : undefined,
+        agentProvider: typeof record.agentProvider === 'string' || record.agentProvider === null
+          ? record.agentProvider
+          : undefined,
+        model: typeof record.model === 'string' || record.model === null ? record.model : undefined,
+        reasoningEffort:
+          typeof record.reasoningEffort === 'string' || record.reasoningEffort === null
+            ? record.reasoningEffort
+            : undefined,
+        sessionMode: typeof record.sessionMode === 'string' || record.sessionMode === null
+          ? record.sessionMode
+          : undefined,
+        isResume: typeof record.isResume === 'boolean' || record.isResume === null ? record.isResume : undefined,
+        timestamp: typeof record.timestamp === 'string' ? record.timestamp : new Date(0).toISOString(),
+      };
+    }),
+    sessionCanvasLayouts: normalizeRecord(input.sessionCanvasLayouts, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        sessionName: typeof record.sessionName === 'string' ? record.sessionName : key,
+        layoutJson: typeof record.layoutJson === 'string' ? record.layoutJson : '',
+        updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date(0).toISOString(),
+      };
+    }),
+    sessionWorkspacePreparations: normalizeRecord(input.sessionWorkspacePreparations, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        preparationId: typeof record.preparationId === 'string' ? record.preparationId : key,
+        projectId: typeof record.projectId === 'string' || record.projectId === null ? record.projectId : undefined,
+        projectPath: typeof record.projectPath === 'string' ? record.projectPath : '',
+        contextFingerprint: typeof record.contextFingerprint === 'string' ? record.contextFingerprint : '',
+        sessionName: typeof record.sessionName === 'string' ? record.sessionName : '',
+        payloadJson: typeof record.payloadJson === 'string' ? record.payloadJson : '',
+        status: typeof record.status === 'string' ? record.status : '',
+        cancelRequested: Boolean(record.cancelRequested),
+        createdAt: typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString(),
+        updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date(0).toISOString(),
+        expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : new Date(0).toISOString(),
+        consumedAt: typeof record.consumedAt === 'string' || record.consumedAt === null ? record.consumedAt : undefined,
+        releasedAt: typeof record.releasedAt === 'string' || record.releasedAt === null ? record.releasedAt : undefined,
+      };
+    }),
+    drafts: normalizeRecord(input.drafts, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        id: typeof record.id === 'string' ? record.id : key,
+        projectId: typeof record.projectId === 'string' || record.projectId === null ? record.projectId : undefined,
+        projectPath: typeof record.projectPath === 'string' || record.projectPath === null
+          ? record.projectPath
+          : undefined,
+        repoPath: typeof record.repoPath === 'string' || record.repoPath === null ? record.repoPath : undefined,
+        branchName:
+          typeof record.branchName === 'string' || record.branchName === null
+            ? record.branchName
+            : undefined,
+        gitContextsJson:
+          typeof record.gitContextsJson === 'string' || record.gitContextsJson === null
+            ? record.gitContextsJson
+            : undefined,
+        message: typeof record.message === 'string' ? record.message : '',
+        attachmentPathsJson: typeof record.attachmentPathsJson === 'string' ? record.attachmentPathsJson : '[]',
+        agentProvider: typeof record.agentProvider === 'string' ? record.agentProvider : 'codex',
+        model: typeof record.model === 'string' ? record.model : '',
+        reasoningEffort:
+          typeof record.reasoningEffort === 'string' || record.reasoningEffort === null
+            ? record.reasoningEffort
+            : undefined,
+        timestamp: typeof record.timestamp === 'string' ? record.timestamp : new Date(0).toISOString(),
+        title: typeof record.title === 'string' ? record.title : '',
+        startupScript: typeof record.startupScript === 'string' ? record.startupScript : '',
+        devServerScript: typeof record.devServerScript === 'string' ? record.devServerScript : '',
+        sessionMode: typeof record.sessionMode === 'string' ? record.sessionMode : 'fast',
+      };
+    }),
+    quickCreateDrafts: normalizeRecord(input.quickCreateDrafts, (entry, key) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      return {
+        id: typeof record.id === 'string' ? record.id : key,
+        title: typeof record.title === 'string' ? record.title : '',
+        message: typeof record.message === 'string' ? record.message : '',
+        attachmentPathsJson: typeof record.attachmentPathsJson === 'string' ? record.attachmentPathsJson : '[]',
+        lastError: typeof record.lastError === 'string' ? record.lastError : '',
+        createdAt: typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString(),
+        updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date(0).toISOString(),
+      };
+    }),
+    sessionAgentHistoryItems: normalizeRecord(input.sessionAgentHistoryItems, (entry) => (
+      normalizeRecord(entry, (historyEntry) => {
+        if (!historyEntry || typeof historyEntry !== 'object' || Array.isArray(historyEntry)) return null;
+        return historyEntry as LocalSessionAgentHistoryRecord;
+      })
+    )),
+  };
+}
 
 function ensureVibaDir(): void {
   fs.mkdirSync(VIBA_DIR, { recursive: true });
 }
 
-function secureDbFilePermissions(): void {
+function secureStateFilePermissions(): void {
   try {
-    fs.chmodSync(DB_PATH, 0o600);
+    fs.chmodSync(STATE_PATH, 0o600);
   } catch {
     // Ignore permission errors on platforms that do not support POSIX modes.
   }
 }
 
-function getSessionsTableSql(tableName = 'sessions', includeIfNotExists = true): string {
-  const ifNotExistsClause = includeIfNotExists ? ' IF NOT EXISTS' : '';
-  return `
-    CREATE TABLE${ifNotExistsClause} ${tableName} (
-      ${SESSION_TABLE_COLUMN_SQL}
-    );
-  `;
-}
-
-function createSchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_meta (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS projects (
-      path TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      display_name TEXT,
-      icon_path TEXT,
-      last_opened_at TEXT,
-      expanded_folders_json TEXT,
-      visibility_map_json TEXT,
-      local_group_expanded INTEGER,
-      remotes_group_expanded INTEGER,
-      worktrees_group_expanded INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS project_entities (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      icon_path TEXT,
-      last_opened_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS project_entity_folders (
-      project_id TEXT NOT NULL,
-      folder_path TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      PRIMARY KEY (project_id, folder_path),
-      UNIQUE (project_id, position)
-    );
-
-    CREATE TABLE IF NOT EXISTS repositories (
-      path TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      display_name TEXT,
-      last_opened_at TEXT,
-      credential_id TEXT,
-      expanded_folders_json TEXT,
-      visibility_map_json TEXT,
-      local_group_expanded INTEGER,
-      remotes_group_expanded INTEGER,
-      worktrees_group_expanded INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS app_settings (
-      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-      default_root_folder TEXT,
-      sidebar_collapsed INTEGER,
-      history_panel_height REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config (
-      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-      default_root TEXT NOT NULL DEFAULT '',
-      selected_ide TEXT NOT NULL DEFAULT 'vscode',
-      agent_width REAL NOT NULL DEFAULT 66.666,
-      default_agent_provider TEXT,
-      default_agent_model TEXT,
-      default_agent_reasoning_effort TEXT,
-      home_project_sort TEXT NOT NULL DEFAULT 'last-update'
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_recent_repos (
-      position INTEGER PRIMARY KEY,
-      repo_path TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_recent_projects (
-      position INTEGER PRIMARY KEY,
-      project_path TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_recent_project_entities (
-      position INTEGER PRIMARY KEY,
-      project_id TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_pinned_folder_shortcuts (
-      position INTEGER PRIMARY KEY,
-      folder_path TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_repo_settings (
-      repo_path TEXT PRIMARY KEY,
-      agent_provider TEXT,
-      agent_model TEXT,
-      agent_reasoning_effort TEXT,
-      startup_script TEXT,
-      dev_server_script TEXT,
-      service_start_command TEXT,
-      service_stop_command TEXT,
-      last_branch TEXT,
-      credential_id TEXT,
-      credential_preference TEXT,
-      alias TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_project_settings (
-      project_path TEXT PRIMARY KEY,
-      agent_provider TEXT,
-      agent_model TEXT,
-      agent_reasoning_effort TEXT,
-      startup_script TEXT,
-      dev_server_script TEXT,
-      service_start_command TEXT,
-      service_stop_command TEXT,
-      alias TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS app_config_project_entity_settings (
-      project_id TEXT PRIMARY KEY,
-      agent_provider TEXT,
-      agent_model TEXT,
-      agent_reasoning_effort TEXT,
-      startup_script TEXT,
-      dev_server_script TEXT,
-      service_start_command TEXT,
-      service_stop_command TEXT,
-      alias TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS git_repo_credentials (
-      repo_path TEXT PRIMARY KEY,
-      credential_id TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS credentials_metadata (
-      id TEXT PRIMARY KEY,
-      type TEXT NOT NULL,
-      username TEXT NOT NULL,
-      server_url TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      keytar_account TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS agent_api_credentials_metadata (
-      agent TEXT PRIMARY KEY,
-      api_proxy TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      keytar_account TEXT
-    );
-
-    ${getSessionsTableSql()}
-
-    CREATE TABLE IF NOT EXISTS session_git_repos (
-      session_name TEXT NOT NULL,
-      source_repo_path TEXT NOT NULL,
-      relative_repo_path TEXT NOT NULL,
-      worktree_path TEXT NOT NULL,
-      branch_name TEXT NOT NULL,
-      base_branch TEXT,
-      PRIMARY KEY (session_name, source_repo_path)
-    );
-
-    CREATE TABLE IF NOT EXISTS session_launch_contexts (
-      session_name TEXT PRIMARY KEY,
-      title TEXT,
-      initial_message TEXT,
-      raw_initial_message TEXT,
-      startup_script TEXT,
-      attachment_paths_json TEXT,
-      attachment_names_json TEXT,
-      project_repo_paths_json TEXT,
-      project_repo_relative_paths_json TEXT,
-      agent_provider TEXT,
-      model TEXT,
-      reasoning_effort TEXT,
-      session_mode TEXT,
-      is_resume INTEGER,
-      timestamp TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS session_canvas_layouts (
-      session_name TEXT PRIMARY KEY,
-      layout_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS session_workspace_preparations (
-      preparation_id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL DEFAULT '',
-      project_path TEXT NOT NULL,
-      context_fingerprint TEXT NOT NULL,
-      session_name TEXT NOT NULL,
-      payload_json TEXT NOT NULL,
-      status TEXT NOT NULL,
-      cancel_requested INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      consumed_at TEXT,
-      released_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS drafts (
-      id TEXT PRIMARY KEY,
-      project_id TEXT,
-      project_path TEXT,
-      repo_path TEXT,
-      branch_name TEXT,
-      git_contexts_json TEXT,
-      message TEXT NOT NULL,
-      attachment_paths_json TEXT NOT NULL,
-      agent_provider TEXT NOT NULL,
-      model TEXT NOT NULL,
-      reasoning_effort TEXT,
-      timestamp TEXT NOT NULL,
-      title TEXT NOT NULL,
-      startup_script TEXT NOT NULL,
-      dev_server_script TEXT NOT NULL,
-      session_mode TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS quick_create_drafts (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      message TEXT NOT NULL,
-      attachment_paths_json TEXT NOT NULL,
-      last_error TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS session_agent_history_items (
-      session_name TEXT NOT NULL,
-      item_id TEXT NOT NULL,
-      thread_id TEXT,
-      turn_id TEXT,
-      ordinal INTEGER NOT NULL DEFAULT 0,
-      kind TEXT NOT NULL,
-      status TEXT,
-      payload_json TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (session_name, item_id)
-    );
-  `);
-}
-
-function readJsonFileIfExists(filePath: string): unknown {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`[local-db] Failed to parse legacy JSON file: ${filePath}`, error);
-    }
-    return null;
-  }
-}
-
-function readJsonObjectsFromDir(dirPath: string): JsonObject[] {
-  try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-      .map((entry) => readJsonFileIfExists(path.join(dirPath, entry.name)))
-      .filter((value): value is JsonObject => Boolean(value) && typeof value === 'object');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`[local-db] Failed to read legacy JSON directory: ${dirPath}`, error);
-    }
-    return [];
-  }
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
-}
-
-function asOptionalString(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  return typeof value === 'string' ? value : null;
-}
-
-function asBooleanOrNull(value: unknown): 1 | 0 | null {
-  if (value === true) return 1;
-  if (value === false) return 0;
-  return null;
-}
-
-function asNumberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function getRowCount(db: Database.Database, tableName: string): number {
-  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get() as { count: number };
-  return row.count;
-}
-
-function migrateLegacyRepositoriesAndSettings(db: Database.Database): void {
-  const legacyDataDir = getAppDataDir();
-  const reposFiles = [
-    path.join(legacyDataDir, 'repos.json'),
-    path.join(VIBA_DIR, 'repos.json'),
-  ];
-  const settingsFiles = [
-    path.join(legacyDataDir, 'settings.json'),
-    path.join(VIBA_DIR, 'settings.json'),
-  ];
-
-  if (getRowCount(db, 'repositories') === 0) {
-    const reposInsert = db.prepare(`
-      INSERT OR IGNORE INTO repositories (
-        path, name, display_name, last_opened_at, credential_id,
-        expanded_folders_json, visibility_map_json, local_group_expanded,
-        remotes_group_expanded, worktrees_group_expanded
-      ) VALUES (
-        @path, @name, @displayName, @lastOpenedAt, @credentialId,
-        @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
-        @remotesGroupExpanded, @worktreesGroupExpanded
-      )
-    `);
-
-    for (const filePath of reposFiles) {
-      const raw = readJsonFileIfExists(filePath);
-      if (!Array.isArray(raw)) continue;
-      for (const entry of raw) {
-        if (!entry || typeof entry !== 'object') continue;
-        const row = entry as JsonObject;
-        const repoPath = asString(row.path);
-        const name = asString(row.name);
-        if (!repoPath || !name) continue;
-        reposInsert.run({
-          path: repoPath,
-          name,
-          displayName: asOptionalString(row.displayName),
-          lastOpenedAt: asOptionalString(row.lastOpenedAt),
-          credentialId: asOptionalString(row.credentialId),
-          expandedFoldersJson: Array.isArray(row.expandedFolders) ? JSON.stringify(row.expandedFolders) : null,
-          visibilityMapJson: row.visibilityMap && typeof row.visibilityMap === 'object'
-            ? JSON.stringify(row.visibilityMap)
-            : null,
-          localGroupExpanded: asBooleanOrNull(row.localGroupExpanded),
-          remotesGroupExpanded: asBooleanOrNull(row.remotesGroupExpanded),
-          worktreesGroupExpanded: asBooleanOrNull(row.worktreesGroupExpanded),
-        });
-      }
-      if (getRowCount(db, 'repositories') > 0) break;
-    }
-  }
-
-  if (getRowCount(db, 'app_settings') === 0) {
-    for (const filePath of settingsFiles) {
-      const raw = readJsonFileIfExists(filePath);
-      if (!raw || typeof raw !== 'object') continue;
-      const row = raw as JsonObject;
-      db.prepare(`
-        INSERT OR REPLACE INTO app_settings (
-          singleton_id, default_root_folder, sidebar_collapsed, history_panel_height
-        ) VALUES (1, @defaultRootFolder, @sidebarCollapsed, @historyPanelHeight)
-      `).run({
-        defaultRootFolder: asOptionalString(row.defaultRootFolder),
-        sidebarCollapsed: asBooleanOrNull(row.sidebarCollapsed),
-        historyPanelHeight: asNumberOrNull(row.historyPanelHeight),
-      });
-      break;
-    }
-  }
-}
-
-function migrateLegacyConfig(db: Database.Database): void {
-  if (getRowCount(db, 'app_config') > 0) return;
-
-  const configPath = path.join(VIBA_DIR, 'config.json');
-  const raw = readJsonFileIfExists(configPath);
-  if (!raw || typeof raw !== 'object') return;
-  const config = raw as JsonObject;
-
-  db.prepare(`
-    INSERT OR REPLACE INTO app_config (
-      singleton_id, default_root, selected_ide, agent_width,
-      default_agent_provider, default_agent_model, default_agent_reasoning_effort
-    ) VALUES (
-      1, @defaultRoot, @selectedIde, @agentWidth,
-      @defaultAgentProvider, @defaultAgentModel, @defaultAgentReasoningEffort
-    )
-  `).run({
-    defaultRoot: asString(config.defaultRoot) ?? '',
-    selectedIde: asString(config.selectedIde) ?? 'vscode',
-    agentWidth: asNumberOrNull(config.agentWidth) ?? 66.666,
-    defaultAgentProvider: asOptionalString(config.defaultAgentProvider),
-    defaultAgentModel: asOptionalString(config.defaultAgentModel),
-    defaultAgentReasoningEffort: asOptionalString(config.defaultAgentReasoningEffort),
-  });
-
-  db.prepare('DELETE FROM app_config_recent_repos').run();
-  if (Array.isArray(config.recentRepos)) {
-    const insertRecent = db.prepare(`
-      INSERT INTO app_config_recent_repos (position, repo_path) VALUES (?, ?)
-    `);
-    config.recentRepos
-      .filter((value): value is string => typeof value === 'string')
-      .forEach((repoPath, index) => {
-        insertRecent.run(index, repoPath);
-      });
-  }
-
-  db.prepare('DELETE FROM app_config_pinned_folder_shortcuts').run();
-  if (Array.isArray(config.pinnedFolderShortcuts)) {
-    const insertPinned = db.prepare(`
-      INSERT INTO app_config_pinned_folder_shortcuts (position, folder_path) VALUES (?, ?)
-    `);
-    config.pinnedFolderShortcuts
-      .filter((value): value is string => typeof value === 'string')
-      .forEach((folderPath, index) => {
-        insertPinned.run(index, folderPath);
-      });
-  }
-
-  db.prepare('DELETE FROM app_config_repo_settings').run();
-  if (config.repoSettings && typeof config.repoSettings === 'object') {
-    const insertRepoSettings = db.prepare(`
-      INSERT INTO app_config_repo_settings (
-        repo_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command,
-        last_branch, credential_id, credential_preference
-      ) VALUES (
-        @repoPath, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand,
-        @lastBranch, @credentialId, @credentialPreference
-      )
-    `);
-    for (const [repoPath, rawSettings] of Object.entries(config.repoSettings)) {
-      if (!rawSettings || typeof rawSettings !== 'object') continue;
-      const settings = rawSettings as JsonObject;
-      const rawPreference = asString(settings.credentialPreference);
-      const credentialPreference = rawPreference === 'auto' || rawPreference === 'github' || rawPreference === 'gitlab'
-        ? rawPreference
-        : null;
-      insertRepoSettings.run({
-        repoPath,
-        agentProvider: asOptionalString(settings.agentProvider),
-        agentModel: asOptionalString(settings.agentModel),
-        agentReasoningEffort: asOptionalString(settings.agentReasoningEffort ?? settings.reasoningEffort),
-        startupScript: asOptionalString(settings.startupScript),
-        devServerScript: asOptionalString(settings.devServerScript),
-        serviceStartCommand: asOptionalString(settings.serviceStartCommand),
-        serviceStopCommand: asOptionalString(settings.serviceStopCommand),
-        lastBranch: asOptionalString(settings.lastBranch),
-        credentialId: asOptionalString(settings.credentialId),
-        credentialPreference,
-      });
-    }
-  }
-}
-
-function migrateLegacyCredentials(db: Database.Database): void {
-  if (getRowCount(db, 'credentials_metadata') > 0) return;
-
-  const now = new Date().toISOString();
-  const credentialsPath = path.join(VIBA_DIR, 'credentials.json');
-  const raw = readJsonFileIfExists(credentialsPath);
-  if (!raw) return;
-
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO credentials_metadata (
-      id, type, username, server_url, created_at, updated_at, keytar_account
-    ) VALUES (
-      @id, @type, @username, @serverUrl, @createdAt, @updatedAt, @keytarAccount
-    )
-  `);
-
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (!entry || typeof entry !== 'object') continue;
-      const row = entry as JsonObject;
-      const id = asString(row.id);
-      const type = asString(row.type);
-      const username = asString(row.username);
-      if (!id || !username || (type !== 'github' && type !== 'gitlab')) continue;
-      insert.run({
-        id,
-        type,
-        username,
-        serverUrl: type === 'gitlab' ? asOptionalString(row.serverUrl) ?? 'https://gitlab.com' : null,
-        createdAt: asString(row.createdAt) ?? now,
-        updatedAt: asString(row.updatedAt) ?? now,
-        keytarAccount: asOptionalString(row.keytarAccount),
-      });
-    }
-    return;
-  }
-
-  if (typeof raw !== 'object') return;
-  const legacy = raw as JsonObject;
-  const github = legacy.github;
-  if (github && typeof github === 'object') {
-    const row = github as JsonObject;
-    const username = asString(row.username);
-    if (username) {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      insert.run({
-        id,
-        type: 'github',
-        username,
-        serverUrl: null,
-        createdAt: asString(row.createdAt) ?? now,
-        updatedAt: asString(row.updatedAt) ?? now,
-        keytarAccount: 'credential-github',
-      });
-    }
-  }
-  const gitlab = legacy.gitlab;
-  if (gitlab && typeof gitlab === 'object') {
-    const row = gitlab as JsonObject;
-    const username = asString(row.username);
-    if (username) {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      insert.run({
-        id,
-        type: 'gitlab',
-        username,
-        serverUrl: asOptionalString(row.serverUrl) ?? 'https://gitlab.com',
-        createdAt: asString(row.createdAt) ?? now,
-        updatedAt: asString(row.updatedAt) ?? now,
-        keytarAccount: 'credential-gitlab',
-      });
-    }
-  }
-}
-
-function migrateLegacyAgentApiCredentials(db: Database.Database): void {
-  if (getRowCount(db, 'agent_api_credentials_metadata') > 0) return;
-
-  const now = new Date().toISOString();
-  const configPath = path.join(VIBA_DIR, 'agent-api-configs.json');
-  const raw = readJsonFileIfExists(configPath);
-  if (!raw) return;
-
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO agent_api_credentials_metadata (
-      agent, api_proxy, created_at, updated_at, keytar_account
-    ) VALUES (
-      @agent, @apiProxy, @createdAt, @updatedAt, @keytarAccount
-    )
-  `);
-
-  const migrateEntry = (agent: string, value: unknown) => {
-    if (!SUPPORTED_AGENT_APIS.has(agent)) return;
-    if (!value || typeof value !== 'object') return;
-    const row = value as JsonObject;
-    insert.run({
-      agent,
-      apiProxy: asOptionalString(row.apiProxy),
-      createdAt: asString(row.createdAt) ?? now,
-      updatedAt: asString(row.updatedAt) ?? now,
-      keytarAccount: asOptionalString(row.keytarAccount) ?? `agent-api-${agent}`,
-    });
-  };
-
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (!entry || typeof entry !== 'object') continue;
-      const row = entry as JsonObject;
-      const agent = asString(row.agent);
-      if (!agent) continue;
-      migrateEntry(agent, row);
-    }
-    return;
-  }
-
-  if (typeof raw !== 'object') return;
-  for (const [agent, value] of Object.entries(raw as JsonObject)) {
-    migrateEntry(agent, value);
-  }
-}
-
-function migrateLegacySessions(db: Database.Database): void {
-  if (getRowCount(db, 'sessions') === 0) {
-    const sessionsDir = path.join(VIBA_DIR, 'sessions');
-    const insert = db.prepare(`
-      INSERT OR REPLACE INTO sessions (
-        session_name, repo_path, worktree_path, branch_name, base_branch, agent, model,
-        reasoning_effort, thread_id, active_turn_id, run_state, last_error, last_activity_at,
-        title, dev_server_script, initialized, timestamp
-      ) VALUES (
-        @sessionName, @repoPath, @worktreePath, @branchName, @baseBranch, @agent, @model,
-        @reasoningEffort, @threadId, @activeTurnId, @runState, @lastError, @lastActivityAt,
-        @title, @devServerScript, @initialized, @timestamp
-      )
-    `);
-    for (const row of readJsonObjectsFromDir(sessionsDir)) {
-      const sessionName = asString(row.sessionName);
-      const repoPath = asString(row.repoPath);
-      const worktreePath = asString(row.worktreePath);
-      const branchName = asString(row.branchName);
-      const agent = asString(row.agent);
-      const model = asString(row.model);
-      const timestamp = asString(row.timestamp);
-      if (!sessionName || !repoPath || !worktreePath || !branchName || !agent || !model || !timestamp) continue;
-      insert.run({
-        sessionName,
-        repoPath,
-        worktreePath,
-        branchName,
-        baseBranch: asOptionalString(row.baseBranch),
-        agent,
-        model,
-        reasoningEffort: asOptionalString(row.reasoningEffort),
-        threadId: asOptionalString(row.threadId),
-        activeTurnId: asOptionalString(row.activeTurnId),
-        runState: asOptionalString(row.runState),
-        lastError: asOptionalString(row.lastError),
-        lastActivityAt: asOptionalString(row.lastActivityAt),
-        title: asOptionalString(row.title),
-        devServerScript: asOptionalString(row.devServerScript),
-        initialized: asBooleanOrNull(row.initialized),
-        timestamp,
-      });
-    }
-  }
-
-  if (getRowCount(db, 'session_launch_contexts') === 0) {
-    const contextsDir = path.join(VIBA_DIR, 'session-contexts');
-    const insert = db.prepare(`
-      INSERT OR REPLACE INTO session_launch_contexts (
-        session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, agent_provider, model, reasoning_effort,
-        session_mode, is_resume, timestamp
-      ) VALUES (
-        @sessionName, @title, @initialMessage, @rawInitialMessage, @startupScript,
-        @attachmentPathsJson, @attachmentNamesJson, @agentProvider, @model, @reasoningEffort,
-        @sessionMode, @isResume, @timestamp
-      )
-    `);
-    for (const row of readJsonObjectsFromDir(contextsDir)) {
-      const sessionName = asString(row.sessionName);
-      const timestamp = asString(row.timestamp);
-      if (!sessionName || !timestamp) continue;
-      insert.run({
-        sessionName,
-        title: asOptionalString(row.title),
-        initialMessage: asOptionalString(row.initialMessage),
-        rawInitialMessage: asOptionalString(row.rawInitialMessage),
-        startupScript: asOptionalString(row.startupScript),
-        attachmentPathsJson: Array.isArray(row.attachmentPaths) ? JSON.stringify(row.attachmentPaths) : null,
-        attachmentNamesJson: Array.isArray(row.attachmentNames) ? JSON.stringify(row.attachmentNames) : null,
-        agentProvider: asOptionalString(row.agentProvider),
-        model: asOptionalString(row.model),
-        reasoningEffort: asOptionalString(row.reasoningEffort),
-        sessionMode: asOptionalString(row.sessionMode),
-        isResume: asBooleanOrNull(row.isResume),
-        timestamp,
-      });
-    }
-  }
-}
-
-function migrateLegacyDrafts(db: Database.Database): void {
-  if (getRowCount(db, 'drafts') > 0) return;
-
-  const draftsDir = path.join(VIBA_DIR, 'drafts');
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO drafts (
-      id, repo_path, branch_name, message, attachment_paths_json, agent_provider,
-      model, reasoning_effort, timestamp, title, startup_script, dev_server_script, session_mode
-    ) VALUES (
-      @id, @repoPath, @branchName, @message, @attachmentPathsJson, @agentProvider,
-      @model, @reasoningEffort, @timestamp, @title, @startupScript, @devServerScript, @sessionMode
-    )
-  `);
-
-  for (const row of readJsonObjectsFromDir(draftsDir)) {
-    const id = asString(row.id);
-    const repoPath = asString(row.repoPath);
-    const branchName = asString(row.branchName);
-    const message = asString(row.message);
-    const agentProvider = asString(row.agentProvider);
-    const model = asString(row.model);
-    const timestamp = asString(row.timestamp);
-    const title = asString(row.title);
-    const startupScript = asString(row.startupScript);
-    const devServerScript = asString(row.devServerScript);
-    const sessionMode = asString(row.sessionMode);
-    if (
-      !id || !repoPath || !branchName || !message || !agentProvider || !model
-      || !timestamp || !title || !startupScript || !devServerScript || !sessionMode
-    ) {
-      continue;
-    }
-
-    insert.run({
-      id,
-      repoPath,
-      branchName,
-      message,
-      attachmentPathsJson: Array.isArray(row.attachmentPaths) ? JSON.stringify(row.attachmentPaths) : '[]',
-      agentProvider,
-      model,
-      reasoningEffort: asOptionalString(row.reasoningEffort),
-      timestamp,
-      title,
-      startupScript,
-      devServerScript,
-      sessionMode,
-    });
-  }
-}
-
-function migrateLegacyData(db: Database.Database): void {
-  const alreadyMigrated = db.prepare(`
-    SELECT value FROM schema_meta WHERE key = ?
-  `).get(LEGACY_MIGRATION_KEY) as { value: string } | undefined;
-
-  if (alreadyMigrated?.value === '1') {
-    return;
-  }
-
-  const migration = db.transaction(() => {
-    migrateLegacyRepositoriesAndSettings(db);
-    migrateLegacyConfig(db);
-    migrateLegacyCredentials(db);
-    migrateLegacyAgentApiCredentials(db);
-    migrateLegacySessions(db);
-    migrateLegacyDrafts(db);
-    db.prepare(`
-      INSERT INTO schema_meta (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(LEGACY_MIGRATION_KEY, '1');
-  });
-
-  migration();
-}
-
-function tableExists(db: Database.Database, tableName: string): boolean {
-  const row = db.prepare(`
-    SELECT name
-    FROM sqlite_master
-    WHERE type = 'table' AND name = ?
-  `).get(tableName) as { name: string } | undefined;
-  return Boolean(row?.name);
-}
-
-function getColumnNames(db: Database.Database, tableName: string): Set<string> {
-  if (!tableExists(db, tableName)) return new Set();
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  return new Set(columns.map((column) => column.name));
-}
-
-function addColumnIfMissing(db: Database.Database, tableName: string, columnSql: string): void {
-  if (!tableExists(db, tableName)) return;
-  const columnName = columnSql.trim().split(/\s+/)[0];
-  if (!columnName) return;
-  const columns = getColumnNames(db, tableName);
-  if (columns.has(columnName)) return;
-  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnSql}`);
-}
-
-function getTableInfo(
-  db: Database.Database,
-  tableName: string,
-): Array<{ name: string; notnull: number }> {
-  if (!tableExists(db, tableName)) return [];
-  return db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string; notnull: number }>;
-}
-
-function createIndexIfColumnsExist(
-  db: Database.Database,
-  tableName: string,
-  indexName: string,
-  columns: string[],
-): void {
-  if (!tableExists(db, tableName)) return;
-  if (columns.length === 0) return;
-  const existingColumns = getColumnNames(db, tableName);
-  if (!columns.every((column) => existingColumns.has(column))) return;
-  db.exec(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${columns.join(', ')})`);
-}
-
-function isPathWithin(parentPath: string, candidatePath: string): boolean {
-  const normalizedParent = path.resolve(parentPath);
-  const normalizedCandidate = path.resolve(candidatePath);
-  if (normalizedParent === normalizedCandidate) return true;
-  const relativePath = path.relative(normalizedParent, normalizedCandidate);
-  return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
-}
-
-function normalizeRelativePath(absolutePath: string, basePath: string | null): string {
-  if (!basePath) return '';
-  if (!isPathWithin(basePath, absolutePath)) return '';
-  const relativePath = path.relative(basePath, absolutePath);
-  return relativePath === '.' ? '' : relativePath;
-}
-
-function getProjectEntityIdByFolderPath(db: Database.Database, folderPath: string | null | undefined): string | null {
-  const normalizedFolderPath = folderPath?.trim();
-  if (!normalizedFolderPath || !tableExists(db, 'project_entity_folders')) return null;
-  const row = db.prepare(`
-    SELECT project_id
-    FROM project_entity_folders
-    WHERE folder_path = ?
-    LIMIT 1
-  `).get(path.resolve(normalizedFolderPath)) as { project_id: string } | undefined;
-  return row?.project_id ?? null;
-}
-
-function getLegacyProjectMetadataByPath(
-  db: Database.Database,
-  folderPath: string,
-): {
-  name: string;
-  iconPath: string | null;
-  lastOpenedAt: string | null;
-} | null {
-  if (!tableExists(db, 'projects')) return null;
-  const row = db.prepare(`
-    SELECT COALESCE(NULLIF(display_name, ''), name) AS name, icon_path, last_opened_at
-    FROM projects
-    WHERE path = ?
-  `).get(folderPath) as { name: string; icon_path: string | null; last_opened_at: string | null } | undefined;
-
-  if (!row?.name?.trim()) return null;
-  return {
-    name: row.name.trim(),
-    iconPath: row.icon_path ?? null,
-    lastOpenedAt: row.last_opened_at ?? null,
-  };
-}
-
-function createProjectEntityForFolderPath(
-  db: Database.Database,
-  folderPath: string,
-  nameOverride?: string | null,
-): string {
-  const normalizedFolderPath = path.resolve(folderPath);
-  const legacyMetadata = getLegacyProjectMetadataByPath(db, normalizedFolderPath);
-  const projectId = randomUUID();
-  const projectName = nameOverride?.trim()
-    || legacyMetadata?.name?.trim()
-    || path.basename(normalizedFolderPath);
-
-  db.prepare(`
-    INSERT INTO project_entities (
-      id, name, icon_path, last_opened_at, created_at, updated_at
-    ) VALUES (
-      @id, @name, @iconPath, @lastOpenedAt, datetime('now'), datetime('now')
-    )
-  `).run({
-    id: projectId,
-    name: projectName,
-    iconPath: legacyMetadata?.iconPath ?? null,
-    lastOpenedAt: legacyMetadata?.lastOpenedAt ?? null,
-  });
-
-  db.prepare(`
-    INSERT INTO project_entity_folders (project_id, folder_path, position)
-    VALUES (?, ?, 0)
-  `).run(projectId, normalizedFolderPath);
-
-  return projectId;
-}
-
-function ensureProjectEntityIdForFolderPath(
-  db: Database.Database,
-  folderPath: string | null | undefined,
-  nameOverride?: string | null,
-): string | null {
-  const normalizedFolderPath = folderPath?.trim();
-  if (!normalizedFolderPath) return null;
-  const existingProjectId = getProjectEntityIdByFolderPath(db, normalizedFolderPath);
-  if (existingProjectId) return existingProjectId;
-  return createProjectEntityForFolderPath(db, normalizedFolderPath, nameOverride);
-}
-
-function migrateProjectEntities(db: Database.Database): void {
-  if (!tableExists(db, 'project_entities') || !tableExists(db, 'project_entity_folders')) return;
-
-  if (tableExists(db, 'projects')) {
-    const legacyProjectRows = db.prepare(`
-      SELECT path, name
-      FROM projects
-      ORDER BY created_at ASC, updated_at ASC, path ASC
-    `).all() as Array<{ path: string; name: string }>;
-
-    for (const row of legacyProjectRows) {
-      ensureProjectEntityIdForFolderPath(db, row.path, row.name);
-    }
-  }
-
-  if (tableExists(db, 'projects') && tableExists(db, 'repositories')) {
-    const legacyProjectPreferenceRows = db.prepare(`
-      SELECT path, name, display_name, last_opened_at, expanded_folders_json, visibility_map_json,
-             local_group_expanded, remotes_group_expanded, worktrees_group_expanded
-      FROM projects
-      ORDER BY path ASC
-    `).all() as Array<{
-      path: string;
-      name: string;
-      display_name: string | null;
-      last_opened_at: string | null;
-      expanded_folders_json: string | null;
-      visibility_map_json: string | null;
-      local_group_expanded: number | null;
-      remotes_group_expanded: number | null;
-      worktrees_group_expanded: number | null;
-    }>;
-
-    const upsertRepository = db.prepare(`
-      INSERT OR REPLACE INTO repositories (
-        path, name, display_name, last_opened_at, credential_id,
-        expanded_folders_json, visibility_map_json, local_group_expanded,
-        remotes_group_expanded, worktrees_group_expanded
-      ) VALUES (
-        @path, @name, @displayName, @lastOpenedAt,
-        COALESCE((SELECT credential_id FROM repositories WHERE path = @path), NULL),
-        @expandedFoldersJson, @visibilityMapJson, @localGroupExpanded,
-        @remotesGroupExpanded, @worktreesGroupExpanded
-      )
-    `);
-
-    for (const row of legacyProjectPreferenceRows) {
-      upsertRepository.run({
-        path: row.path,
-        name: row.name,
-        displayName: row.display_name,
-        lastOpenedAt: row.last_opened_at,
-        expandedFoldersJson: row.expanded_folders_json,
-        visibilityMapJson: row.visibility_map_json,
-        localGroupExpanded: row.local_group_expanded,
-        remotesGroupExpanded: row.remotes_group_expanded,
-        worktreesGroupExpanded: row.worktrees_group_expanded,
-      });
-    }
-  }
-}
-
-function rebuildSessionsTableIfLegacyBranchNameIsRequired(db: Database.Database): void {
-  if (!tableExists(db, 'sessions')) return;
-
-  const tableInfo = getTableInfo(db, 'sessions');
-  const branchNameColumn = tableInfo.find((column) => column.name === 'branch_name');
-  if (!branchNameColumn || branchNameColumn.notnull !== 1) return;
-
-  const existingColumns = new Set(tableInfo.map((column) => column.name));
-  const copyColumns = SESSION_TABLE_COLUMN_NAMES.filter((columnName) => existingColumns.has(columnName));
-  if (copyColumns.length === 0) return;
-
-  const migratedTableName = 'sessions__rebuilt';
-  const copyColumnSql = copyColumns.join(', ');
-
-  const migration = db.transaction(() => {
-    db.exec(`DROP TABLE IF EXISTS ${migratedTableName}`);
-    db.exec(getSessionsTableSql(migratedTableName, false));
-    db.exec(`
-      INSERT INTO ${migratedTableName} (${copyColumnSql})
-      SELECT ${copyColumnSql}
-      FROM sessions
-    `);
-    db.exec('DROP TABLE sessions');
-    db.exec(`ALTER TABLE ${migratedTableName} RENAME TO sessions`);
-  });
-
-  migration();
-}
-
-function runSchemaMigrations(db: Database.Database): void {
-  if (tableExists(db, 'app_config_repo_settings')) {
-    addColumnIfMissing(db, 'app_config_repo_settings', 'alias TEXT');
-    addColumnIfMissing(db, 'app_config_repo_settings', 'agent_reasoning_effort TEXT');
-    addColumnIfMissing(db, 'app_config_repo_settings', 'service_start_command TEXT');
-    addColumnIfMissing(db, 'app_config_repo_settings', 'service_stop_command TEXT');
-  }
-
-  addColumnIfMissing(db, 'projects', 'icon_path TEXT');
-  addColumnIfMissing(db, 'projects', 'created_at TEXT');
-  addColumnIfMissing(db, 'projects', 'updated_at TEXT');
-
-  addColumnIfMissing(db, 'sessions', 'project_id TEXT');
-  addColumnIfMissing(db, 'sessions', 'project_path TEXT');
-  addColumnIfMissing(db, 'sessions', 'workspace_path TEXT');
-  addColumnIfMissing(db, 'sessions', 'workspace_folders_json TEXT');
-  addColumnIfMissing(db, 'sessions', 'workspace_mode TEXT');
-  addColumnIfMissing(db, 'sessions', 'active_repo_path TEXT');
-  addColumnIfMissing(db, 'sessions', 'reasoning_effort TEXT');
-  addColumnIfMissing(db, 'sessions', 'thread_id TEXT');
-  addColumnIfMissing(db, 'sessions', 'active_turn_id TEXT');
-  addColumnIfMissing(db, 'sessions', 'run_state TEXT');
-  addColumnIfMissing(db, 'sessions', 'last_error TEXT');
-  addColumnIfMissing(db, 'sessions', 'last_activity_at TEXT');
-  addColumnIfMissing(db, 'session_launch_contexts', 'reasoning_effort TEXT');
-  addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_paths_json TEXT');
-  addColumnIfMissing(db, 'session_launch_contexts', 'project_repo_relative_paths_json TEXT');
-  addColumnIfMissing(db, 'session_canvas_layouts', 'updated_at TEXT');
-  addColumnIfMissing(db, 'drafts', 'project_id TEXT');
-  addColumnIfMissing(db, 'drafts', 'project_path TEXT');
-  addColumnIfMissing(db, 'drafts', 'git_contexts_json TEXT');
-  addColumnIfMissing(db, 'drafts', 'reasoning_effort TEXT');
-  addColumnIfMissing(db, 'app_config', 'default_agent_provider TEXT');
-  addColumnIfMissing(db, 'app_config', 'default_agent_model TEXT');
-  addColumnIfMissing(db, 'app_config', 'default_agent_reasoning_effort TEXT');
-  addColumnIfMissing(db, 'app_config', "home_project_sort TEXT NOT NULL DEFAULT 'last-update'");
-  addColumnIfMissing(db, 'app_config_project_settings', 'agent_reasoning_effort TEXT');
-  addColumnIfMissing(db, 'app_config_project_settings', 'service_start_command TEXT');
-  addColumnIfMissing(db, 'app_config_project_settings', 'service_stop_command TEXT');
-  addColumnIfMissing(db, 'app_config_project_entity_settings', 'service_start_command TEXT');
-  addColumnIfMissing(db, 'app_config_project_entity_settings', 'service_stop_command TEXT');
-  addColumnIfMissing(db, 'session_workspace_preparations', 'project_id TEXT');
-
-  rebuildSessionsTableIfLegacyBranchNameIsRequired(db);
-  migrateProjectEntities(db);
-
-  if (tableExists(db, 'repositories') && getRowCount(db, 'projects') === 0) {
-    db.prepare(`
-      INSERT OR IGNORE INTO projects (
-        path, name, display_name, icon_path, last_opened_at,
-        expanded_folders_json, visibility_map_json, local_group_expanded,
-        remotes_group_expanded, worktrees_group_expanded, created_at, updated_at
-      )
-      SELECT
-        path, name, display_name, NULL, last_opened_at,
-        expanded_folders_json, visibility_map_json, local_group_expanded,
-        remotes_group_expanded, worktrees_group_expanded, datetime('now'), datetime('now')
-      FROM repositories
-    `).run();
-  }
-
-  if (tableExists(db, 'app_config_recent_repos') && getRowCount(db, 'app_config_recent_projects') === 0) {
-    db.prepare(`
-      INSERT INTO app_config_recent_projects (position, project_path)
-      SELECT position, repo_path
-      FROM app_config_recent_repos
-      ORDER BY position ASC
-    `).run();
-  }
-
-  if (tableExists(db, 'app_config_repo_settings') && getRowCount(db, 'app_config_project_settings') === 0) {
-    db.prepare(`
-      INSERT OR REPLACE INTO app_config_project_settings (
-        project_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command, alias
-      )
-      SELECT
-        repo_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command, alias
-      FROM app_config_repo_settings
-    `).run();
-  }
-
-  if (tableExists(db, 'app_config_repo_settings') && tableExists(db, 'app_config_project_settings')) {
-    db.prepare(`
-      UPDATE app_config_project_settings
-      SET agent_reasoning_effort = (
-        SELECT rs.agent_reasoning_effort
-        FROM app_config_repo_settings rs
-        WHERE rs.repo_path = app_config_project_settings.project_path
-      )
-      WHERE
-        (agent_reasoning_effort IS NULL OR TRIM(agent_reasoning_effort) = '')
-        AND EXISTS (
-          SELECT 1
-          FROM app_config_repo_settings rs
-          WHERE
-            rs.repo_path = app_config_project_settings.project_path
-            AND rs.agent_reasoning_effort IS NOT NULL
-            AND TRIM(rs.agent_reasoning_effort) <> ''
-        )
-    `).run();
-  }
-
-  if (tableExists(db, 'app_config_repo_settings') && getRowCount(db, 'git_repo_credentials') === 0) {
-    db.prepare(`
-      INSERT OR REPLACE INTO git_repo_credentials (repo_path, credential_id)
-      SELECT repo_path, credential_id
-      FROM app_config_repo_settings
-      WHERE credential_id IS NOT NULL AND TRIM(credential_id) <> ''
-    `).run();
-  }
-
-  if (tableExists(db, 'sessions')) {
-    db.prepare(`
-      UPDATE sessions
-      SET
-        project_path = COALESCE(NULLIF(project_path, ''), repo_path),
-        workspace_path = COALESCE(NULLIF(workspace_path, ''), worktree_path, repo_path),
-        workspace_mode = CASE
-          WHEN workspace_mode IN ('single_worktree', 'multi_repo_worktree', 'folder', 'local_source') THEN workspace_mode
-          WHEN COALESCE(repo_path, '') <> '' AND COALESCE(worktree_path, '') <> '' THEN 'single_worktree'
-          ELSE 'folder'
-        END,
-        active_repo_path = COALESCE(NULLIF(active_repo_path, ''), repo_path)
-    `).run();
-
-    const sessionRowsMissingProjectId = db.prepare(`
-      SELECT session_name, project_path, repo_path
-      FROM sessions
-      WHERE project_id IS NULL OR TRIM(project_id) = ''
-    `).all() as Array<{
-      session_name: string;
-      project_path: string | null;
-      repo_path: string | null;
-    }>;
-
-    const updateSessionProjectId = db.prepare(`
-      UPDATE sessions
-      SET project_id = @projectId
-      WHERE session_name = @sessionName
-    `);
-    for (const row of sessionRowsMissingProjectId) {
-      const projectId = ensureProjectEntityIdForFolderPath(
-        db,
-        row.project_path?.trim() || row.repo_path?.trim() || '',
-      );
-      if (!projectId) continue;
-      updateSessionProjectId.run({
-        sessionName: row.session_name,
-        projectId,
-      });
-    }
-  }
-
-  if (tableExists(db, 'session_git_repos') && getRowCount(db, 'session_git_repos') === 0 && tableExists(db, 'sessions')) {
-    const rows = db.prepare(`
-      SELECT session_name, project_path, repo_path, worktree_path, branch_name, base_branch
-      FROM sessions
-      WHERE
-        repo_path IS NOT NULL
-        AND TRIM(repo_path) <> ''
-        AND worktree_path IS NOT NULL
-        AND TRIM(worktree_path) <> ''
-        AND branch_name IS NOT NULL
-        AND TRIM(branch_name) <> ''
-    `).all() as Array<{
-      session_name: string;
-      project_path: string | null;
-      repo_path: string;
-      worktree_path: string;
-      branch_name: string;
-      base_branch: string | null;
-    }>;
-
-    const insert = db.prepare(`
-      INSERT OR REPLACE INTO session_git_repos (
-        session_name, source_repo_path, relative_repo_path, worktree_path, branch_name, base_branch
-      ) VALUES (
-        @sessionName, @sourceRepoPath, @relativeRepoPath, @worktreePath, @branchName, @baseBranch
-      )
-    `);
-
-    for (const row of rows) {
-      const projectPath = row.project_path?.trim() || null;
-      insert.run({
-        sessionName: row.session_name,
-        sourceRepoPath: row.repo_path,
-        relativeRepoPath: normalizeRelativePath(row.repo_path, projectPath),
-        worktreePath: row.worktree_path,
-        branchName: row.branch_name,
-        baseBranch: row.base_branch ?? null,
-      });
-    }
-  }
-
-  if (tableExists(db, 'drafts')) {
-    db.prepare(`
-      UPDATE drafts
-      SET project_path = COALESCE(NULLIF(project_path, ''), repo_path)
-    `).run();
-
-    const draftRowsMissingProjectId = db.prepare(`
-      SELECT id, project_path, repo_path
-      FROM drafts
-      WHERE project_id IS NULL OR TRIM(project_id) = ''
-    `).all() as Array<{
-      id: string;
-      project_path: string | null;
-      repo_path: string | null;
-    }>;
-
-    const updateDraftProjectId = db.prepare(`
-      UPDATE drafts
-      SET project_id = @projectId
-      WHERE id = @id
-    `);
-    for (const row of draftRowsMissingProjectId) {
-      const projectId = ensureProjectEntityIdForFolderPath(
-        db,
-        row.project_path?.trim() || row.repo_path?.trim() || '',
-      );
-      if (!projectId) continue;
-      updateDraftProjectId.run({
-        id: row.id,
-        projectId,
-      });
-    }
-
-    const rows = db.prepare(`
-      SELECT id, project_path, repo_path, branch_name, git_contexts_json
-      FROM drafts
-    `).all() as Array<{
-      id: string;
-      project_path: string | null;
-      repo_path: string | null;
-      branch_name: string | null;
-      git_contexts_json: string | null;
-    }>;
-
-    const updateDraftGitContexts = db.prepare(`
-      UPDATE drafts
-      SET git_contexts_json = @gitContextsJson
-      WHERE id = @id
-    `);
-
-    for (const row of rows) {
-      if (row.git_contexts_json && row.git_contexts_json.trim()) continue;
-      if (!row.repo_path || !row.branch_name) continue;
-
-      const projectPath = row.project_path?.trim() || null;
-      const gitContexts = [{
-        sourceRepoPath: row.repo_path,
-        relativeRepoPath: normalizeRelativePath(row.repo_path, projectPath),
-        worktreePath: '',
-        branchName: row.branch_name,
-      }];
-
-      updateDraftGitContexts.run({
-        id: row.id,
-        gitContextsJson: JSON.stringify(gitContexts),
-      });
-    }
-  }
-
-  if (tableExists(db, 'session_workspace_preparations')) {
-    const preparationRowsMissingProjectId = db.prepare(`
-      SELECT preparation_id, project_path
-      FROM session_workspace_preparations
-      WHERE project_id IS NULL OR TRIM(project_id) = ''
-    `).all() as Array<{
-      preparation_id: string;
-      project_path: string | null;
-    }>;
-
-    const updatePreparationProjectId = db.prepare(`
-      UPDATE session_workspace_preparations
-      SET project_id = @projectId
-      WHERE preparation_id = @preparationId
-    `);
-    for (const row of preparationRowsMissingProjectId) {
-      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path?.trim() || '');
-      if (!projectId) continue;
-      updatePreparationProjectId.run({
-        preparationId: row.preparation_id,
-        projectId,
-      });
-    }
-  }
-
-  if (tableExists(db, 'app_config_recent_project_entities') && getRowCount(db, 'app_config_recent_project_entities') === 0 && tableExists(db, 'app_config_recent_projects')) {
-    const recentProjectRows = db.prepare(`
-      SELECT position, project_path
-      FROM app_config_recent_projects
-      ORDER BY position ASC
-    `).all() as Array<{ position: number; project_path: string }>;
-
-    const insertRecentProjectEntity = db.prepare(`
-      INSERT OR REPLACE INTO app_config_recent_project_entities (position, project_id)
-      VALUES (?, ?)
-    `);
-    for (const row of recentProjectRows) {
-      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path);
-      if (!projectId) continue;
-      insertRecentProjectEntity.run(row.position, projectId);
-    }
-  }
-
-  if (tableExists(db, 'app_config_project_entity_settings') && getRowCount(db, 'app_config_project_entity_settings') === 0 && tableExists(db, 'app_config_project_settings')) {
-    const projectSettingRows = db.prepare(`
-      SELECT
-        project_path, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command, alias
-      FROM app_config_project_settings
-    `).all() as Array<{
-      project_path: string;
-      agent_provider: string | null;
-      agent_model: string | null;
-      agent_reasoning_effort: string | null;
-      startup_script: string | null;
-      dev_server_script: string | null;
-      service_start_command: string | null;
-      service_stop_command: string | null;
-      alias: string | null;
-    }>;
-
-    const insertProjectEntitySettings = db.prepare(`
-      INSERT OR REPLACE INTO app_config_project_entity_settings (
-        project_id, agent_provider, agent_model, agent_reasoning_effort,
-        startup_script, dev_server_script, service_start_command, service_stop_command, alias
-      ) VALUES (
-        @projectId, @agentProvider, @agentModel, @agentReasoningEffort,
-        @startupScript, @devServerScript, @serviceStartCommand, @serviceStopCommand, @alias
-      )
-    `);
-
-    for (const row of projectSettingRows) {
-      const projectId = ensureProjectEntityIdForFolderPath(db, row.project_path, row.alias);
-      if (!projectId) continue;
-      insertProjectEntitySettings.run({
-        projectId,
-        agentProvider: row.agent_provider,
-        agentModel: row.agent_model,
-        agentReasoningEffort: row.agent_reasoning_effort,
-        startupScript: row.startup_script,
-        devServerScript: row.dev_server_script,
-        serviceStartCommand: row.service_start_command,
-        serviceStopCommand: row.service_stop_command,
-        alias: row.alias,
-      });
-    }
-  }
-
-  createIndexIfColumnsExist(db, 'sessions', 'sessions_repo_path_idx', ['repo_path']);
-  createIndexIfColumnsExist(db, 'sessions', 'sessions_project_id_idx', ['project_id']);
-  createIndexIfColumnsExist(db, 'sessions', 'sessions_project_path_idx', ['project_path']);
-  createIndexIfColumnsExist(db, 'sessions', 'sessions_timestamp_idx', ['timestamp']);
-  createIndexIfColumnsExist(db, 'drafts', 'drafts_repo_path_idx', ['repo_path']);
-  createIndexIfColumnsExist(db, 'drafts', 'drafts_project_id_idx', ['project_id']);
-  createIndexIfColumnsExist(db, 'drafts', 'drafts_project_path_idx', ['project_path']);
-  createIndexIfColumnsExist(db, 'drafts', 'drafts_timestamp_idx', ['timestamp']);
-  createIndexIfColumnsExist(db, 'project_entity_folders', 'project_entity_folders_path_idx', ['folder_path']);
-  createIndexIfColumnsExist(db, 'project_entity_folders', 'project_entity_folders_project_idx', ['project_id', 'position']);
-  createIndexIfColumnsExist(db, 'app_config_recent_project_entities', 'app_config_recent_project_entities_project_idx', ['project_id']);
-  createIndexIfColumnsExist(db, 'app_config_project_entity_settings', 'app_config_project_entity_settings_project_idx', ['project_id']);
-  createIndexIfColumnsExist(db, 'quick_create_drafts', 'quick_create_drafts_updated_at_idx', ['updated_at']);
-  createIndexIfColumnsExist(db, 'session_git_repos', 'session_git_repos_session_idx', ['session_name']);
-  createIndexIfColumnsExist(db, 'session_canvas_layouts', 'session_canvas_layouts_updated_at_idx', ['updated_at']);
-  createIndexIfColumnsExist(
-    db,
-    'session_workspace_preparations',
-    'session_workspace_preparations_status_idx',
-    ['status'],
-  );
-  createIndexIfColumnsExist(
-    db,
-    'session_workspace_preparations',
-    'session_workspace_preparations_expires_idx',
-    ['expires_at'],
-  );
-  createIndexIfColumnsExist(
-    db,
-    'session_workspace_preparations',
-    'session_workspace_preparations_fingerprint_idx',
-    ['project_path', 'context_fingerprint', 'status'],
-  );
-  createIndexIfColumnsExist(
-    db,
-    'session_workspace_preparations',
-    'session_workspace_preparations_project_id_idx',
-    ['project_id', 'context_fingerprint', 'status'],
-  );
-  createIndexIfColumnsExist(db, 'session_agent_history_items', 'session_agent_history_session_idx', ['session_name']);
-  createIndexIfColumnsExist(db, 'session_agent_history_items', 'session_agent_history_thread_idx', ['session_name', 'thread_id']);
-  createIndexIfColumnsExist(db, 'session_agent_history_items', 'session_agent_history_order_idx', ['session_name', 'ordinal', 'created_at']);
-}
-
-function initializeDb(): Database.Database {
+function writeStateToDisk(state: LocalState): void {
   ensureVibaDir();
-  const db = new Database(DB_PATH);
-  secureDbFilePermissions();
-
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
-  db.pragma('synchronous = NORMAL');
-
-  createSchema(db);
-  migrateLegacyData(db);
-  runSchemaMigrations(db);
-  return db;
+  const tempPath = `${STATE_PATH}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf8');
+  fs.renameSync(tempPath, STATE_PATH);
+  secureStateFilePermissions();
 }
 
-export function getLocalDb(): Database.Database {
-  if (!dbInstance) {
-    dbInstance = initializeDb();
+function loadStateFromDisk(): LocalState {
+  ensureVibaDir();
+  try {
+    const raw = fs.readFileSync(STATE_PATH, 'utf8');
+    return normalizeState(JSON.parse(raw) as unknown);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[local-db] Failed to parse local state file, resetting to defaults.', error);
+    }
+    const nextState = createDefaultState();
+    writeStateToDisk(nextState);
+    return nextState;
   }
-  return dbInstance;
+}
+
+function getStateReference(): LocalState {
+  if (!stateCache) {
+    stateCache = loadStateFromDisk();
+  }
+  return stateCache;
+}
+
+export function readLocalState(): LocalState {
+  return cloneState(getStateReference());
+}
+
+export function writeLocalState(nextState: LocalState): void {
+  const normalized = normalizeState(nextState);
+  writeStateToDisk(normalized);
+  stateCache = normalized;
+}
+
+export function updateLocalState<T>(updater: (state: LocalState) => T): T {
+  const draft = cloneState(getStateReference());
+  const result = updater(draft);
+  writeLocalState(draft);
+  return result;
+}
+
+export function resetLocalStateForTests(): void {
+  stateCache = null;
 }
 
 export function getLocalDbPath(): string {
-  return DB_PATH;
+  return STATE_PATH;
 }
 
 export function getVibaDirPath(): string {

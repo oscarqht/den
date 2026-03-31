@@ -6,24 +6,24 @@ import path from 'path';
 import os from 'os';
 import { createHash, randomUUID } from 'crypto';
 import simpleGit from 'simple-git';
-import { getErrorMessage } from '../../lib/error-utils';
+import { getErrorMessage } from '../../lib/error-utils.ts';
 import {
   getSessionTerminalEnvironments,
   removeWorktree,
   terminateSessionTerminalSessions,
-} from './git';
-import { discoverProjectGitRepos } from './project';
-import { getLocalDb } from '@/lib/local-db';
+} from './git.ts';
+import { discoverProjectGitRepos } from './project.ts';
+import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
-} from '@/lib/agent/reasoning';
-import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '@/lib/agent/plan';
-import { sortSessionHistoryForTimeline } from '@/lib/agent/history-order';
-import { publishSessionListUpdated } from '@/lib/sessionNotificationServer';
-import { runInBackground } from '@/lib/background-task';
-import { buildTerminalProcessEnv } from '@/lib/terminal-process-env';
-import { getTmuxSessionName } from '@/lib/terminal-session';
+} from '../../lib/agent/reasoning.ts';
+import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '../../lib/agent/plan.ts';
+import { sortSessionHistoryForTimeline } from '../../lib/agent/history-order.ts';
+import { publishSessionListUpdated } from '../../lib/sessionNotificationServer.ts';
+import { runInBackground } from '../../lib/background-task.ts';
+import { buildTerminalProcessEnv } from '../../lib/terminal-process-env.ts';
+import { getTmuxSessionName } from '../../lib/terminal-session.ts';
 import {
   cleanupStaleNextDevLock,
   clearTrackedSessionProcess,
@@ -34,21 +34,21 @@ import {
   readTrackedDevServerState,
   stopTrackedSessionProcess,
   terminateProcessGracefully,
-} from '@/lib/session-processes';
-import { shutdownSessionOwnedProcesses } from '@/lib/session-owned-processes';
-import { findProjectByFolderPath, getProjectById } from '@/lib/store';
+} from '../../lib/session-processes.ts';
+import { shutdownSessionOwnedProcesses } from '../../lib/session-owned-processes.ts';
+import { findProjectByFolderPath, getProjectById } from '../../lib/store.ts';
 import {
   buildProjectFolderEntries,
   normalizeProjectFolderPath,
-} from '@/lib/project-folders';
+} from '../../lib/project-folders.ts';
 import {
   repairMissingSessionProjectIds,
   resolveProjectActivityFilter,
-} from '@/lib/project-activity-server';
+} from '../../lib/project-activity-server.ts';
 import {
   resolveProjectWorkspacePreference,
   resolveStoredProjectSessionContext,
-} from '@/lib/project-session-context';
+} from '../../lib/project-session-context.ts';
 import type {
   AgentProvider,
   HistoryEntry,
@@ -61,7 +61,7 @@ import type {
   SessionWorkspaceFolder,
   SessionWorkspaceMode,
   SessionWorkspacePreference,
-} from '@/lib/types';
+} from '../../lib/types.ts';
 
 export type SessionMetadata = {
   sessionName: string;
@@ -275,6 +275,172 @@ type SessionAgentHistoryRow = {
   updated_at: string;
 };
 
+function toSessionGitRepoRows(metadata: {
+  sessionName: string;
+  gitRepos: Array<{
+    sourceRepoPath: string;
+    relativeRepoPath: string;
+    worktreePath: string;
+    branchName: string;
+    baseBranch?: string | null;
+  }>;
+}): SessionGitRepoRow[] {
+  return metadata.gitRepos.map((gitRepo) => ({
+    session_name: metadata.sessionName,
+    source_repo_path: gitRepo.sourceRepoPath,
+    relative_repo_path: gitRepo.relativeRepoPath,
+    worktree_path: gitRepo.worktreePath,
+    branch_name: gitRepo.branchName,
+    base_branch: gitRepo.baseBranch ?? null,
+  }));
+}
+
+function toSessionRow(record: {
+  sessionName: string;
+  projectId?: string | null;
+  projectPath: string;
+  workspacePath: string;
+  workspaceFoldersJson?: string | null;
+  workspaceMode: string;
+  activeRepoPath?: string | null;
+  repoPath?: string | null;
+  worktreePath?: string | null;
+  branchName?: string | null;
+  baseBranch?: string | null;
+  agent: string;
+  model: string;
+  reasoningEffort?: string | null;
+  threadId?: string | null;
+  activeTurnId?: string | null;
+  runState?: string | null;
+  lastError?: string | null;
+  lastActivityAt?: string | null;
+  title?: string | null;
+  devServerScript?: string | null;
+  initialized?: boolean | null;
+  timestamp: string;
+}): SessionRow {
+  return {
+    session_name: record.sessionName,
+    project_id: record.projectId ?? null,
+    project_path: record.projectPath ?? null,
+    workspace_path: record.workspacePath ?? null,
+    workspace_folders_json: record.workspaceFoldersJson ?? null,
+    workspace_mode: record.workspaceMode ?? null,
+    active_repo_path: record.activeRepoPath ?? null,
+    repo_path: record.repoPath ?? null,
+    worktree_path: record.worktreePath ?? null,
+    branch_name: record.branchName ?? null,
+    base_branch: record.baseBranch ?? null,
+    agent: record.agent,
+    model: record.model,
+    reasoning_effort: record.reasoningEffort ?? null,
+    thread_id: record.threadId ?? null,
+    active_turn_id: record.activeTurnId ?? null,
+    run_state: record.runState ?? null,
+    last_error: record.lastError ?? null,
+    last_activity_at: record.lastActivityAt ?? null,
+    title: record.title ?? null,
+    dev_server_script: record.devServerScript ?? null,
+    initialized: record.initialized == null ? null : Number(record.initialized),
+    timestamp: record.timestamp,
+  };
+}
+
+function toSessionLaunchContextRow(record: {
+  sessionName: string;
+  title?: string | null;
+  initialMessage?: string | null;
+  rawInitialMessage?: string | null;
+  startupScript?: string | null;
+  attachmentPathsJson?: string | null;
+  attachmentNamesJson?: string | null;
+  projectRepoPathsJson?: string | null;
+  projectRepoRelativePathsJson?: string | null;
+  agentProvider?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  sessionMode?: string | null;
+  isResume?: boolean | null;
+  timestamp: string;
+}): SessionLaunchContextRow {
+  return {
+    session_name: record.sessionName,
+    title: record.title ?? null,
+    initial_message: record.initialMessage ?? null,
+    raw_initial_message: record.rawInitialMessage ?? null,
+    startup_script: record.startupScript ?? null,
+    attachment_paths_json: record.attachmentPathsJson ?? null,
+    attachment_names_json: record.attachmentNamesJson ?? null,
+    project_repo_paths_json: record.projectRepoPathsJson ?? null,
+    project_repo_relative_paths_json: record.projectRepoRelativePathsJson ?? null,
+    agent_provider: record.agentProvider ?? null,
+    model: record.model ?? null,
+    reasoning_effort: record.reasoningEffort ?? null,
+    session_mode: record.sessionMode ?? null,
+    is_resume: record.isResume == null ? null : Number(record.isResume),
+    timestamp: record.timestamp,
+  };
+}
+
+function toSessionWorkspacePreparationRow(record: {
+  preparationId: string;
+  projectId?: string | null;
+  projectPath: string;
+  contextFingerprint: string;
+  sessionName: string;
+  payloadJson: string;
+  status: string;
+  cancelRequested: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  releasedAt?: string | null;
+}): SessionWorkspacePreparationRow {
+  return {
+    preparation_id: record.preparationId,
+    project_id: record.projectId ?? null,
+    project_path: record.projectPath,
+    context_fingerprint: record.contextFingerprint,
+    session_name: record.sessionName,
+    payload_json: record.payloadJson,
+    status: record.status,
+    cancel_requested: Number(record.cancelRequested),
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+    expires_at: record.expiresAt,
+    consumed_at: record.consumedAt ?? null,
+    released_at: record.releasedAt ?? null,
+  };
+}
+
+function toSessionAgentHistoryRow(record: {
+  sessionName: string;
+  itemId: string;
+  threadId?: string | null;
+  turnId?: string | null;
+  ordinal: number;
+  kind: string;
+  status?: string | null;
+  payloadJson: string;
+  createdAt: string;
+  updatedAt: string;
+}): SessionAgentHistoryRow {
+  return {
+    session_name: record.sessionName,
+    item_id: record.itemId,
+    thread_id: record.threadId ?? null,
+    turn_id: record.turnId ?? null,
+    ordinal: record.ordinal,
+    kind: record.kind,
+    status: record.status ?? null,
+    payload_json: record.payloadJson,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+  };
+}
+
 function parseStringArray(value: string | null): string[] | undefined {
   if (!value) return undefined;
   try {
@@ -376,14 +542,10 @@ function toCompatibilityFields(metadata: SessionMetadata): Pick<SessionMetadata,
 }
 
 async function getSessionGitRepos(sessionName: string): Promise<SessionGitRepoContext[]> {
-  const db = getLocalDb();
-  const rows = db.prepare(`
-    SELECT
-      session_name, source_repo_path, relative_repo_path, worktree_path, branch_name, base_branch
-    FROM session_git_repos
-    WHERE session_name = ?
-    ORDER BY source_repo_path ASC
-  `).all(sessionName) as SessionGitRepoRow[];
+  const record = readLocalState().sessions[sessionName];
+  const rows = record
+    ? toSessionGitRepoRows(record).sort((left, right) => left.source_repo_path.localeCompare(right.source_repo_path))
+    : [];
 
   return rows.map(toSessionGitRepoContext);
 }
@@ -1588,20 +1750,13 @@ function rowToSessionWorkspacePreparation(
 }
 
 async function sweepExpiredSessionWorkspacePreparations(): Promise<void> {
-  const db = getLocalDb();
   const nowIso = new Date().toISOString();
-  const expiredRows = db.prepare(`
-    SELECT
-      preparation_id, project_path, context_fingerprint, session_name, payload_json,
-      status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-    FROM session_workspace_preparations
-    WHERE
-      status = @readyStatus
-      AND expires_at <= @now
-  `).all({
-    readyStatus: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
-    now: nowIso,
-  }) as SessionWorkspacePreparationRow[];
+  const expiredRows = Object.values(readLocalState().sessionWorkspacePreparations)
+    .filter((row) => (
+      row.status === SESSION_WORKSPACE_PREPARATION_STATUS_READY
+      && row.expiresAt <= nowIso
+    ))
+    .map(toSessionWorkspacePreparationRow);
 
   for (const row of expiredRows) {
     const payload = parseSessionWorkspacePreparationPayload(row.payload_json);
@@ -1622,29 +1777,26 @@ async function sweepExpiredSessionWorkspacePreparations(): Promise<void> {
       }
     }
 
-    db.prepare(`
-      UPDATE session_workspace_preparations
-      SET
-        status = @releasedStatus,
-        updated_at = @now,
-        released_at = COALESCE(released_at, @now)
-      WHERE preparation_id = @preparationId
-    `).run({
-      releasedStatus: SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED,
-      now: nowIso,
-      preparationId: row.preparation_id,
+    updateLocalState((state) => {
+      const existing = state.sessionWorkspacePreparations[row.preparation_id];
+      if (!existing) return;
+      existing.status = SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED;
+      existing.updatedAt = nowIso;
+      existing.releasedAt = existing.releasedAt ?? nowIso;
     });
   }
 
-  db.prepare(`
-    DELETE FROM session_workspace_preparations
-    WHERE
-      status IN (@consumedStatus, @releasedStatus)
-      AND updated_at <= @cutoff
-  `).run({
-    consumedStatus: SESSION_WORKSPACE_PREPARATION_STATUS_CONSUMED,
-    releasedStatus: SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED,
-    cutoff: new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString(),
+  const cutoff = new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString();
+  updateLocalState((state) => {
+    for (const [preparationId, preparation] of Object.entries(state.sessionWorkspacePreparations)) {
+      if (
+        (preparation.status === SESSION_WORKSPACE_PREPARATION_STATUS_CONSUMED
+          || preparation.status === SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED)
+        && preparation.updatedAt <= cutoff
+      ) {
+        delete state.sessionWorkspacePreparations[preparationId];
+      }
+    }
   });
 }
 
@@ -1655,75 +1807,47 @@ async function getSessionPromptsDir(): Promise<string> {
 }
 
 export async function saveSessionMetadata(metadata: SessionMetadata): Promise<void> {
-  const db = getLocalDb();
   const compatibility = toCompatibilityFields(metadata);
+  const agentProvider = normalizeOptionalText(metadata.agentProvider ?? metadata.agent) ?? metadata.agent;
+  const reasoningEffort = normalizeNullableProviderReasoningEffort(
+    agentProvider,
+    metadata.reasoningEffort,
+  );
 
-  const transaction = db.transaction((nextMetadata: SessionMetadata) => {
-    const agentProvider = normalizeOptionalText(nextMetadata.agentProvider ?? nextMetadata.agent) ?? nextMetadata.agent;
-    const reasoningEffort = normalizeNullableProviderReasoningEffort(
-      agentProvider,
-      nextMetadata.reasoningEffort,
-    );
-    db.prepare(`
-      INSERT OR REPLACE INTO sessions (
-        session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
-        repo_path, worktree_path, branch_name, base_branch,
-        agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
-        last_error, last_activity_at, title, dev_server_script, initialized, timestamp
-      ) VALUES (
-        @sessionName, @projectId, @projectPath, @workspacePath, @workspaceFoldersJson, @workspaceMode, @activeRepoPath,
-        @repoPath, @worktreePath, @branchName, @baseBranch,
-        @agent, @model, @reasoningEffort, @threadId, @activeTurnId, @runState,
-        @lastError, @lastActivityAt, @title, @devServerScript, @initialized, @timestamp
-      )
-    `).run({
-      sessionName: nextMetadata.sessionName,
-      projectId: nextMetadata.projectId ?? null,
-      projectPath: nextMetadata.projectPath,
-      workspacePath: nextMetadata.workspacePath,
-      workspaceFoldersJson: JSON.stringify(nextMetadata.workspaceFolders ?? []),
-      workspaceMode: nextMetadata.workspaceMode,
-      activeRepoPath: nextMetadata.activeRepoPath ?? null,
+  updateLocalState((state) => {
+    state.sessions[metadata.sessionName] = {
+      sessionName: metadata.sessionName,
+      projectId: metadata.projectId ?? null,
+      projectPath: metadata.projectPath,
+      workspacePath: metadata.workspacePath,
+      workspaceFoldersJson: JSON.stringify(metadata.workspaceFolders ?? []),
+      workspaceMode: metadata.workspaceMode,
+      activeRepoPath: metadata.activeRepoPath ?? null,
       repoPath: compatibility.repoPath ?? null,
       worktreePath: compatibility.worktreePath ?? null,
       branchName: compatibility.branchName ?? null,
       baseBranch: compatibility.baseBranch ?? null,
       agent: agentProvider,
-      model: nextMetadata.model,
+      model: metadata.model,
       reasoningEffort,
-      threadId: normalizeNullableText(nextMetadata.threadId),
-      activeTurnId: normalizeNullableText(nextMetadata.activeTurnId),
-      runState: normalizeNullableText(nextMetadata.runState),
-      lastError: normalizeNullableText(nextMetadata.lastError),
-      lastActivityAt: normalizeNullableText(nextMetadata.lastActivityAt),
-      title: nextMetadata.title ?? null,
-      devServerScript: nextMetadata.devServerScript ?? null,
-      initialized: nextMetadata.initialized === undefined ? null : Number(nextMetadata.initialized),
-      timestamp: nextMetadata.timestamp,
-    });
-
-    db.prepare(`DELETE FROM session_git_repos WHERE session_name = ?`).run(nextMetadata.sessionName);
-    const insertGitRepo = db.prepare(`
-      INSERT INTO session_git_repos (
-        session_name, source_repo_path, relative_repo_path, worktree_path, branch_name, base_branch
-      ) VALUES (
-        @sessionName, @sourceRepoPath, @relativeRepoPath, @worktreePath, @branchName, @baseBranch
-      )
-    `);
-
-    for (const gitRepo of nextMetadata.gitRepos) {
-      insertGitRepo.run({
-        sessionName: nextMetadata.sessionName,
+      threadId: normalizeNullableText(metadata.threadId),
+      activeTurnId: normalizeNullableText(metadata.activeTurnId),
+      runState: normalizeNullableText(metadata.runState),
+      lastError: normalizeNullableText(metadata.lastError),
+      lastActivityAt: normalizeNullableText(metadata.lastActivityAt),
+      title: metadata.title ?? null,
+      devServerScript: metadata.devServerScript ?? null,
+      initialized: metadata.initialized ?? null,
+      timestamp: metadata.timestamp,
+      gitRepos: metadata.gitRepos.map((gitRepo) => ({
         sourceRepoPath: gitRepo.sourceRepoPath,
         relativeRepoPath: gitRepo.relativeRepoPath,
         worktreePath: gitRepo.worktreePath,
         branchName: gitRepo.branchName,
         baseBranch: gitRepo.baseBranch ?? null,
-      });
-    }
+      })),
+    };
   });
-
-  transaction(metadata);
 }
 
 export async function writeSessionPromptFile(
@@ -1752,38 +1876,29 @@ export async function saveSessionLaunchContext(
       timestamp: new Date().toISOString(),
     };
     const agentProvider = contextData.agentProvider;
-    const db = getLocalDb();
-    db.prepare(`
-      INSERT OR REPLACE INTO session_launch_contexts (
-        session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
-        agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
-      ) VALUES (
-        @sessionName, @title, @initialMessage, @rawInitialMessage, @startupScript,
-        @attachmentPathsJson, @attachmentNamesJson, @projectRepoPathsJson, @projectRepoRelativePathsJson,
-        @agentProvider, @model, @reasoningEffort, @sessionMode, @isResume, @timestamp
-      )
-    `).run({
-      sessionName: contextData.sessionName,
-      title: contextData.title ?? null,
-      initialMessage: contextData.initialMessage ?? null,
-      rawInitialMessage: contextData.rawInitialMessage ?? null,
-      startupScript: contextData.startupScript ?? null,
-      attachmentPathsJson: contextData.attachmentPaths ? JSON.stringify(contextData.attachmentPaths) : null,
-      attachmentNamesJson: contextData.attachmentNames ? JSON.stringify(contextData.attachmentNames) : null,
-      projectRepoPathsJson: contextData.projectRepoPaths ? JSON.stringify(contextData.projectRepoPaths) : null,
-      projectRepoRelativePathsJson: contextData.projectRepoRelativePaths
-        ? JSON.stringify(contextData.projectRepoRelativePaths)
-        : null,
-      agentProvider: agentProvider ?? null,
-      model: contextData.model ?? null,
-      reasoningEffort: normalizeNullableProviderReasoningEffort(
-        agentProvider,
-        contextData.reasoningEffort,
-      ),
-      sessionMode: contextData.sessionMode ?? null,
-      isResume: contextData.isResume === undefined ? null : Number(contextData.isResume),
-      timestamp: contextData.timestamp,
+    updateLocalState((state) => {
+      state.sessionLaunchContexts[sessionName] = {
+        sessionName: contextData.sessionName,
+        title: contextData.title ?? null,
+        initialMessage: contextData.initialMessage ?? null,
+        rawInitialMessage: contextData.rawInitialMessage ?? null,
+        startupScript: contextData.startupScript ?? null,
+        attachmentPathsJson: contextData.attachmentPaths ? JSON.stringify(contextData.attachmentPaths) : null,
+        attachmentNamesJson: contextData.attachmentNames ? JSON.stringify(contextData.attachmentNames) : null,
+        projectRepoPathsJson: contextData.projectRepoPaths ? JSON.stringify(contextData.projectRepoPaths) : null,
+        projectRepoRelativePathsJson: contextData.projectRepoRelativePaths
+          ? JSON.stringify(contextData.projectRepoRelativePaths)
+          : null,
+        agentProvider: agentProvider ?? null,
+        model: contextData.model ?? null,
+        reasoningEffort: normalizeNullableProviderReasoningEffort(
+          agentProvider,
+          contextData.reasoningEffort,
+        ),
+        sessionMode: contextData.sessionMode ?? null,
+        isResume: contextData.isResume ?? null,
+        timestamp: contextData.timestamp,
+      };
     });
     return { success: true };
   } catch (e: unknown) {
@@ -1796,15 +1911,8 @@ export async function consumeSessionLaunchContext(
   sessionName: string
 ): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
   try {
-    const db = getLocalDb();
-    const row = db.prepare(`
-      SELECT
-        session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
-        agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
-      FROM session_launch_contexts
-      WHERE session_name = ?
-    `).get(sessionName) as SessionLaunchContextRow | undefined;
+    const record = readLocalState().sessionLaunchContexts[sessionName];
+    const row = record ? toSessionLaunchContextRow(record) : undefined;
     const context = row ? rowToSessionLaunchContext(row) : undefined;
     return { success: true, context };
   } catch (e: unknown) {
@@ -1817,15 +1925,8 @@ export async function readSessionLaunchContext(
   sessionName: string
 ): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
   try {
-    const db = getLocalDb();
-    const row = db.prepare(`
-      SELECT
-        session_name, title, initial_message, raw_initial_message, startup_script,
-        attachment_paths_json, attachment_names_json, project_repo_paths_json, project_repo_relative_paths_json,
-        agent_provider, model, reasoning_effort, session_mode, is_resume, timestamp
-      FROM session_launch_contexts
-      WHERE session_name = ?
-    `).get(sessionName) as SessionLaunchContextRow | undefined;
+    const record = readLocalState().sessionLaunchContexts[sessionName];
+    const row = record ? toSessionLaunchContextRow(record) : undefined;
     const context = row ? rowToSessionLaunchContext(row) : undefined;
     return { success: true, context };
   } catch (e: unknown) {
@@ -1942,16 +2043,8 @@ export async function copySessionAttachments(
 
 export async function getSessionMetadata(sessionName: string): Promise<SessionMetadata | null> {
   try {
-    const db = getLocalDb();
-    const row = db.prepare(`
-      SELECT
-        session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
-        repo_path, worktree_path, branch_name, base_branch,
-        agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
-        last_error, last_activity_at, title, dev_server_script, initialized, timestamp
-      FROM sessions
-      WHERE session_name = ?
-    `).get(sessionName) as SessionRow | undefined;
+    const record = readLocalState().sessions[sessionName];
+    const row = record ? toSessionRow(record) : undefined;
 
     if (!row) return null;
     return await rowToSessionMetadata(row);
@@ -1964,34 +2057,19 @@ export async function listSessions(projectReference?: string): Promise<SessionMe
   try {
     repairMissingSessionProjectIds(projectReference);
 
-    const db = getLocalDb();
     const resolvedFilter = resolveProjectActivityFilter(projectReference);
-    const filterColumn = resolvedFilter?.filterColumn ?? null;
-    const filterValue = resolvedFilter?.filterValue ?? null;
-    const query = projectReference
-      ? `
-        SELECT
-          session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
-          repo_path, worktree_path, branch_name, base_branch,
-          agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
-          last_error, last_activity_at, title, dev_server_script, initialized, timestamp
-        FROM sessions
-        WHERE ${filterColumn} = ?
-        ORDER BY timestamp DESC
-      `
-      : `
-        SELECT
-          session_name, project_id, project_path, workspace_path, workspace_folders_json, workspace_mode, active_repo_path,
-          repo_path, worktree_path, branch_name, base_branch,
-          agent, model, reasoning_effort, thread_id, active_turn_id, run_state,
-          last_error, last_activity_at, title, dev_server_script, initialized, timestamp
-        FROM sessions
-        ORDER BY timestamp DESC
-      `;
+    const rows = Object.values(readLocalState().sessions)
+      .filter((session) => {
+        if (!projectReference || !resolvedFilter) {
+          return true;
+        }
 
-    const rows = projectReference && filterValue
-      ? (db.prepare(query).all(filterValue) as SessionRow[])
-      : (db.prepare(query).all() as SessionRow[]);
+        return resolvedFilter.filterColumn === 'project_id'
+          ? session.projectId === resolvedFilter.filterValue
+          : session.projectPath === resolvedFilter.filterValue;
+      })
+      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+      .map((session) => toSessionRow(session));
 
     return Promise.all(rows.map((row) => rowToSessionMetadata(row)));
   } catch (error) {
@@ -2051,40 +2129,23 @@ export async function listSessionAgentHistory(
   query: SessionAgentHistoryQuery = {},
 ): Promise<SessionAgentHistoryItem[]> {
   try {
-    const db = getLocalDb();
-    const clauses = ['session_name = ?'];
-    const params: Array<string | number> = [sessionName];
     const threadId = normalizeOptionalText(query.threadId);
     const turnId = normalizeOptionalText(query.turnId);
     const limit = typeof query.limit === 'number' && Number.isFinite(query.limit) && query.limit > 0
       ? Math.floor(query.limit)
       : undefined;
-
-    if (threadId) {
-      clauses.push('thread_id = ?');
-      params.push(threadId);
-    }
-
-    if (turnId) {
-      clauses.push('turn_id = ?');
-      params.push(turnId);
-    }
-
-    let sql = `
-      SELECT
-        session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-        payload_json, created_at, updated_at
-      FROM session_agent_history_items
-      WHERE ${clauses.join(' AND ')}
-      ORDER BY ordinal ASC, created_at ASC, item_id ASC
-    `;
+    let rows = Object.values(readLocalState().sessionAgentHistoryItems[sessionName] ?? {})
+      .map(toSessionAgentHistoryRow)
+      .filter((row) => (!threadId || row.thread_id === threadId) && (!turnId || row.turn_id === turnId))
+      .sort((left, right) => (
+        (left.ordinal ?? 0) - (right.ordinal ?? 0)
+        || left.created_at.localeCompare(right.created_at)
+        || left.item_id.localeCompare(right.item_id)
+      ));
 
     if (limit !== undefined) {
-      sql += '\nLIMIT ?';
-      params.push(limit);
+      rows = rows.slice(0, limit);
     }
-
-    const rows = db.prepare(sql).all(...params) as SessionAgentHistoryRow[];
     return sortSessionHistoryForTimeline(rows
       .map((row) => toSessionAgentHistoryItem(row))
       .filter((item): item is SessionAgentHistoryItem => Boolean(item)));
@@ -2287,32 +2348,16 @@ export async function upsertSessionAgentHistory(
       return { success: true, history: await listSessionAgentHistory(sessionName) };
     }
 
-    const db = getLocalDb();
-    const selectExisting = db.prepare(`
-      SELECT
-        session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-        payload_json, created_at, updated_at
-      FROM session_agent_history_items
-      WHERE session_name = ? AND item_id = ?
-    `);
-    const insertOrReplace = db.prepare(`
-      INSERT OR REPLACE INTO session_agent_history_items (
-        session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-        payload_json, created_at, updated_at
-      ) VALUES (
-        @sessionName, @itemId, @threadId, @turnId, @ordinal, @kind, @status,
-        @payloadJson, @createdAt, @updatedAt
-      )
-    `);
-
-    const transaction = db.transaction((writes: NormalizedHistoryWrite[]) => {
-      for (const write of writes) {
-        const existing = selectExisting.get(sessionName, write.itemId) as SessionAgentHistoryRow | undefined;
+    updateLocalState((state) => {
+      const sessionHistory = state.sessionAgentHistoryItems[sessionName] ?? {};
+      for (const write of normalizedEntries) {
+        const existingRecord = sessionHistory[write.itemId];
+        const existing = existingRecord ? toSessionAgentHistoryRow(existingRecord) : undefined;
         const mergedEntry = mergeHistoryEntry(
           existing ? parseHistoryEntryPayload(existing.payload_json) : null,
           write.entry,
         );
-        insertOrReplace.run({
+        sessionHistory[write.itemId] = {
           sessionName,
           itemId: write.itemId,
           threadId: write.threadIdProvided ? write.threadId : (existing?.thread_id ?? null),
@@ -2323,20 +2368,17 @@ export async function upsertSessionAgentHistory(
           payloadJson: JSON.stringify(mergedEntry),
           createdAt: existing?.created_at ?? write.createdAt,
           updatedAt: write.updatedAt,
-        });
+        };
+      }
+      state.sessionAgentHistoryItems[sessionName] = sessionHistory;
+      const session = state.sessions[sessionName];
+      if (session) {
+        session.lastActivityAt = normalizedEntries.reduce(
+          (latest, entry) => (latest > entry.updatedAt ? latest : entry.updatedAt),
+          normalizedEntries[0]?.updatedAt ?? new Date().toISOString(),
+        );
       }
     });
-
-    transaction(normalizedEntries);
-    const latestUpdatedAt = normalizedEntries.reduce(
-      (latest, entry) => (latest > entry.updatedAt ? latest : entry.updatedAt),
-      normalizedEntries[0]?.updatedAt ?? new Date().toISOString(),
-    );
-    db.prepare(`
-      UPDATE sessions
-      SET last_activity_at = ?
-      WHERE session_name = ?
-    `).run(latestUpdatedAt, sessionName);
     return { success: true, history: await listSessionAgentHistory(sessionName) };
   } catch (e: unknown) {
     console.error('Failed to upsert session agent history:', e);
@@ -2354,25 +2396,12 @@ export async function replaceSessionAgentHistory(
       return { success: false, error: 'Session metadata not found' };
     }
 
-    const db = getLocalDb();
     const normalizedEntries = entries
       .map((entry) => normalizeHistoryWrite(entry))
       .filter((entry): entry is NormalizedHistoryWrite => Boolean(entry));
-
-    const transaction = db.transaction((writes: NormalizedHistoryWrite[]) => {
-      db.prepare(`DELETE FROM session_agent_history_items WHERE session_name = ?`).run(sessionName);
-      const insert = db.prepare(`
-        INSERT INTO session_agent_history_items (
-          session_name, item_id, thread_id, turn_id, ordinal, kind, status,
-          payload_json, created_at, updated_at
-        ) VALUES (
-          @sessionName, @itemId, @threadId, @turnId, @ordinal, @kind, @status,
-          @payloadJson, @createdAt, @updatedAt
-        )
-      `);
-
-      for (const write of writes) {
-        insert.run({
+    updateLocalState((state) => {
+      state.sessionAgentHistoryItems[sessionName] = Object.fromEntries(
+        normalizedEntries.map((write) => [write.itemId, {
           sessionName,
           itemId: write.itemId,
           threadId: write.threadId,
@@ -2383,20 +2412,16 @@ export async function replaceSessionAgentHistory(
           payloadJson: write.payloadJson,
           createdAt: write.createdAt,
           updatedAt: write.updatedAt,
-        });
+        }]),
+      );
+      const session = state.sessions[sessionName];
+      if (session) {
+        session.lastActivityAt = normalizedEntries.reduce(
+          (latest, entry) => (latest > entry.updatedAt ? latest : entry.updatedAt),
+          normalizedEntries[0]?.updatedAt ?? new Date().toISOString(),
+        );
       }
     });
-
-    transaction(normalizedEntries);
-    const latestUpdatedAt = normalizedEntries.reduce(
-      (latest, entry) => (latest > entry.updatedAt ? latest : entry.updatedAt),
-      normalizedEntries[0]?.updatedAt ?? new Date().toISOString(),
-    );
-    db.prepare(`
-      UPDATE sessions
-      SET last_activity_at = ?
-      WHERE session_name = ?
-    `).run(latestUpdatedAt, sessionName);
     return { success: true, history: await listSessionAgentHistory(sessionName) };
   } catch (e: unknown) {
     console.error('Failed to replace session agent history:', e);
@@ -2408,8 +2433,9 @@ export async function clearSessionAgentHistory(
   sessionName: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = getLocalDb();
-    db.prepare(`DELETE FROM session_agent_history_items WHERE session_name = ?`).run(sessionName);
+    updateLocalState((state) => {
+      delete state.sessionAgentHistoryItems[sessionName];
+    });
     return { success: true };
   } catch (e: unknown) {
     console.error('Failed to clear session agent history:', e);
@@ -2423,14 +2449,8 @@ async function getSessionWorkspacePreparationRow(
   const normalizedPreparationId = normalizeOptionalText(preparationId);
   if (!normalizedPreparationId) return null;
 
-  const db = getLocalDb();
-  const row = db.prepare(`
-    SELECT
-      preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
-      status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-    FROM session_workspace_preparations
-    WHERE preparation_id = ?
-  `).get(normalizedPreparationId) as SessionWorkspacePreparationRow | undefined;
+  const record = readLocalState().sessionWorkspacePreparations[normalizedPreparationId];
+  const row = record ? toSessionWorkspacePreparationRow(record) : undefined;
   return row ?? null;
 }
 
@@ -2457,17 +2477,11 @@ function persistPreparationPayload(
   preparationId: string,
   payload: SessionWorkspacePreparationPayload,
 ): void {
-  const db = getLocalDb();
-  db.prepare(`
-    UPDATE session_workspace_preparations
-    SET
-      payload_json = @payloadJson,
-      updated_at = @now
-    WHERE preparation_id = @preparationId
-  `).run({
-    preparationId,
-    payloadJson: JSON.stringify(payload),
-    now: new Date().toISOString(),
+  updateLocalState((state) => {
+    const preparation = state.sessionWorkspacePreparations[preparationId];
+    if (!preparation) return;
+    preparation.payloadJson = JSON.stringify(payload);
+    preparation.updatedAt = new Date().toISOString();
   });
 }
 
@@ -2484,42 +2498,20 @@ export async function prepareSessionWorkspace(
       gitContextsOrBaseBranch,
       options.workspacePreference,
     );
-    const db = getLocalDb();
     const nowIso = new Date().toISOString();
-    const existingQuery = resolvedInput.projectId
-      ? `
-        SELECT
-          preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
-          status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-        FROM session_workspace_preparations
-        WHERE
-          project_id = @projectId
-          AND context_fingerprint = @contextFingerprint
-          AND status = @readyStatus
-          AND expires_at > @now
-        ORDER BY created_at DESC
-        LIMIT 1
-      `
-      : `
-        SELECT
-          preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
-          status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-        FROM session_workspace_preparations
-        WHERE
-          project_path = @projectPath
-          AND context_fingerprint = @contextFingerprint
-          AND status = @readyStatus
-          AND expires_at > @now
-        ORDER BY created_at DESC
-        LIMIT 1
-      `;
-    const existing = db.prepare(existingQuery).get({
-      projectId: resolvedInput.projectId ?? null,
-      projectPath: resolvedInput.normalizedProjectPath,
-      contextFingerprint: resolvedInput.contextFingerprint,
-      readyStatus: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
-      now: nowIso,
-    }) as SessionWorkspacePreparationRow | undefined;
+    const existing = Object.values(readLocalState().sessionWorkspacePreparations)
+      .filter((row) => (
+        row.status === SESSION_WORKSPACE_PREPARATION_STATUS_READY
+        && row.expiresAt > nowIso
+        && row.contextFingerprint === resolvedInput.contextFingerprint
+        && (
+          resolvedInput.projectId
+            ? row.projectId === resolvedInput.projectId
+            : row.projectPath === resolvedInput.normalizedProjectPath
+        )
+      ))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map(toSessionWorkspacePreparationRow)[0];
 
     if (existing) {
       const parsedExisting = rowToSessionWorkspacePreparation(existing);
@@ -2536,24 +2528,22 @@ export async function prepareSessionWorkspace(
     const expiresAt = getPreparationExpiryTimestamp();
     const payloadJson = JSON.stringify(toSessionWorkspacePreparationPayload(provision));
 
-    db.prepare(`
-      INSERT INTO session_workspace_preparations (
-        preparation_id, project_id, project_path, context_fingerprint, session_name, payload_json,
-        status, cancel_requested, created_at, updated_at, expires_at, consumed_at, released_at
-      ) VALUES (
-        @preparationId, @projectId, @projectPath, @contextFingerprint, @sessionName, @payloadJson,
-        @status, 0, @now, @now, @expiresAt, NULL, NULL
-      )
-    `).run({
-      preparationId,
-      projectId: provision.projectId ?? null,
-      projectPath: provision.projectPath,
-      contextFingerprint: provision.contextFingerprint,
-      sessionName: provision.sessionName,
-      payloadJson,
-      status: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
-      now: nowIso,
-      expiresAt,
+    updateLocalState((state) => {
+      state.sessionWorkspacePreparations[preparationId] = {
+        preparationId,
+        projectId: provision?.projectId ?? null,
+        projectPath: provision.projectPath,
+        contextFingerprint: provision.contextFingerprint,
+        sessionName: provision.sessionName,
+        payloadJson,
+        status: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
+        cancelRequested: false,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        expiresAt,
+        consumedAt: null,
+        releasedAt: null,
+      };
     });
 
     return {
@@ -2646,22 +2636,15 @@ export async function releasePreparedSessionWorkspace(
       });
     }
 
-    const db = getLocalDb();
     const nowIso = new Date().toISOString();
-    db.prepare(`
-      UPDATE session_workspace_preparations
-      SET
-        status = @releasedStatus,
-        updated_at = @now,
-        released_at = COALESCE(released_at, @now)
-      WHERE
-        preparation_id = @preparationId
-        AND status = @readyStatus
-    `).run({
-      releasedStatus: SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED,
-      now: nowIso,
-      preparationId: row.preparation_id,
-      readyStatus: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
+    updateLocalState((state) => {
+      const existing = state.sessionWorkspacePreparations[row.preparation_id];
+      if (!existing || existing.status !== SESSION_WORKSPACE_PREPARATION_STATUS_READY) {
+        return;
+      }
+      existing.status = SESSION_WORKSPACE_PREPARATION_STATUS_RELEASED;
+      existing.updatedAt = nowIso;
+      existing.releasedAt = existing.releasedAt ?? nowIso;
     });
 
     return { success: true, released: true };
@@ -2713,25 +2696,19 @@ export async function consumePreparedSessionWorkspace(
       return { success: true, consumed: false, mismatch: true };
     }
 
-    const db = getLocalDb();
     const nowIso = new Date().toISOString();
-    const consumeResult = db.prepare(`
-      UPDATE session_workspace_preparations
-      SET
-        status = @consumedStatus,
-        updated_at = @now,
-        consumed_at = COALESCE(consumed_at, @now)
-      WHERE
-        preparation_id = @preparationId
-        AND status = @readyStatus
-    `).run({
-      consumedStatus: SESSION_WORKSPACE_PREPARATION_STATUS_CONSUMED,
-      now: nowIso,
-      preparationId: row.preparation_id,
-      readyStatus: SESSION_WORKSPACE_PREPARATION_STATUS_READY,
+    let consumed = false;
+    updateLocalState((state) => {
+      const existing = state.sessionWorkspacePreparations[row.preparation_id];
+      if (!existing || existing.status !== SESSION_WORKSPACE_PREPARATION_STATUS_READY) {
+        return;
+      }
+      existing.status = SESSION_WORKSPACE_PREPARATION_STATUS_CONSUMED;
+      existing.updatedAt = nowIso;
+      existing.consumedAt = existing.consumedAt ?? nowIso;
+      consumed = true;
     });
-
-    if (consumeResult.changes === 0) {
+    if (!consumed) {
       return { success: true, consumed: false };
     }
 
@@ -3015,7 +2992,7 @@ export type DeleteSessionDependencies = {
   shutdownSessionOwnedProcesses: typeof shutdownSessionOwnedProcesses;
   removeWorktree: typeof removeWorktree;
   cleanupSessionWorkspace: typeof cleanupSessionWorkspace;
-  getLocalDb: typeof getLocalDb;
+  deleteSessionState: (sessionName: string) => void;
   getSessionPromptsDir: typeof getSessionPromptsDir;
   publishSessionListUpdated: typeof publishSessionListUpdated;
 };
@@ -3025,7 +3002,14 @@ const DEFAULT_DELETE_SESSION_DEPS: DeleteSessionDependencies = {
   shutdownSessionOwnedProcesses,
   removeWorktree,
   cleanupSessionWorkspace,
-  getLocalDb,
+  deleteSessionState: (sessionName: string) => {
+    updateLocalState((state) => {
+      delete state.sessions[sessionName];
+      delete state.sessionLaunchContexts[sessionName];
+      delete state.sessionCanvasLayouts[sessionName];
+      delete state.sessionAgentHistoryItems[sessionName];
+    });
+  },
   getSessionPromptsDir,
   publishSessionListUpdated,
 };
@@ -3059,12 +3043,7 @@ export async function deleteSessionWithDependencies(
     }
     await deps.cleanupSessionWorkspace(metadata);
 
-    const db = deps.getLocalDb();
-    db.prepare(`DELETE FROM sessions WHERE session_name = ?`).run(sessionName);
-    db.prepare(`DELETE FROM session_git_repos WHERE session_name = ?`).run(sessionName);
-    db.prepare(`DELETE FROM session_launch_contexts WHERE session_name = ?`).run(sessionName);
-    db.prepare(`DELETE FROM session_canvas_layouts WHERE session_name = ?`).run(sessionName);
-    db.prepare(`DELETE FROM session_agent_history_items WHERE session_name = ?`).run(sessionName);
+    deps.deleteSessionState(sessionName);
 
     const promptsDir = await deps.getSessionPromptsDir();
     const promptFilePath = path.join(promptsDir, `${sessionName}.txt`);
@@ -3128,12 +3107,13 @@ async function updateSessionGitRepoBaseBranch(
   sourceRepoPath: string,
   baseBranch: string,
 ): Promise<void> {
-  const db = getLocalDb();
-  db.prepare(`
-    UPDATE session_git_repos
-    SET base_branch = ?
-    WHERE session_name = ? AND source_repo_path = ?
-  `).run(baseBranch, sessionName, sourceRepoPath);
+  updateLocalState((state) => {
+    const session = state.sessions[sessionName];
+    if (!session) return;
+    const gitRepo = session.gitRepos.find((repo) => repo.sourceRepoPath === sourceRepoPath);
+    if (!gitRepo) return;
+    gitRepo.baseBranch = baseBranch;
+  });
 }
 
 export async function updateSessionActiveRepo(

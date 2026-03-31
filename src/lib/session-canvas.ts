@@ -151,6 +151,19 @@ export function createDefaultSessionCanvasLayout({
   };
 }
 
+export function getDefaultSessionCanvasPanelId(
+  panels: SessionCanvasPanel[],
+): string | null {
+  for (let index = panels.length - 1; index >= 0; index -= 1) {
+    const panel = panels[index];
+    if (panel?.type === 'agent-terminal') {
+      return panel.id;
+    }
+  }
+
+  return panels.at(-1)?.id ?? null;
+}
+
 export function normalizeSessionCanvasLayout(
   layout: SessionCanvasLayout | null | undefined,
   fallbackLayout: SessionCanvasLayout,

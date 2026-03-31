@@ -9,11 +9,13 @@ import {
   createDefaultSessionCanvasLayout,
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
+  getDefaultSessionCanvasPanelId,
   normalizeSessionCanvasLayout,
   shouldBootstrapSessionCanvasTerminalPanel,
 } from './session-canvas.ts';
 import type {
   SessionCanvasAgentTerminalPanel,
+  SessionCanvasPanel,
   SessionCanvasTerminalPanel,
 } from './types.ts';
 
@@ -140,6 +142,68 @@ describe('session canvas layout helpers', () => {
       assert.equal(panel.x + panel.width <= 900 - 24, true);
       assert.equal(panel.y >= 84, true);
     }
+  });
+
+  it('prefers the topmost coding agent panel as the default selection', () => {
+    const layout = createDefaultSessionCanvasLayout({
+      workspacePath: '/tmp/workspace',
+      startupScript: 'npm run dev',
+    });
+    const panels: SessionCanvasPanel[] = [
+      ...layout.panels,
+      {
+        id: 'preview:1',
+        type: 'preview',
+        title: 'Preview',
+        x: 960,
+        y: 96,
+        width: 900,
+        height: 600,
+        zIndex: 3,
+        state: {},
+        payload: {
+          url: 'http://localhost:3000',
+        },
+      },
+    ];
+
+    assert.equal(getDefaultSessionCanvasPanelId(panels), layout.panels[0]?.id ?? null);
+  });
+
+  it('falls back to the topmost panel when no coding agent panel exists', () => {
+    const panels: SessionCanvasPanel[] = [
+      {
+        id: 'terminal:1',
+        type: 'terminal',
+        title: 'Terminal',
+        x: 120,
+        y: 96,
+        width: 760,
+        height: 420,
+        zIndex: 1,
+        state: {},
+        payload: {
+          terminalKey: 'terminal',
+          role: 'startup',
+        },
+      },
+      {
+        id: 'preview:1',
+        type: 'preview',
+        title: 'Preview',
+        x: 920,
+        y: 96,
+        width: 900,
+        height: 600,
+        zIndex: 2,
+        state: {},
+        payload: {
+          url: 'http://localhost:3000',
+        },
+      },
+    ];
+
+    assert.equal(getDefaultSessionCanvasPanelId(panels), 'preview:1');
   });
 
   it('builds canvas terminal src values with the session workspace cwd', () => {

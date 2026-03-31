@@ -51,6 +51,7 @@ import {
   createSessionCanvasPanelId,
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
+  getDefaultSessionCanvasPanelId,
   getSessionCanvasTerminalRole,
   SESSION_CANVAS_STARTUP_BOOTSTRAP_VERSION,
   SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH,
@@ -1301,8 +1302,8 @@ export function SessionCanvasWorkspace({
   } | null>(null);
   const agentInputHandlesRef = useRef<Record<string, SessionCanvasAgentInputHandle | null>>({});
   const [layout, setLayout] = useState<SessionCanvasLayout>(bootstrap.layout);
-  const [activePanelId, setActivePanelId] = useState<string | null>(bootstrap.layout.panels.at(-1)?.id || null);
-  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(bootstrap.layout.panels.at(-1)?.id || null);
+  const [activePanelId, setActivePanelId] = useState<string | null>(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
+  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileExplorerCollapsed, setMobileExplorerCollapsed] = useState(true);
   const [terminalServiceReady, setTerminalServiceReady] = useState(false);
@@ -1489,8 +1490,8 @@ export function SessionCanvasWorkspace({
 
   useEffect(() => {
     setLayout(bootstrap.layout);
-    setActivePanelId(bootstrap.layout.panels.at(-1)?.id || null);
-    setSelectedPanelId(bootstrap.layout.panels.at(-1)?.id || null);
+    setActivePanelId(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
+    setSelectedPanelId(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
     setMobileExplorerCollapsed(true);
     setAgentFileTargetPanelId(null);
     setIsAgentFileBrowserOpen(false);

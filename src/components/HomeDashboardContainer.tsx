@@ -1417,6 +1417,7 @@ export default function HomeDashboardContainer({
         error={createProjectError}
         onClose={dismissCreateProjectDialog}
         onCreate={handleCreateProject}
+        onSetDefaultRoot={(path) => handleSetDefaultRoot(path)}
         onCloneRemote={() => {
           dismissCreateProjectDialog();
           openCloneRemoteDialog();

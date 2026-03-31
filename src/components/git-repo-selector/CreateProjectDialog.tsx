@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { FolderCog, Plus, Trash2, X } from 'lucide-react';
 import { checkDirectoryAccessible } from '@/app/actions/git';
 import FileBrowser from '@/components/FileBrowser';
 import { getBaseName } from '@/lib/path';
@@ -24,6 +24,7 @@ export type CreateProjectDialogProps = {
   onClose: () => void;
   onCreate: (payload: CreateProjectDialogSubmit) => void | Promise<void>;
   onCloneRemote?: () => void;
+  onSetDefaultRoot: (path: string) => void | Promise<void>;
 };
 
 export function CreateProjectDialog({
@@ -34,15 +35,18 @@ export function CreateProjectDialog({
   onClose,
   onCreate,
   onCloneRemote,
+  onSetDefaultRoot,
 }: CreateProjectDialogProps) {
   const [projectName, setProjectName] = useState('');
   const [selectedFolderPaths, setSelectedFolderPaths] = useState<string[]>([]);
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false);
+  const [isDefaultRootBrowserOpen, setIsDefaultRootBrowserOpen] = useState(false);
   const [shouldCreateDefaultFolder, setShouldCreateDefaultFolder] = useState(false);
   const [defaultFolderName, setDefaultFolderName] = useState('');
   const [isDefaultRootAccessible, setIsDefaultRootAccessible] = useState(false);
   const [hasEditedProjectName, setHasEditedProjectName] = useState(false);
   const [hasEditedDefaultFolderName, setHasEditedDefaultFolderName] = useState(false);
+  const [isSettingDefaultRoot, setIsSettingDefaultRoot] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -50,10 +54,12 @@ export function CreateProjectDialog({
     setProjectName('');
     setSelectedFolderPaths([]);
     setIsFolderBrowserOpen(false);
+    setIsDefaultRootBrowserOpen(false);
     setShouldCreateDefaultFolder(false);
     setDefaultFolderName('');
     setHasEditedProjectName(false);
     setHasEditedDefaultFolderName(false);
+    setIsSettingDefaultRoot(false);
   }, [isOpen]);
 
   useEffect(() => {
@@ -195,15 +201,30 @@ export function CreateProjectDialog({
                     Optional. You can create a metadata-only project and add folders later.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-sm gap-2"
-                  onClick={() => setIsFolderBrowserOpen(true)}
-                  disabled={isSubmitting}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Folder
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                    onClick={() => setIsDefaultRootBrowserOpen(true)}
+                    disabled={isSubmitting || isSettingDefaultRoot}
+                  >
+                    {isSettingDefaultRoot ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : (
+                      <FolderCog className="h-4 w-4" />
+                    )}
+                    Set Default Root
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm gap-2"
+                    onClick={() => setIsFolderBrowserOpen(true)}
+                    disabled={isSubmitting || isSettingDefaultRoot}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Folder
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-[#1e2532]/70">
@@ -269,7 +290,7 @@ export function CreateProjectDialog({
 
               {!canUseDefaultRoot ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-200">
-                  Set a valid default root folder in settings before using this option.
+                  Set a valid default root folder before using this option.
                 </div>
               ) : null}
 
@@ -346,6 +367,27 @@ export function CreateProjectDialog({
             setIsFolderBrowserOpen(false);
           }}
           onCancel={() => setIsFolderBrowserOpen(false)}
+          zIndexClassName="z-[1003]"
+        />
+      ) : null}
+
+      {isDefaultRootBrowserOpen ? (
+        <FileBrowser
+          title="Default Root Folder"
+          initialPath={defaultRoot}
+          onSelect={async (folderPath) => {
+            setIsSettingDefaultRoot(true);
+            try {
+              await onSetDefaultRoot(folderPath);
+              setIsDefaultRootBrowserOpen(false);
+            } finally {
+              setIsSettingDefaultRoot(false);
+            }
+          }}
+          onCancel={() => {
+            if (isSettingDefaultRoot) return;
+            setIsDefaultRootBrowserOpen(false);
+          }}
           zIndexClassName="z-[1003]"
         />
       ) : null}

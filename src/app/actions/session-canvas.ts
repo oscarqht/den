@@ -15,11 +15,9 @@ import {
   getSessionMetadata,
   readSessionLaunchContext,
   terminateSessionStartupScript,
-  writeSessionPromptFile,
   type SessionLaunchContext,
   type SessionMetadata,
 } from './session';
-import { buildSessionAgentTerminalCommand } from '@/lib/ad-hoc-agent';
 import { buildAgentStartupPrompt } from '@/lib/agent-startup-prompt';
 import { getErrorMessage } from '@/lib/error-utils';
 import { readLocalState, updateLocalState } from '@/lib/local-db';
@@ -81,21 +79,17 @@ export type SessionCanvasBootstrapResult =
       layout: SessionCanvasLayout;
       terminalPersistenceMode: 'tmux' | 'shell';
       terminalShellKind: 'posix' | 'powershell';
-      terminalSources: {
-        agentTerminalSrc: string;
-        defaultTerminalSrc: string;
-      };
       terminalEnvironments: Array<{ name: string; value: string }>;
       repoDisplayName: string | null;
       sessionIconPath: string | null;
       launchContext: SessionCanvasLaunchContext | null;
+      initialAgentPrompt: string | null;
       projectGitRepoRelativePaths: string[];
       explorerRoots: SessionCanvasExplorerRoot[];
       workspaceRootPath: string;
       restoredFromSavedLayout: boolean;
       savedLayoutVersion: number | null;
       initialCommands: {
-        agentCommand: string | null;
         startupCommand: string | null;
       };
     }
@@ -405,7 +399,7 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
           ? discoveryResult.repos.map((repo) => repo.relativePath)
           : metadata.gitRepos.map((repo) => repo.relativeRepoPath));
 
-    const initialPrompt = buildAgentStartupPrompt({
+    const initialAgentPrompt = buildAgentStartupPrompt({
       taskDescription: parsedLaunch.launchContext?.rawInitialMessage || parsedLaunch.launchContext?.initialMessage,
       attachmentPaths: parsedLaunch.launchContext?.attachmentPaths || [],
       sessionMode: parsedLaunch.launchContext?.sessionMode,
@@ -414,33 +408,6 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       gitRepos: metadata.gitRepos,
       discoveredRepoRelativePaths: projectGitRepoRelativePaths,
     });
-    let initialPromptFilePath: string | null = null;
-    if (initialPrompt) {
-      const promptFileResult = await writeSessionPromptFile(sessionId, initialPrompt);
-      if (promptFileResult.success) {
-        initialPromptFilePath = promptFileResult.filePath ?? null;
-      } else {
-        console.warn('Failed to persist initial session prompt file; falling back to inline terminal bootstrap.', promptFileResult.error);
-      }
-    }
-
-    const agentProvider = (
-      parsedLaunch.launchContext?.agentProvider
-      || metadata.agentProvider
-      || metadata.agent
-      || 'codex'
-    );
-    const agentModel = parsedLaunch.launchContext?.model || metadata.model || '';
-    const agentReasoningEffort = parsedLaunch.launchContext?.reasoningEffort || metadata.reasoningEffort;
-    const agentCommand = buildSessionAgentTerminalCommand({
-      provider: agentProvider,
-      model: agentModel,
-      reasoningEffort: agentReasoningEffort,
-      shellKind: terminalSources.shellKind,
-      workingDirectory: metadata.workspacePath,
-      prompt: initialPrompt,
-      promptFilePath: initialPromptFilePath,
-    });
 
     return {
       success: true,
@@ -448,21 +415,17 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       layout: normalizedLayout,
       terminalPersistenceMode: terminalSources.persistenceMode,
       terminalShellKind: terminalSources.shellKind,
-      terminalSources: {
-        agentTerminalSrc: terminalSources.agentTerminalSrc,
-        defaultTerminalSrc: terminalSources.floatingTerminalSrc,
-      },
       terminalEnvironments,
       repoDisplayName,
       sessionIconPath: resolvedProject?.iconPath?.trim() || null,
       launchContext: parsedLaunch.launchContext,
+      initialAgentPrompt,
       projectGitRepoRelativePaths,
       explorerRoots: toExplorerRoots(metadata),
       workspaceRootPath: metadata.workspacePath,
       restoredFromSavedLayout: Boolean(savedLayout),
       savedLayoutVersion,
       initialCommands: {
-        agentCommand,
         startupCommand: buildShellBootstrapCommand(
           metadata.workspacePath,
           parsedLaunch.launchContext?.startupScript?.trim(),

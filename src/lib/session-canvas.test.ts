@@ -10,9 +10,26 @@ import {
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
   normalizeSessionCanvasLayout,
+  shouldBootstrapSessionCanvasTerminalPanel,
 } from './session-canvas.ts';
+import type {
+  SessionCanvasAgentTerminalPanel,
+  SessionCanvasTerminalPanel,
+} from './types.ts';
 
 describe('session canvas layout helpers', () => {
+  function expectAgentPanel(panel: unknown): SessionCanvasAgentTerminalPanel {
+    assert.ok(panel);
+    assert.equal((panel as { type?: string }).type, 'agent-terminal');
+    return panel as SessionCanvasAgentTerminalPanel;
+  }
+
+  function expectTerminalPanel(panel: unknown): SessionCanvasTerminalPanel {
+    assert.ok(panel);
+    assert.equal((panel as { type?: string }).type, 'terminal');
+    return panel as SessionCanvasTerminalPanel;
+  }
+
   it('creates the default canvas layout with terminal-first panels', () => {
     const layout = createDefaultSessionCanvasLayout({
       workspacePath: '/tmp/workspace',
@@ -124,13 +141,10 @@ describe('session canvas layout helpers', () => {
   });
 
   it('builds canvas terminal src values with the session workspace cwd', () => {
-    const agentPanel = createDefaultSessionCanvasLayout({
+    const agentPanel = expectAgentPanel(createDefaultSessionCanvasLayout({
       workspacePath: '/tmp/workspace',
       startupScript: null,
-    }).panels[0];
-
-    assert.ok(agentPanel);
-    assert.equal(agentPanel.type, 'agent-terminal');
+    }).panels[0]);
 
     const agentSrc = buildSessionCanvasTerminalSrc({
       sessionName: 'session-1',
@@ -141,13 +155,10 @@ describe('session canvas layout helpers', () => {
       workspaceRootPath: '/tmp/workspace',
     });
 
-    const startupPanel = createDefaultSessionCanvasLayout({
+    const startupPanel = expectTerminalPanel(createDefaultSessionCanvasLayout({
       workspacePath: '/tmp/workspace',
       startupScript: 'npm run dev',
-    }).panels[1];
-
-    assert.ok(startupPanel);
-    assert.equal(startupPanel.type, 'terminal');
+    }).panels[1]);
 
     const terminalSrc = buildSessionCanvasTerminalSrc({
       sessionName: 'session-1',
@@ -163,13 +174,10 @@ describe('session canvas layout helpers', () => {
   });
 
   it('prepends shell-mode src bootstrap before panel commands', () => {
-    const startupPanel = createDefaultSessionCanvasLayout({
+    const startupPanel = expectTerminalPanel(createDefaultSessionCanvasLayout({
       workspacePath: 'C:\\workspace',
       startupScript: 'npm run dev',
-    }).panels[1];
-
-    assert.ok(startupPanel);
-    assert.equal(startupPanel.type, 'terminal');
+    }).panels[1]);
 
     const src = buildSessionCanvasTerminalSrc({
       sessionName: 'session-1',
@@ -192,13 +200,10 @@ describe('session canvas layout helpers', () => {
   });
 
   it('derives shell-mode bootstrap from src even without a panel command', () => {
-    const startupPanel = createDefaultSessionCanvasLayout({
+    const startupPanel = expectTerminalPanel(createDefaultSessionCanvasLayout({
       workspacePath: 'C:\\workspace',
       startupScript: null,
-    }).panels[1];
-
-    assert.ok(startupPanel);
-    assert.equal(startupPanel.type, 'terminal');
+    }).panels[1]);
 
     const src = buildSessionCanvasTerminalSrc({
       sessionName: 'session-1',
@@ -217,6 +222,35 @@ describe('session canvas layout helpers', () => {
         panelBootstrapCommand: null,
       }),
       "$env:OPENAI_API_KEY = 'sk-example'; Set-Location -LiteralPath 'C:\\workspace'",
+    );
+  });
+
+  it('does not require terminal bootstrap for the agent panel', () => {
+    const [agentPanel, startupPanel] = createDefaultSessionCanvasLayout({
+      workspacePath: '/tmp/workspace',
+      startupScript: 'npm run dev',
+    }).panels;
+    const typedAgentPanel = expectAgentPanel(agentPanel);
+    const typedStartupPanel = expectTerminalPanel(startupPanel);
+
+    assert.equal(
+      shouldBootstrapSessionCanvasTerminalPanel({
+        panel: typedAgentPanel,
+        persistenceMode: 'tmux',
+        bootstrapCommand: 'ignored',
+        startupLaunchVersion: 0,
+      }),
+      false,
+    );
+
+    assert.equal(
+      shouldBootstrapSessionCanvasTerminalPanel({
+        panel: typedStartupPanel,
+        persistenceMode: 'tmux',
+        bootstrapCommand: null,
+        startupLaunchVersion: 0,
+      }),
+      true,
     );
   });
 

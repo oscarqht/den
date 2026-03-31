@@ -396,6 +396,25 @@ export function buildSessionCanvasTerminalBootstrapCommand({
   return bootstrapCommand || null;
 }
 
+export function shouldBootstrapSessionCanvasTerminalPanel(args: {
+  panel: SessionCanvasAgentTerminalPanel | SessionCanvasTerminalPanel;
+  persistenceMode: TerminalPersistenceMode;
+  bootstrapCommand?: string | null;
+  startupLaunchVersion?: number;
+}): boolean {
+  if (args.panel.type === 'agent-terminal') {
+    return false;
+  }
+
+  if (args.panel.payload.role === 'startup') {
+    return args.persistenceMode === 'shell'
+      ? Boolean(args.bootstrapCommand)
+      : args.startupLaunchVersion !== SESSION_CANVAS_STARTUP_BOOTSTRAP_VERSION;
+  }
+
+  return args.persistenceMode === 'shell' && Boolean(args.bootstrapCommand);
+}
+
 export function getSessionCanvasTerminalRole(
   panel: SessionCanvasAgentTerminalPanel | SessionCanvasTerminalPanel,
 ): string {

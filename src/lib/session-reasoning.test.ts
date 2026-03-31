@@ -51,6 +51,13 @@ describe('session reasoning helpers', () => {
     );
   });
 
+  it('preserves the current selection while options are unavailable', () => {
+    assert.equal(
+      resolveReasoningEffortSelection([], 'medium', 'high'),
+      'high',
+    );
+  });
+
   it('falls back to the persisted session reasoning effort when needed', () => {
     assert.equal(
       resolveReasoningEffortSelection(['low', 'medium', 'high'], 'medium', ''),

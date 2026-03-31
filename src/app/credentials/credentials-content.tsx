@@ -20,6 +20,7 @@ import type {
   GitLabCredential,
 } from '@/lib/credentials';
 import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
+import { resolveReasoningEffortSelection } from '@/lib/session-reasoning';
 import type {
   AgentProvider,
   AppStatus,
@@ -359,22 +360,18 @@ export default function SettingsContent() {
   }, [selectedDefaultAgentProvider, selectedModelOption]);
 
   useEffect(() => {
-    if (
-      selectedDefaultAgentProvider !== 'codex'
-      || reasoningEffortOptions.length === 0
-    ) {
+    if (selectedDefaultAgentProvider !== 'codex') {
       if (selectedDefaultAgentReasoningEffort) {
         setSelectedDefaultAgentReasoningEffort('');
       }
       return;
     }
 
-    const nextReasoning =
-      reasoningEffortOptions.find(
-        (effort) => effort === selectedDefaultAgentReasoningEffort,
-      )
-      || reasoningEffortOptions[0]
-      || '';
+    const nextReasoning = resolveReasoningEffortSelection(
+      reasoningEffortOptions,
+      '',
+      selectedDefaultAgentReasoningEffort,
+    );
     if (nextReasoning !== selectedDefaultAgentReasoningEffort) {
       setSelectedDefaultAgentReasoningEffort(nextReasoning);
     }

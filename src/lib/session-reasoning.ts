@@ -28,6 +28,10 @@ export function resolveReasoningEffortSelection(
   selectedReasoningEffort: string | null | undefined,
 ): string {
   const normalizedSelection = normalizeValue(selectedReasoningEffort);
+  if (options.length === 0) {
+    return normalizedSelection || normalizeValue(persistedReasoningEffort);
+  }
+
   if (normalizedSelection && options.includes(normalizedSelection as ReasoningEffort)) {
     return normalizedSelection;
   }

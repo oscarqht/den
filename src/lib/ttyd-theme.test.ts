@@ -6,6 +6,7 @@ import {
   readThemeModeFromStorage,
   resolveShouldUseDarkTheme,
   resolveTerminalTheme,
+  resolveTerminalThemeFromBrowser,
   TERMINAL_THEME_DARK,
   TERMINAL_THEME_LIGHT,
 } from './ttyd-theme.ts';
@@ -68,6 +69,77 @@ describe('resolveTerminalTheme', () => {
     assert.strictEqual(TERMINAL_THEME_LIGHT.brightBlue, TERMINAL_THEME_LIGHT.foreground);
     assert.strictEqual(TERMINAL_THEME_DARK.red, TERMINAL_THEME_DARK.foreground);
     assert.strictEqual(TERMINAL_THEME_DARK.brightBlue, TERMINAL_THEME_DARK.foreground);
+  });
+});
+
+describe('resolveTerminalThemeFromBrowser', () => {
+  it('falls back to the light theme when browser APIs are unavailable', () => {
+    const globalWithWindow = globalThis as typeof globalThis & { window?: Window };
+    const originalWindow = globalWithWindow.window;
+
+    try {
+      delete globalWithWindow.window;
+      assert.strictEqual(resolveTerminalThemeFromBrowser(), TERMINAL_THEME_LIGHT);
+    } finally {
+      if (originalWindow) {
+        globalWithWindow.window = originalWindow;
+      } else {
+        delete globalWithWindow.window;
+      }
+    }
+  });
+
+  it('reads the persisted theme mode from localStorage before applying browser defaults', () => {
+    const globalWithWindow = globalThis as typeof globalThis & { window?: Window };
+    const originalWindow = globalWithWindow.window;
+
+    try {
+      globalWithWindow.window = {
+        localStorage: {
+          getItem: () => 'light',
+        },
+        matchMedia: () => ({ matches: true }),
+      } as unknown as Window;
+
+      assert.strictEqual(resolveTerminalThemeFromBrowser(), TERMINAL_THEME_LIGHT);
+
+      globalWithWindow.window = {
+        localStorage: {
+          getItem: () => 'dark',
+        },
+        matchMedia: () => ({ matches: false }),
+      } as unknown as Window;
+
+      assert.strictEqual(resolveTerminalThemeFromBrowser(), TERMINAL_THEME_DARK);
+    } finally {
+      if (originalWindow) {
+        globalWithWindow.window = originalWindow;
+      } else {
+        delete globalWithWindow.window;
+      }
+    }
+  });
+
+  it('uses prefers-color-scheme only when theme mode is auto', () => {
+    const globalWithWindow = globalThis as typeof globalThis & { window?: Window };
+    const originalWindow = globalWithWindow.window;
+
+    try {
+      globalWithWindow.window = {
+        localStorage: {
+          getItem: () => 'auto',
+        },
+        matchMedia: () => ({ matches: true }),
+      } as unknown as Window;
+
+      assert.strictEqual(resolveTerminalThemeFromBrowser(), TERMINAL_THEME_DARK);
+    } finally {
+      if (originalWindow) {
+        globalWithWindow.window = originalWindow;
+      } else {
+        delete globalWithWindow.window;
+      }
+    }
   });
 });
 

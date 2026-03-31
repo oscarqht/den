@@ -67,9 +67,7 @@ import {
 } from '@/lib/terminal-input';
 import {
   applyThemeToTerminalWindow,
-  resolveShouldUseDarkTheme,
-  TERMINAL_THEME_DARK,
-  TERMINAL_THEME_LIGHT,
+  resolveTerminalThemeFromBrowser,
 } from '@/lib/ttyd-theme';
 import { uploadAttachments } from '@/lib/upload-attachments';
 import { normalizePreviewUrl } from '@/lib/url';
@@ -870,7 +868,6 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
   onBootstrapComplete,
   onOpenPreview,
 }, ref) {
-  const { resolvedTheme } = useTheme();
   const { attachTerminalLinkHandler } = useTerminalLink({ onLoadPreview: onOpenPreview });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bootstrapStartedRef = useRef(false);
@@ -884,13 +881,9 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
   );
 
   const applyTerminalTheme = useCallback(function applyTerminalTheme(attempts = 0) {
-    const shouldUseDark = resolveShouldUseDarkTheme(
-      resolvedTheme === 'light' || resolvedTheme === 'dark' ? resolvedTheme : 'auto',
-      window.matchMedia('(prefers-color-scheme: dark)').matches,
-    );
     const applied = applyThemeToTerminalWindow(
       iframeRef.current?.contentWindow,
-      shouldUseDark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT,
+      resolveTerminalThemeFromBrowser(),
     );
 
     if (applied || attempts >= 40) {
@@ -901,7 +894,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
     themeApplyTimerRef.current = window.setTimeout(() => {
       applyTerminalTheme(attempts + 1);
     }, 200);
-  }, [resolvedTheme]);
+  }, []);
 
   const attachTerminalLinks = useCallback(function attachTerminalLinks(attempts = 0) {
     const iframe = iframeRef.current;

@@ -51,11 +51,14 @@ describe('session-navigation', () => {
     assert.strictEqual(consumePendingSessionNavigationRetry(), null);
   });
 
-  it('clears a pending navigation when session is opened', () => {
+  it('clears a stale pending navigation when the session page is opened', () => {
     recordPendingSessionNavigation('session-2');
     clearPendingSessionNavigation('session-2');
 
     assert.strictEqual(consumePendingSessionNavigationRetry(), null);
+
+    recordPendingSessionNavigation('session-2-fresh');
+    assert.deepStrictEqual(consumePendingSessionNavigationRetry(), { sessionName: 'session-2-fresh' });
   });
 
   it('does not clear another session pending navigation', () => {

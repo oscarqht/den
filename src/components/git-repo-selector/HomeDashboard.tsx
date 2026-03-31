@@ -1,3 +1,4 @@
+import type { SessionMetadata } from '@/app/actions/session';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
@@ -28,7 +29,7 @@ export type HomeDashboardProps = {
   filteredRecentProjects: string[];
   isDarkThemeActive: boolean;
   runningSessionCountByProject: Map<string, number>;
-  latestRunningSessionIdByProject: Map<string, string>;
+  runningSessionsByProject: Map<string, SessionMetadata[]>;
   draftCountByProject: Map<string, number>;
   projectCardIconByPath: Record<string, string | null>;
   brokenProjectCardIcons: Record<string, boolean>;
@@ -47,6 +48,7 @@ export type HomeDashboardProps = {
   onDeleteQuickCreateDraft: (draftId: string) => void | Promise<void>;
   onCycleThemeMode: () => void;
   onSelectProject: (project: string) => void | Promise<boolean>;
+  onOpenSession: (sessionName: string) => void | Promise<void>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
   onProjectServiceAction: (
     event: MouseEvent,
@@ -75,7 +77,7 @@ export function HomeDashboard({
   filteredRecentProjects,
   isDarkThemeActive,
   runningSessionCountByProject,
-  latestRunningSessionIdByProject,
+  runningSessionsByProject,
   draftCountByProject,
   projectCardIconByPath,
   brokenProjectCardIcons,
@@ -94,6 +96,7 @@ export function HomeDashboard({
   onDeleteQuickCreateDraft,
   onCycleThemeMode,
   onSelectProject,
+  onOpenSession,
   onOpenGitWorkspace,
   onProjectServiceAction,
   onOpenProjectServiceLog,
@@ -291,7 +294,7 @@ export function HomeDashboard({
                 isProjectOpenable={isProjectOpenable(project)}
                 isDarkThemeActive={isDarkThemeActive}
                 runningSessionCount={runningSessionCountByProject.get(project) ?? 0}
-                latestRunningSessionId={latestRunningSessionIdByProject.get(project) ?? null}
+                runningSessions={runningSessionsByProject.get(project) ?? []}
                 draftCount={draftCountByProject.get(project) ?? 0}
                 projectIconPath={projectCardIconByPath[project] ?? null}
                 showProjectIcon={!!projectCardIconByPath[project] && !brokenProjectCardIcons[project]}
@@ -301,6 +304,7 @@ export function HomeDashboard({
                 isProjectServiceRunning={!!projectServiceStatusByProject[project]?.running}
                 projectServiceActionState={projectServiceActionStateByProject[project] ?? null}
                 onSelectProject={onSelectProject}
+                onOpenSession={onOpenSession}
                 onOpenGitWorkspace={onOpenGitWorkspace}
                 onProjectServiceAction={onProjectServiceAction}
                 onOpenProjectServiceLog={onOpenProjectServiceLog}

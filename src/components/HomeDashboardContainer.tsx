@@ -37,6 +37,7 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
+import { groupHomeProjectSessionsByProject } from '@/lib/home-project-sessions';
 import {
   omitRecordKeys,
   toHomeProjectGitRepos,
@@ -935,35 +936,17 @@ export default function HomeDashboardContainer({
     canConfirm: !isDeletingProject,
   });
 
+  const runningSessionsByProject = useMemo(() => (
+    groupHomeProjectSessionsByProject(projects, allSessions)
+  ), [allSessions, projects]);
+
   const runningSessionCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const session of allSessions) {
-      const projectKey = resolveClientActivityProjectKey(projects, {
-        projectId: session.projectId,
-        projectPath: session.projectPath,
-        fallbackPath: session.repoPath,
-      });
-      if (!projectKey) continue;
-      counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
+    for (const [projectKey, sessions] of runningSessionsByProject.entries()) {
+      counts.set(projectKey, sessions.length);
     }
     return counts;
-  }, [allSessions, projects]);
-
-  const latestRunningSessionIdByProject = useMemo(() => {
-    const sessionIds = new Map<string, string>();
-    for (const session of allSessions) {
-      const projectKey = resolveClientActivityProjectKey(projects, {
-        projectId: session.projectId,
-        projectPath: session.projectPath,
-        fallbackPath: session.repoPath,
-      });
-      if (!projectKey) continue;
-      if (!sessionIds.has(projectKey)) {
-        sessionIds.set(projectKey, session.sessionName);
-      }
-    }
-    return sessionIds;
-  }, [allSessions, projects]);
+  }, [runningSessionsByProject]);
 
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1256,6 +1239,10 @@ export default function HomeDashboardContainer({
     await refreshProjectServiceLog(projectReference);
   }, [refreshProjectServiceLog]);
 
+  const handleOpenProjectSession = useCallback((sessionName: string) => {
+    router.push(`/session/${encodeURIComponent(sessionName)}`);
+  }, [router]);
+
   const handleOpenQuickCreateDialog = useCallback((draft?: QuickCreateDraft | null) => {
     setQuickCreateDraftForEdit(draft ?? null);
     setIsQuickCreateDialogOpen(true);
@@ -1320,7 +1307,7 @@ export default function HomeDashboardContainer({
         filteredRecentProjects={filteredRecentProjects}
         isDarkThemeActive={isDarkThemeActive}
         runningSessionCountByProject={runningSessionCountByProject}
-        latestRunningSessionIdByProject={latestRunningSessionIdByProject}
+        runningSessionsByProject={runningSessionsByProject}
         draftCountByProject={draftCountByProject}
         projectCardIconByPath={projectCardIconByKey}
         brokenProjectCardIcons={brokenRepoCardIcons}
@@ -1339,6 +1326,7 @@ export default function HomeDashboardContainer({
         onDeleteQuickCreateDraft={handleDeleteQuickCreateDraft}
         onCycleThemeMode={() => setThemeMode(nextThemeMode)}
         onSelectProject={handleSelectProject}
+        onOpenSession={handleOpenProjectSession}
         onOpenGitWorkspace={handleOpenProjectGitWorkspace}
         onProjectServiceAction={handleProjectServiceAction}
         onOpenProjectServiceLog={handleOpenProjectServiceLog}

@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  ChevronsUpDown,
   MoreHorizontal,
   Play,
   RotateCw,
@@ -9,6 +10,7 @@ import {
   GitBranch as GitBranchIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import type { SessionMetadata } from '@/app/actions/session';
 import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import { getBaseName } from '@/lib/path';
 import { getProjectIconUrl } from '@/lib/project-icons';
@@ -22,7 +24,7 @@ export type HomeRepoCardProps = {
   isProjectOpenable?: boolean;
   isDarkThemeActive: boolean;
   runningSessionCount: number;
-  latestRunningSessionId?: string | null;
+  runningSessions: SessionMetadata[];
   draftCount: number;
   projectIconPath: string | null;
   showProjectIcon: boolean;
@@ -32,6 +34,7 @@ export type HomeRepoCardProps = {
   isProjectServiceRunning?: boolean;
   projectServiceActionState?: 'start' | 'stop' | 'restart' | null;
   onSelectProject: (project: string) => void | Promise<boolean>;
+  onOpenSession: (sessionName: string) => void | Promise<void>;
   onOpenGitWorkspace: (project: string, repoPath?: string) => void;
   onProjectServiceAction: (
     event: ReactMouseEvent,
@@ -55,7 +58,7 @@ export function HomeRepoCard({
   isProjectOpenable = true,
   isDarkThemeActive,
   runningSessionCount,
-  latestRunningSessionId,
+  runningSessions,
   draftCount,
   projectIconPath,
   showProjectIcon,
@@ -65,6 +68,7 @@ export function HomeRepoCard({
   isProjectServiceRunning = false,
   projectServiceActionState = null,
   onSelectProject,
+  onOpenSession,
   onOpenGitWorkspace,
   onProjectServiceAction,
   onOpenProjectServiceLog,
@@ -80,8 +84,10 @@ export function HomeRepoCard({
   const destructiveActionButtonClass =
     'btn btn-circle btn-xs border border-slate-200/70 bg-white/85 text-slate-500 opacity-100 shadow-none transition-all md:opacity-0 md:group-hover:border-slate-300/80 md:group-hover:text-slate-700 md:group-hover:opacity-100 hover:!border-rose-200 hover:!bg-rose-50 hover:!text-rose-600 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-400 dark:md:group-hover:border-slate-600 dark:md:group-hover:text-slate-200 dark:hover:!border-rose-500/30 dark:hover:!bg-rose-500/10 dark:hover:!text-rose-300';
   const [isGitRepoMenuOpen, setIsGitRepoMenuOpen] = useState(false);
+  const [isSessionMenuOpen, setIsSessionMenuOpen] = useState(false);
   const [isServiceMenuOpen, setIsServiceMenuOpen] = useState(false);
   const gitRepoMenuRef = useRef<HTMLDivElement | null>(null);
+  const sessionMenuRef = useRef<HTMLDivElement | null>(null);
   const serviceMenuRef = useRef<HTMLDivElement | null>(null);
   const hasCustomProjectIcon = showProjectIcon && !!projectIconPath;
   const projectIconUrl = hasCustomProjectIcon
@@ -94,18 +100,20 @@ export function HomeRepoCard({
   const shouldShowGitWorkspaceButton = isDiscoveringProjectGitRepos || !hasDiscoveredGitRepos || hasGitRepos;
 
   useEffect(() => {
-    if (!isGitRepoMenuOpen && !isServiceMenuOpen) return;
+    if (!isGitRepoMenuOpen && !isSessionMenuOpen && !isServiceMenuOpen) return;
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
       if (gitRepoMenuRef.current?.contains(event.target as Node)) return;
+      if (sessionMenuRef.current?.contains(event.target as Node)) return;
       if (serviceMenuRef.current?.contains(event.target as Node)) return;
       setIsGitRepoMenuOpen(false);
+      setIsSessionMenuOpen(false);
       setIsServiceMenuOpen(false);
     };
     document.addEventListener('mousedown', handleDocumentClick);
     return () => {
       document.removeEventListener('mousedown', handleDocumentClick);
     };
-  }, [isGitRepoMenuOpen, isServiceMenuOpen]);
+  }, [isGitRepoMenuOpen, isSessionMenuOpen, isServiceMenuOpen]);
 
   return (
     <div
@@ -141,6 +149,7 @@ export function HomeRepoCard({
                     onClick={(event) => {
                       event.stopPropagation();
                       setIsGitRepoMenuOpen(false);
+                      setIsSessionMenuOpen(false);
                       setIsServiceMenuOpen((previous) => !previous);
                     }}
                     className={actionButtonClass}
@@ -204,6 +213,7 @@ export function HomeRepoCard({
                     onClick={(event) => {
                       event.stopPropagation();
                       setIsServiceMenuOpen(false);
+                      setIsSessionMenuOpen(false);
                       if (isDiscoveringProjectGitRepos) return;
                       if (!hasMultipleGitRepos) {
                         onOpenGitWorkspace(project);
@@ -244,17 +254,47 @@ export function HomeRepoCard({
                   ) : null}
                 </div>
               ) : null}
-              {latestRunningSessionId ? (
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    window.location.assign(`/session/${encodeURIComponent(latestRunningSessionId)}`);
-                  }}
-                  className={actionButtonClass}
-                  title="Open latest running session"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
+              {runningSessions.length > 0 ? (
+                <div className="relative" ref={sessionMenuRef}>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsGitRepoMenuOpen(false);
+                      setIsServiceMenuOpen(false);
+                      setIsSessionMenuOpen((previous) => !previous);
+                    }}
+                    className={actionButtonClass}
+                    title="Open an ongoing session"
+                  >
+                    <ChevronsUpDown className="h-3.5 w-3.5" />
+                  </button>
+                  {isSessionMenuOpen ? (
+                    <div className="absolute right-0 top-8 z-30 max-h-64 w-64 overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-[#30363d] dark:bg-[#161b22]">
+                      {runningSessions.map((session) => (
+                        <button
+                          key={session.sessionName}
+                          type="button"
+                          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-[#30363d]/70"
+                          title={session.title || session.sessionName}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setIsSessionMenuOpen(false);
+                            void onOpenSession(session.sessionName);
+                          }}
+                        >
+                          <span className="w-full truncate text-xs font-medium text-slate-800 dark:text-slate-100">
+                            {session.title || session.sessionName}
+                          </span>
+                          <span className="w-full truncate text-[11px] text-slate-500 dark:text-slate-400">
+                            {session.model || session.agent}
+                            {session.runState ? ` • ${session.runState}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
               <button
                 onClick={(event) => {

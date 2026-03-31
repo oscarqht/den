@@ -41,6 +41,7 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
+import { groupHomeProjectSessionsByProject } from '@/lib/home-project-sessions';
 import {
   toHomeProjectGitRepos,
   type HomeProjectGitRepo,
@@ -2936,19 +2937,17 @@ export default function GitRepoSelector({
     }
   };
 
+  const runningSessionsByProject = useMemo(() => (
+    groupHomeProjectSessionsByProject(projects, allSessions)
+  ), [allSessions, projects]);
+
   const runningSessionCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const session of allSessions) {
-      const projectKey = resolveClientActivityProjectKey(projects, {
-        projectId: session.projectId,
-        projectPath: session.projectPath,
-        fallbackPath: session.repoPath,
-      });
-      if (!projectKey) continue;
-      counts.set(projectKey, (counts.get(projectKey) ?? 0) + 1);
+    for (const [projectKey, sessions] of runningSessionsByProject.entries()) {
+      counts.set(projectKey, sessions.length);
     }
     return counts;
-  }, [allSessions, projects]);
+  }, [runningSessionsByProject]);
 
   const draftCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -3009,6 +3008,10 @@ export default function GitRepoSelector({
       console.error('Failed to save home project sort:', sortError);
     }
   }, []);
+
+  const handleOpenHomeProjectSession = useCallback((sessionName: string) => {
+    navigateToSession(sessionName);
+  }, [navigateToSession]);
 
   const selectableProjects = selectedRepo
     ? (recentProjects.includes(selectedRepo) ? recentProjects : [selectedRepo, ...recentProjects])
@@ -3220,7 +3223,7 @@ export default function GitRepoSelector({
           failedQuickCreateDrafts={[]}
           isDarkThemeActive={isDarkThemeActive}
           runningSessionCountByProject={runningSessionCountByProject}
-          latestRunningSessionIdByProject={new Map()}
+          runningSessionsByProject={runningSessionsByProject}
           draftCountByProject={draftCountByProject}
           projectCardIconByPath={repoCardIconByRepo}
           brokenProjectCardIcons={brokenRepoCardIcons}
@@ -3232,6 +3235,7 @@ export default function GitRepoSelector({
           onOpenCredentials={() => router.push('/settings')}
           onCycleThemeMode={handleCycleThemeMode}
           onSelectProject={handleSelectRepo}
+          onOpenSession={handleOpenHomeProjectSession}
           onOpenGitWorkspace={handleOpenProjectGitWorkspace}
           projectServiceStatusByProject={{}}
           projectServiceActionStateByProject={{}}

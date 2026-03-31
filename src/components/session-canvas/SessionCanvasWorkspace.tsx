@@ -103,6 +103,9 @@ type TerminalRuntime = {
 type TerminalWindow = Window & {
   term?: {
     paste?: (text: string) => void;
+    rows?: number;
+    scrollLines?: (amount: number) => void;
+    scrollToLine?: (line: number) => void;
     buffer?: {
       active?: {
         baseY: number;
@@ -162,6 +165,7 @@ const MAXIMIZED_PANEL_PADDING = {
 const MOBILE_STACKED_PANEL_HEIGHT = 'calc(100dvh - 8.5rem)';
 const COMMAND_PALETTE_MIN_QUERY_LENGTH = 2;
 const COMMAND_PALETTE_DEBOUNCE_MS = 160;
+const TERMINAL_TOUCH_SCROLL_LINE_HEIGHT_FALLBACK = 18;
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -296,6 +300,105 @@ function sendTerminalEnter(runtime: TerminalRuntime): boolean {
   }
 
   return sendTerminalDataEvent(runtime.term, '\r');
+}
+
+function attachTerminalTouchScrollBridge(runtime: TerminalRuntime): () => void {
+  const doc = runtime.iframe.contentDocument;
+  if (!doc || typeof runtime.term.scrollLines !== 'function') {
+    return () => {};
+  }
+
+  let activeTouchId: number | null = null;
+  let lastClientY: number | null = null;
+  let pixelCarry = 0;
+
+  const resolveLineHeight = () => {
+    const viewport = doc.querySelector('.xterm-viewport');
+    const rows = typeof runtime.term.rows === 'number' ? runtime.term.rows : 0;
+    if (viewport instanceof HTMLElement && rows > 0 && viewport.clientHeight > 0) {
+      return Math.max(8, viewport.clientHeight / rows);
+    }
+    return TERMINAL_TOUCH_SCROLL_LINE_HEIGHT_FALLBACK;
+  };
+
+  const resetGestureState = () => {
+    activeTouchId = null;
+    lastClientY = null;
+    pixelCarry = 0;
+  };
+
+  const getTrackedTouch = (touchList: TouchList) => {
+    if (activeTouchId == null) return null;
+    for (const touch of Array.from(touchList)) {
+      if (touch.identifier === activeTouchId) {
+        return touch;
+      }
+    }
+    return null;
+  };
+
+  const handleTouchStart = (event: TouchEvent) => {
+    if (event.touches.length !== 1) {
+      resetGestureState();
+      return;
+    }
+
+    const [touch] = Array.from(event.touches);
+    if (!touch) {
+      resetGestureState();
+      return;
+    }
+
+    activeTouchId = touch.identifier;
+    lastClientY = touch.clientY;
+    pixelCarry = 0;
+  };
+
+  const handleTouchMove = (event: TouchEvent) => {
+    const touch = getTrackedTouch(event.touches);
+    if (!touch) return;
+
+    if (lastClientY == null) {
+      lastClientY = touch.clientY;
+      return;
+    }
+
+    const deltaY = touch.clientY - lastClientY;
+    lastClientY = touch.clientY;
+    pixelCarry += deltaY;
+
+    const lineHeight = resolveLineHeight();
+    const wholeLines = pixelCarry > 0
+      ? Math.floor(pixelCarry / lineHeight)
+      : Math.ceil(pixelCarry / lineHeight);
+
+    if (wholeLines !== 0) {
+      runtime.term.scrollLines(-wholeLines);
+      pixelCarry -= wholeLines * lineHeight;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleTouchEnd = (event: TouchEvent) => {
+    const touch = getTrackedTouch(event.changedTouches);
+    if (!touch) return;
+    resetGestureState();
+  };
+
+  const options: AddEventListenerOptions = { passive: false };
+  doc.addEventListener('touchstart', handleTouchStart, options);
+  doc.addEventListener('touchmove', handleTouchMove, options);
+  doc.addEventListener('touchend', handleTouchEnd, options);
+  doc.addEventListener('touchcancel', handleTouchEnd, options);
+
+  return () => {
+    doc.removeEventListener('touchstart', handleTouchStart);
+    doc.removeEventListener('touchmove', handleTouchMove);
+    doc.removeEventListener('touchend', handleTouchEnd);
+    doc.removeEventListener('touchcancel', handleTouchEnd);
+  };
 }
 
 function formatPathsForTerminalInput(paths: string[]): string {
@@ -875,6 +978,8 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
   const themeApplyTimerRef = useRef<number | null>(null);
   const linkHandlerCleanupRef = useRef<(() => void) | null>(null);
   const linkHandlerTimerRef = useRef<number | null>(null);
+  const touchScrollCleanupRef = useRef<(() => void) | null>(null);
+  const touchScrollTimerRef = useRef<number | null>(null);
   const [iframeEpoch, setIframeEpoch] = useState(0);
   const [terminalReady, setTerminalReady] = useState(
     !shouldBootstrap || terminalPersistenceMode !== 'tmux',
@@ -920,6 +1025,25 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
     }, 200);
   }, [attachTerminalLinkHandler]);
 
+  const attachTerminalTouchScroll = useCallback(function attachTerminalTouchScroll(attempts = 0) {
+    const runtime = getTerminalRuntime(iframeRef.current);
+    if (runtime) {
+      touchScrollCleanupRef.current?.();
+      touchScrollCleanupRef.current = attachTerminalTouchScrollBridge(runtime);
+      touchScrollTimerRef.current = null;
+      return;
+    }
+
+    if (attempts >= 40) {
+      touchScrollTimerRef.current = null;
+      return;
+    }
+
+    touchScrollTimerRef.current = window.setTimeout(() => {
+      attachTerminalTouchScroll(attempts + 1);
+    }, 200);
+  }, []);
+
   useEffect(() => {
     bootstrapStartedRef.current = false;
     resetStartedRef.current = false;
@@ -936,6 +1060,14 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
       linkHandlerTimerRef.current = null;
     }
     linkHandlerCleanupRef.current?.();
+    linkHandlerCleanupRef.current = null;
+
+    if (touchScrollTimerRef.current !== null) {
+      window.clearTimeout(touchScrollTimerRef.current);
+      touchScrollTimerRef.current = null;
+    }
+    touchScrollCleanupRef.current?.();
+    touchScrollCleanupRef.current = null;
   }, [panel.id, sessionId, shouldBootstrap, terminalPersistenceMode]);
 
   useEffect(() => () => {
@@ -949,6 +1081,14 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
       linkHandlerTimerRef.current = null;
     }
     linkHandlerCleanupRef.current?.();
+    linkHandlerCleanupRef.current = null;
+
+    if (touchScrollTimerRef.current !== null) {
+      window.clearTimeout(touchScrollTimerRef.current);
+      touchScrollTimerRef.current = null;
+    }
+    touchScrollCleanupRef.current?.();
+    touchScrollCleanupRef.current = null;
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -1019,6 +1159,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
   const handleLoad = useCallback(() => {
     applyTerminalTheme();
     attachTerminalLinks();
+    attachTerminalTouchScroll();
 
     if (!terminalReady || !terminalServiceReady || !bootstrapCommand || !shouldBootstrap) {
       return;
@@ -1060,7 +1201,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(functi
     };
 
     window.setTimeout(tick, 350);
-  }, [applyTerminalTheme, attachTerminalLinks, bootstrapCommand, onBootstrapComplete, shouldBootstrap, terminalReady, terminalServiceReady]);
+  }, [applyTerminalTheme, attachTerminalLinks, attachTerminalTouchScroll, bootstrapCommand, onBootstrapComplete, shouldBootstrap, terminalReady, terminalServiceReady]);
 
   if (terminalError) {
     return (

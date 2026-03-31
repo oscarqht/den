@@ -73,7 +73,9 @@ import {
 } from '@/lib/terminal-input';
 import {
   applyThemeToTerminalWindow,
-  resolveTerminalThemeFromBrowser,
+  resolveShouldUseDarkTheme,
+  TERMINAL_THEME_DARK,
+  TERMINAL_THEME_LIGHT,
 } from '@/lib/ttyd-theme';
 import { uploadAttachments } from '@/lib/upload-attachments';
 import { normalizePreviewUrl } from '@/lib/url';
@@ -969,6 +971,7 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
   onBootstrapComplete,
   onOpenPreview,
 }, ref) {
+  const { resolvedTheme } = useTheme();
   const { attachTerminalLinkHandler } = useTerminalLink({ onLoadPreview: onOpenPreview });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bootstrapStartedRef = useRef(false);
@@ -982,11 +985,21 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
   const [terminalReady, setTerminalReady] = useState(
     !shouldBootstrap || terminalPersistenceMode !== 'tmux',
   );
+  const terminalTheme = useMemo(() => {
+    const shouldUseDark = resolveShouldUseDarkTheme(
+      resolvedTheme === 'light' || resolvedTheme === 'dark' ? resolvedTheme : 'auto',
+      typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-color-scheme: dark)').matches,
+    );
+
+    return shouldUseDark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT;
+  }, [resolvedTheme]);
 
   const applyTerminalTheme = useCallback(function applyTerminalTheme(attempts = 0) {
     const applied = applyThemeToTerminalWindow(
       iframeRef.current?.contentWindow,
-      resolveTerminalThemeFromBrowser(),
+      terminalTheme,
     );
 
     if (applied || attempts >= 40) {
@@ -997,7 +1010,7 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
     themeApplyTimerRef.current = window.setTimeout(() => {
       applyTerminalTheme(attempts + 1);
     }, 200);
-  }, []);
+  }, [terminalTheme]);
 
   const attachTerminalLinks = useCallback(function attachTerminalLinks(attempts = 0) {
     const iframe = iframeRef.current;
@@ -1115,7 +1128,7 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
       return;
     }
     applyTerminalTheme();
-  }, [applyTerminalTheme, iframeEpoch, terminalReady]);
+  }, [applyTerminalTheme, iframeEpoch, terminalReady, terminalTheme]);
 
   useEffect(() => {
     if (!terminalServiceReady) {
@@ -2460,29 +2473,11 @@ export function SessionCanvasWorkspace({
                 <button
                   type="button"
                   className={mobileToolbarButtonClass}
-                  onClick={openCommandPalette}
-                  aria-label="Search workspace"
-                  title="Search workspace"
-                >
-                  <Search className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  className={mobileToolbarButtonClass}
                   onClick={handleAddTerminal}
                   aria-label="Add terminal"
                   title="Add terminal"
                 >
                   <TerminalSquare className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  className={mobileToolbarButtonClass}
-                  onClick={handleAddPreview}
-                  aria-label="Add preview"
-                  title="Add preview"
-                >
-                  <Monitor className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
@@ -2493,16 +2488,6 @@ export function SessionCanvasWorkspace({
                   title="Add git panel"
                 >
                   <GitBranch className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  className={mobileToolbarButtonClass}
-                  onClick={toggleExplorer}
-                  aria-label={mobileExplorerCollapsed ? 'Open explorer' : 'Close explorer'}
-                  aria-pressed={!mobileExplorerCollapsed}
-                  title={mobileExplorerCollapsed ? 'Open explorer' : 'Close explorer'}
-                >
-                  <PanelLeft className="h-4 w-4" />
                 </button>
                 <button
                   type="button"

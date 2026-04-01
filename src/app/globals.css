@@ -16,11 +16,498 @@
   --background: #ffffff;
   --foreground: #171717;
   color-scheme: light dark;
+  --app-dark-root: #1b1a19;
+  --app-dark-panel: #232120;
+  --app-dark-elevated: #2a2726;
+  --app-dark-input: #201e1d;
+  --app-dark-border-subtle: #3a3533;
+  --app-dark-text-primary: #f2efea;
+  --app-dark-text-muted: #a39a90;
+  --app-dark-accent: #c98f62;
+  --app-dark-accent-hover: #d89d70;
+  --app-dark-accent-ring: rgba(201, 143, 98, 0.28);
+  --app-dark-selection: rgba(201, 143, 98, 0.22);
+  --app-dark-overlay: rgba(20, 18, 18, 0.55);
+  --app-dark-shadow-lg: 0 20px 42px -26px rgba(12, 9, 8, 0.72);
+  --app-dark-shadow-xl: 0 24px 56px -30px rgba(12, 9, 8, 0.82);
+  --app-dark-panel-96: color-mix(in srgb, var(--app-dark-panel) 96%, transparent);
+  --app-dark-panel-92: color-mix(in srgb, var(--app-dark-panel) 92%, transparent);
+  --app-dark-panel-88: color-mix(in srgb, var(--app-dark-panel) 88%, transparent);
+  --app-dark-panel-85: color-mix(in srgb, var(--app-dark-panel) 85%, transparent);
+  --app-dark-panel-82: color-mix(in srgb, var(--app-dark-panel) 82%, transparent);
+  --app-dark-panel-72: color-mix(in srgb, var(--app-dark-panel) 72%, transparent);
+  --app-dark-panel-58: color-mix(in srgb, var(--app-dark-panel) 58%, transparent);
+  --app-dark-panel-50: color-mix(in srgb, var(--app-dark-panel) 50%, transparent);
+  --app-dark-panel-44: color-mix(in srgb, var(--app-dark-panel) 44%, transparent);
+  --app-dark-panel-40: color-mix(in srgb, var(--app-dark-panel) 40%, transparent);
+  --app-dark-panel-35: color-mix(in srgb, var(--app-dark-panel) 35%, transparent);
+  --app-dark-panel-30: color-mix(in srgb, var(--app-dark-panel) 30%, transparent);
+  --app-dark-panel-25: color-mix(in srgb, var(--app-dark-panel) 25%, transparent);
+  --app-dark-panel-20: color-mix(in srgb, var(--app-dark-panel) 20%, transparent);
+  --app-dark-input-90: color-mix(in srgb, var(--app-dark-input) 90%, transparent);
+  --app-dark-input-88: color-mix(in srgb, var(--app-dark-input) 88%, transparent);
+  --app-dark-input-85: color-mix(in srgb, var(--app-dark-input) 85%, transparent);
+  --app-dark-input-80: color-mix(in srgb, var(--app-dark-input) 80%, transparent);
+  --app-dark-input-75: color-mix(in srgb, var(--app-dark-input) 75%, transparent);
+  --app-dark-input-70: color-mix(in srgb, var(--app-dark-input) 70%, transparent);
+  --app-dark-input-60: color-mix(in srgb, var(--app-dark-input) 60%, transparent);
+  --app-dark-input-55: color-mix(in srgb, var(--app-dark-input) 55%, transparent);
+  --app-dark-input-40: color-mix(in srgb, var(--app-dark-input) 40%, transparent);
+  --app-dark-elevated-92: color-mix(in srgb, var(--app-dark-elevated) 92%, transparent);
+  --app-dark-elevated-80: color-mix(in srgb, var(--app-dark-elevated) 80%, transparent);
+  --app-dark-elevated-75: color-mix(in srgb, var(--app-dark-elevated) 75%, transparent);
+  --app-dark-elevated-70: color-mix(in srgb, var(--app-dark-elevated) 70%, transparent);
+  --app-dark-elevated-60: color-mix(in srgb, var(--app-dark-elevated) 60%, transparent);
+  --app-dark-elevated-50: color-mix(in srgb, var(--app-dark-elevated) 50%, transparent);
 }
 
-:root.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+:root.dark,
+[data-theme='dark'] {
+  --background: var(--app-dark-root);
+  --foreground: var(--app-dark-text-primary);
+  --color-base-100: var(--app-dark-root);
+  --color-base-200: var(--app-dark-panel);
+  --color-base-300: var(--app-dark-elevated);
+  --color-base-content: var(--app-dark-text-primary);
+  --color-primary: var(--app-dark-accent);
+  --color-primary-content: #181312;
+  --color-secondary: #8e6a55;
+  --color-secondary-content: var(--app-dark-text-primary);
+  --color-accent: #b08b72;
+  --color-accent-content: #181312;
+  --color-neutral: var(--app-dark-panel);
+  --color-neutral-content: var(--app-dark-text-primary);
+  --color-info: #88a7c7;
+  --color-info-content: #12181e;
+  --color-success: #7eb189;
+  --color-success-content: #101611;
+  --color-warning: #d4a36d;
+  --color-warning-content: #1a120d;
+  --color-error: #c7847d;
+  --color-error-content: #1c1110;
+  scrollbar-color: color-mix(in srgb, var(--app-dark-text-muted) 35%, transparent) transparent;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+}
+
+:root.dark .custom-scrollbar,
+[data-theme='dark'] .custom-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--app-dark-border-subtle) 92%, transparent) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+[data-theme='dark'] .custom-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--app-dark-border-subtle) 92%, transparent);
+}
+
+:root.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-theme='dark'] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--app-dark-accent) 46%, var(--app-dark-border-subtle));
+}
+
+:root.dark ::selection,
+[data-theme='dark'] ::selection {
+  background: var(--app-dark-selection);
+}
+
+:root.dark .app-dark-root,
+[data-theme='dark'] .app-dark-root {
+  background-color: var(--app-dark-root) !important;
+  color: var(--app-dark-text-primary) !important;
+}
+
+:root.dark .app-dark-panel,
+[data-theme='dark'] .app-dark-panel {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-panel) !important;
+  box-shadow: var(--app-dark-shadow-lg) !important;
+}
+
+:root.dark .app-dark-panel[data-panel-selected='true'],
+[data-theme='dark'] .app-dark-panel[data-panel-selected='true'] {
+  border-color: var(--app-dark-accent-hover) !important;
+  background-color: var(--app-dark-panel) !important;
+  box-shadow:
+    0 0 0 1px var(--app-dark-accent-hover),
+    0 0 0 4px rgba(201, 143, 98, 0.22),
+    var(--app-dark-shadow-elevated) !important;
+}
+
+:root.dark .app-dark-toolbar,
+[data-theme='dark'] .app-dark-toolbar {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-panel-82) !important;
+  box-shadow: var(--app-dark-shadow-lg) !important;
+}
+
+:root.dark .app-dark-modal,
+[data-theme='dark'] .app-dark-modal {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-panel) !important;
+  box-shadow: var(--app-dark-shadow-xl) !important;
+}
+
+:root.dark .app-dark-modal-header,
+[data-theme='dark'] .app-dark-modal-header {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 70%, transparent) !important;
+  background-color: var(--app-dark-elevated-75) !important;
+}
+
+:root.dark .app-dark-surface,
+[data-theme='dark'] .app-dark-surface {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 78%, transparent) !important;
+  background-color: var(--app-dark-panel-20) !important;
+}
+
+:root.dark .app-dark-surface-raised,
+[data-theme='dark'] .app-dark-surface-raised {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 78%, transparent) !important;
+  background-color: var(--app-dark-panel-30) !important;
+}
+
+:root.dark .app-dark-popover,
+[data-theme='dark'] .app-dark-popover {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-elevated) !important;
+  box-shadow: var(--app-dark-shadow-lg) !important;
+}
+
+:root.dark .app-dark-input,
+[data-theme='dark'] .app-dark-input {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-input-85) !important;
+  color: var(--app-dark-text-primary) !important;
+}
+
+:root.dark .app-dark-input::placeholder,
+[data-theme='dark'] .app-dark-input::placeholder {
+  color: var(--app-dark-text-muted) !important;
+}
+
+:root.dark .app-dark-overlay,
+[data-theme='dark'] .app-dark-overlay {
+  background-color: var(--app-dark-overlay) !important;
+}
+
+:root.dark .modal::backdrop,
+[data-theme='dark'] .modal::backdrop {
+  background-color: var(--app-dark-overlay) !important;
+  backdrop-filter: blur(6px);
+}
+
+:root.dark .modal-backdrop,
+[data-theme='dark'] .modal-backdrop {
+  background-color: var(--app-dark-overlay) !important;
+}
+
+:root.dark .app-dark-code,
+[data-theme='dark'] .app-dark-code {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+  background-color: var(--app-dark-input) !important;
+}
+
+:root.dark .app-dark-muted,
+[data-theme='dark'] .app-dark-muted {
+  color: var(--app-dark-text-muted) !important;
+}
+
+:root.dark .app-dark-text,
+[data-theme='dark'] .app-dark-text {
+  color: var(--app-dark-text-primary) !important;
+}
+
+:root.dark .app-dark-hover:hover,
+[data-theme='dark'] .app-dark-hover:hover {
+  background-color: var(--app-dark-elevated-70) !important;
+}
+
+:root.dark .app-dark-hover-soft:hover,
+[data-theme='dark'] .app-dark-hover-soft:hover {
+  background-color: var(--app-dark-panel-30) !important;
+}
+
+:root.dark .dark\:border-white\/10,
+[data-theme='dark'] .dark\:border-white\/10,
+:root.dark .dark\:border-\[\#30363d\],
+[data-theme='dark'] .dark\:border-\[\#30363d\] {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+}
+
+:root.dark .dark\:border-slate-800,
+[data-theme='dark'] .dark\:border-slate-800,
+:root.dark .dark\:border-slate-700,
+[data-theme='dark'] .dark\:border-slate-700 {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;
+}
+
+:root.dark .dark\:bg-slate-950,
+[data-theme='dark'] .dark\:bg-slate-950 {
+  background-color: var(--app-dark-root) !important;
+}
+
+:root.dark .dark\:bg-black,
+[data-theme='dark'] .dark\:bg-black {
+  background-color: var(--app-dark-root) !important;
+}
+
+:root.dark .dark\:bg-slate-900,
+[data-theme='dark'] .dark\:bg-slate-900 {
+  background-color: var(--app-dark-input) !important;
+}
+
+:root.dark .dark\:bg-slate-800,
+[data-theme='dark'] .dark\:bg-slate-800 {
+  background-color: var(--app-dark-elevated) !important;
+}
+
+:root.dark .dark\:bg-\[\#151b26\],
+[data-theme='dark'] .dark\:bg-\[\#151b26\],
+:root.dark .dark\:bg-\[\#161b22\],
+[data-theme='dark'] .dark\:bg-\[\#161b22\],
+:root.dark .dark\:bg-\[\#0d1117\],
+[data-theme='dark'] .dark\:bg-\[\#0d1117\],
+:root.dark .dark\:bg-\[\#020617\],
+[data-theme='dark'] .dark\:bg-\[\#020617\] {
+  background-color: var(--app-dark-input) !important;
+}
+
+:root.dark .dark\:bg-\[\#1e2532\],
+[data-theme='dark'] .dark\:bg-\[\#1e2532\],
+:root.dark .dark\:bg-\[\#111722\],
+[data-theme='dark'] .dark\:bg-\[\#111722\] {
+  background-color: var(--app-dark-elevated) !important;
+}
+
+:root.dark .dark\:bg-\[\#0b1020\]\/92,
+[data-theme='dark'] .dark\:bg-\[\#0b1020\]\/92 {
+  background-color: var(--app-dark-panel-92) !important;
+}
+
+:root.dark .dark\:bg-\[\#1f2937\],
+[data-theme='dark'] .dark\:bg-\[\#1f2937\] {
+  background-color: var(--app-dark-elevated) !important;
+}
+
+:root.dark .dark\:bg-\[\#0d1117\]\/55,
+[data-theme='dark'] .dark\:bg-\[\#0d1117\]\/55 {
+  background-color: var(--app-dark-input-55) !important;
+}
+
+:root.dark .dark\:bg-\[\#0d1117\]\/80,
+[data-theme='dark'] .dark\:bg-\[\#0d1117\]\/80 {
+  background-color: var(--app-dark-input-80) !important;
+}
+
+:root.dark .dark\:bg-\[\#0d1117\]\/75,
+[data-theme='dark'] .dark\:bg-\[\#0d1117\]\/75 {
+  background-color: var(--app-dark-input-75) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/96,
+[data-theme='dark'] .dark\:bg-slate-950\/96 {
+  background-color: var(--app-dark-panel-96) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/95,
+[data-theme='dark'] .dark\:bg-slate-950\/95 {
+  background-color: color-mix(in srgb, var(--app-dark-input) 95%, transparent) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/92,
+[data-theme='dark'] .dark\:bg-slate-950\/92 {
+  background-color: var(--app-dark-panel-92) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/90,
+[data-theme='dark'] .dark\:bg-slate-950\/90 {
+  background-color: var(--app-dark-input-90) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/88,
+[data-theme='dark'] .dark\:bg-slate-950\/88 {
+  background-color: var(--app-dark-panel-88) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/85,
+[data-theme='dark'] .dark\:bg-slate-950\/85 {
+  background-color: var(--app-dark-panel-85) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/82,
+[data-theme='dark'] .dark\:bg-slate-950\/82 {
+  background-color: var(--app-dark-panel-82) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/72,
+[data-theme='dark'] .dark\:bg-slate-950\/72 {
+  background-color: var(--app-dark-panel-72) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/58,
+[data-theme='dark'] .dark\:bg-slate-950\/58 {
+  background-color: var(--app-dark-panel-58) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/50,
+[data-theme='dark'] .dark\:bg-slate-950\/50 {
+  background-color: var(--app-dark-panel-50) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/44,
+[data-theme='dark'] .dark\:bg-slate-950\/44 {
+  background-color: var(--app-dark-panel-44) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/40,
+[data-theme='dark'] .dark\:bg-slate-950\/40 {
+  background-color: var(--app-dark-panel-40) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/35,
+[data-theme='dark'] .dark\:bg-slate-950\/35 {
+  background-color: var(--app-dark-panel-35) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/30,
+[data-theme='dark'] .dark\:bg-slate-950\/30 {
+  background-color: var(--app-dark-panel-30) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/25,
+[data-theme='dark'] .dark\:bg-slate-950\/25 {
+  background-color: var(--app-dark-panel-25) !important;
+}
+
+:root.dark .dark\:bg-slate-950\/20,
+[data-theme='dark'] .dark\:bg-slate-950\/20 {
+  background-color: var(--app-dark-panel-20) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/90,
+[data-theme='dark'] .dark\:bg-slate-900\/90 {
+  background-color: var(--app-dark-input-90) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/88,
+[data-theme='dark'] .dark\:bg-slate-900\/88 {
+  background-color: var(--app-dark-input-88) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/85,
+[data-theme='dark'] .dark\:bg-slate-900\/85 {
+  background-color: var(--app-dark-input-85) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/80,
+[data-theme='dark'] .dark\:bg-slate-900\/80 {
+  background-color: var(--app-dark-input-80) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/70,
+[data-theme='dark'] .dark\:bg-slate-900\/70 {
+  background-color: var(--app-dark-input-70) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/60,
+[data-theme='dark'] .dark\:bg-slate-900\/60 {
+  background-color: var(--app-dark-input-60) !important;
+}
+
+:root.dark .dark\:bg-slate-900\/40,
+[data-theme='dark'] .dark\:bg-slate-900\/40 {
+  background-color: var(--app-dark-input-40) !important;
+}
+
+:root.dark .dark\:bg-slate-800\/70,
+[data-theme='dark'] .dark\:bg-slate-800\/70 {
+  background-color: var(--app-dark-elevated-70) !important;
+}
+
+:root.dark .dark\:bg-slate-800\/60,
+[data-theme='dark'] .dark\:bg-slate-800\/60 {
+  background-color: var(--app-dark-elevated-60) !important;
+}
+
+:root.dark .dark\:bg-slate-800\/50,
+[data-theme='dark'] .dark\:bg-slate-800\/50 {
+  background-color: var(--app-dark-elevated-50) !important;
+}
+
+:root.dark .dark\:text-white,
+[data-theme='dark'] .dark\:text-white,
+:root.dark .dark\:text-slate-100,
+[data-theme='dark'] .dark\:text-slate-100 {
+  color: var(--app-dark-text-primary) !important;
+}
+
+:root.dark .dark\:text-slate-200,
+[data-theme='dark'] .dark\:text-slate-200 {
+  color: color-mix(in srgb, var(--app-dark-text-primary) 92%, var(--app-dark-text-muted)) !important;
+}
+
+:root.dark .dark\:text-slate-300,
+[data-theme='dark'] .dark\:text-slate-300,
+:root.dark .dark\:text-slate-400,
+[data-theme='dark'] .dark\:text-slate-400,
+:root.dark .dark\:text-slate-500,
+[data-theme='dark'] .dark\:text-slate-500 {
+  color: var(--app-dark-text-muted) !important;
+}
+
+:root.dark .dark\:placeholder\:text-slate-500::placeholder,
+[data-theme='dark'] .dark\:placeholder\:text-slate-500::placeholder {
+  color: var(--app-dark-text-muted) !important;
+}
+
+:root.dark .dark\:hover\:bg-slate-900:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-900:hover,
+:root.dark .dark\:hover\:bg-slate-900\/70:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-900\/70:hover,
+:root.dark .dark\:hover\:bg-slate-900\/60:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-900\/60:hover {
+  background-color: var(--app-dark-input-70) !important;
+}
+
+:root.dark .dark\:hover\:bg-slate-800:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-800:hover,
+:root.dark .dark\:hover\:bg-slate-800\/60:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-800\/60:hover,
+:root.dark .dark\:hover\:bg-slate-800\/50:hover,
+[data-theme='dark'] .dark\:hover\:bg-slate-800\/50:hover {
+  background-color: var(--app-dark-elevated-70) !important;
+}
+
+:root.dark .dark\:hover\:bg-\[\#30363d\]\/70:hover,
+[data-theme='dark'] .dark\:hover\:bg-\[\#30363d\]\/70:hover,
+:root.dark .dark\:hover\:bg-\[\#30363d\]\/60:hover,
+[data-theme='dark'] .dark\:hover\:bg-\[\#30363d\]\/60:hover {
+  background-color: var(--app-dark-elevated-70) !important;
+}
+
+:root.dark .dark\:bg-\[\#30363d\],
+[data-theme='dark'] .dark\:bg-\[\#30363d\] {
+  background-color: color-mix(in srgb, var(--app-dark-border-subtle) 90%, transparent) !important;
+}
+
+:root.dark .dark\:hover\:text-white:hover,
+[data-theme='dark'] .dark\:hover\:text-white:hover,
+:root.dark .dark\:hover\:text-slate-100:hover,
+[data-theme='dark'] .dark\:hover\:text-slate-100:hover {
+  color: var(--app-dark-text-primary) !important;
 }
 
 body {
@@ -254,7 +741,7 @@ button {
 
 :root.dark .markdown-message .hljs {
   color: #c9d1d9;
-  background: #0d1117;
+  background: var(--app-dark-input);
 }
 
 :root.dark .markdown-message .hljs-doctag,

@@ -270,9 +270,9 @@ export function SessionRepoViewer({
   }, [handleRefreshRepoData, refreshToken]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-50 dark:bg-[#0d1117]">
-      <div className="flex min-h-0 flex-[2] flex-col border-b border-slate-200 dark:border-[#30363d]">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 app-dark-root">
+      <div className="flex min-h-0 flex-[2] flex-col border-b border-slate-200 dark:border-slate-700">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 app-dark-surface-raised">
           <div className="flex min-w-0 items-center gap-2 uppercase tracking-wide">
             <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"></span>
             <span className="truncate">Repo Diff</span>
@@ -281,7 +281,7 @@ export function SessionRepoViewer({
             </span>
             {normalizedRepoOptions.length > 1 && (
               <select
-                className="select select-xs h-6 min-h-6 max-w-[220px] rounded border-slate-300 bg-white text-[10px] font-medium normal-case text-slate-700 focus:outline-none dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300"
+                className="select select-xs h-6 min-h-6 max-w-[220px] rounded border-slate-300 bg-white text-[10px] font-medium normal-case text-slate-700 focus:outline-none app-dark-input"
                 value={selectedRepoOption?.path || effectiveRepoPath}
                 onChange={(event) => setSelectedRepoPath(event.target.value)}
                 title="Select repository"
@@ -300,7 +300,7 @@ export function SessionRepoViewer({
             </span>
             <button
               type="button"
-              className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-[10px] text-slate-600 hover:bg-slate-100 disabled:text-slate-400 dark:text-slate-300 dark:hover:bg-[#30363d]/60 dark:disabled:text-slate-600"
+              className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-[10px] text-slate-600 hover:bg-slate-100 disabled:text-slate-400 dark:text-slate-300 app-dark-hover dark:disabled:text-slate-600"
               onClick={() => void handleRefreshRepoData()}
               disabled={action.isPending || isRefreshingRepoData}
               title="Refresh repo diff and commit history"
@@ -343,11 +343,11 @@ export function SessionRepoViewer({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-400">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-slate-200 px-3 text-[11px] font-semibold text-slate-600 app-dark-surface-raised">
           <span className="uppercase tracking-wide">Commit History</span>
           <button
             type="button"
-            className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+            className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-600 hover:bg-slate-100 dark:text-slate-300 app-dark-hover"
             onClick={() => void refetchCommitHistoryData()}
             title="Refresh commit history"
             aria-label="Refresh commit history"
@@ -369,7 +369,7 @@ export function SessionRepoViewer({
               No commits found on this branch.
             </div>
           ) : (
-            <div className="divide-y divide-slate-200 dark:divide-[#30363d]">
+            <div className="divide-y divide-slate-200 dark:divide-[color:var(--app-dark-border-subtle)]">
               {commits.map((commit, index) => {
                 const isSelected = selectedCommitHash === commit.hash;
                 const isOldestCommit = index === commits.length - 1;
@@ -380,13 +380,13 @@ export function SessionRepoViewer({
                     type="button"
                     onClick={() => handleCommitClick(commit.hash)}
                     className={`w-full px-3 py-2 text-left transition-colors ${isSelected
-                      ? 'bg-blue-100/80 dark:bg-[#1f2a3d]'
-                      : 'hover:bg-slate-100 dark:hover:bg-[#161b22]'
+                      ? 'bg-amber-100/80 dark:bg-[color-mix(in_srgb,var(--app-dark-accent)_18%,var(--app-dark-panel))]'
+                      : 'hover:bg-slate-100 app-dark-hover-soft'
                       }`}
                     title={commitLabel(commit)}
                   >
                     <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                      <span className="rounded bg-slate-200 px-1.5 py-0.5 dark:bg-[#30363d]">{commit.hash}</span>
+                      <span className="rounded bg-slate-200 px-1.5 py-0.5 app-dark-surface-raised">{commit.hash}</span>
                       <span className="truncate">{formatCommitDate(commit.date)}</span>
                     </div>
                     <div className="mt-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">

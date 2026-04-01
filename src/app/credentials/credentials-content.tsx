@@ -548,13 +548,13 @@ export default function SettingsContent() {
 
   const panelClass = `overflow-hidden ${APP_PAGE_PANEL_CLASS}`;
   const sectionHeaderClass =
-    'flex flex-col gap-3 border-b border-slate-200/80 bg-white/35 px-5 py-4 md:flex-row md:items-center md:justify-between dark:border-slate-800 dark:bg-slate-950/35';
+    'flex flex-col gap-3 border-b border-slate-200/80 bg-white/35 px-5 py-4 md:flex-row md:items-center md:justify-between app-dark-modal-header';
   const subsectionHeaderClass =
-    'flex flex-col gap-3 bg-white/20 px-5 py-4 md:flex-row md:items-center md:justify-between dark:bg-slate-950/20';
+    'flex flex-col gap-3 bg-white/20 px-5 py-4 md:flex-row md:items-center md:justify-between app-dark-surface';
   const inputClass =
-    'block h-10 w-full rounded-lg border border-slate-200/90 bg-white/85 px-3 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/85 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary/50';
+    'block h-10 w-full rounded-lg border border-slate-200/90 bg-white/85 px-3 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 app-dark-input';
   const secondaryButtonClass =
-    'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white/85 px-3 text-[12px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200 dark:hover:bg-slate-800';
+    'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white/85 px-3 text-[12px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 app-dark-input app-dark-hover';
   const warningButtonClass =
     'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[12px] font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25';
   const rowActionButtonClass =
@@ -650,7 +650,7 @@ export default function SettingsContent() {
                   </span>
                   <div className="relative">
                     <select
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 app-dark-input"
                       value={selectedDefaultAgentProvider}
                       onChange={(event) => {
                         setSelectedDefaultAgentProvider(
@@ -676,7 +676,7 @@ export default function SettingsContent() {
                   </span>
                   <div className="relative">
                     <select
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 app-dark-input"
                       value={selectedDefaultAgentModel}
                       onChange={(event) =>
                         setSelectedDefaultAgentModel(event.target.value)
@@ -704,7 +704,7 @@ export default function SettingsContent() {
                     </span>
                     <div className="relative">
                       <select
-                        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100"
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white/90 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 app-dark-input"
                         value={selectedDefaultAgentReasoningEffort}
                         onChange={(event) =>
                           setSelectedDefaultAgentReasoningEffort(
@@ -724,7 +724,7 @@ export default function SettingsContent() {
                 )}
               </div>
 
-              <div className="rounded-lg border border-slate-200/90 bg-white/70 px-3 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <div className="rounded-lg border border-slate-200/90 bg-white/70 px-3 py-3 text-xs text-slate-600 app-dark-surface-raised">
                 <div className="space-y-1">
                   <div className="font-semibold text-slate-900 dark:text-slate-100">
                     {agentProviderLabel(
@@ -806,7 +806,7 @@ export default function SettingsContent() {
                   Add Token
                 </button>
               </div>
-              <div className="bg-slate-50/20 px-5 py-4 dark:bg-slate-950/20">
+              <div className="bg-slate-50/20 px-5 py-4 app-dark-surface">
                 <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Personal Access Token
                 </label>
@@ -886,7 +886,7 @@ export default function SettingsContent() {
                   </button>
                 </div>
 
-                <div className="space-y-4 bg-slate-50/40 px-6 py-4 dark:bg-slate-900/35">
+                <div className="space-y-4 bg-slate-50/40 px-6 py-4 app-dark-surface">
                   <div>
                     <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Server URL
@@ -1064,7 +1064,7 @@ export default function SettingsContent() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 app-dark-surface-raised">
                       {configuredCredential ? (
                         <div className="space-y-1">
                           <div>API key configured.</div>

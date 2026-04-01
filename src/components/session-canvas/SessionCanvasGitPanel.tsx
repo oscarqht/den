@@ -187,10 +187,10 @@ export function SessionCanvasGitPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-[#111827]">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs dark:border-slate-800">
+    <div className="flex h-full min-h-0 flex-col bg-white app-dark-root">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs app-dark-surface-raised">
         {repoOptions.length > 1 ? (
-          <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-900">
+          <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 app-dark-input">
             <GitBranch className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
             <select
               className="min-w-0 bg-transparent outline-none"
@@ -205,12 +205,12 @@ export function SessionCanvasGitPanel({
             </select>
           </label>
         ) : (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-700 app-dark-input">
             {repoOptions[0]?.label}
           </div>
         )}
 
-        <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-900">
+        <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 app-dark-input">
           <span className="text-slate-500 dark:text-slate-400">Base</span>
           <select
             className="min-w-0 bg-transparent outline-none"
@@ -232,22 +232,22 @@ export function SessionCanvasGitPanel({
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            className="btn btn-ghost btn-xs gap-1"
+            className="btn btn-ghost btn-xs gap-1 app-dark-hover"
             onClick={handleOpenSourceRepoInGitPage}
             title="Open the source repository in the Git page"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             Open in Git
           </button>
-          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600 app-dark-input">
             Ahead {divergence.ahead}
           </span>
-          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600 app-dark-input">
             Behind {divergence.behind}
           </span>
           <button
             type="button"
-            className="btn btn-ghost btn-xs gap-1"
+            className="btn btn-ghost btn-xs gap-1 app-dark-hover"
             onClick={() => {
               void refreshGitState({ refreshRepoViewer: true });
             }}
@@ -258,7 +258,7 @@ export function SessionCanvasGitPanel({
           </button>
           <button
             type="button"
-            className="btn btn-ghost btn-xs gap-1"
+            className="btn btn-ghost btn-xs gap-1 app-dark-hover"
             onClick={() => {
               void handleRebase();
             }}
@@ -269,7 +269,7 @@ export function SessionCanvasGitPanel({
           </button>
           <button
             type="button"
-            className="btn btn-ghost btn-xs gap-1"
+            className="btn btn-ghost btn-xs gap-1 app-dark-hover"
             onClick={() => {
               void handleMerge();
             }}
@@ -282,7 +282,7 @@ export function SessionCanvasGitPanel({
       </div>
 
       {feedback ? (
-        <div className="shrink-0 border-b border-slate-200 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:text-slate-300">
+        <div className="shrink-0 border-b border-slate-200 px-3 py-2 text-xs text-slate-600 dark:border-[color:var(--app-dark-border-subtle)] dark:text-slate-300">
           {feedback}
         </div>
       ) : null}

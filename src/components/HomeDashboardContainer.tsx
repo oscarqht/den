@@ -1448,7 +1448,7 @@ export default function HomeDashboardContainer({
 
       {homeProjectGitSelector && (
         <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 Select Git Repository
@@ -1469,7 +1469,7 @@ export default function HomeDashboardContainer({
                   <button
                     key={repoEntry.repoPath}
                     type="button"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:text-slate-200 dark:hover:bg-[#30363d]/60"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 app-dark-input app-dark-hover"
                     onClick={() => {
                       setHomeProjectGitSelector(null);
                       router.push(`/git?path=${encodeURIComponent(repoEntry.repoPath)}`);
@@ -1487,7 +1487,7 @@ export default function HomeDashboardContainer({
 
       {projectPendingDeleteId && (
         <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 Delete Project

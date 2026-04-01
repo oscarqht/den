@@ -328,14 +328,14 @@ function CanvasPanelFrameComponent({
   return (
     <div
       ref={frameRef}
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white transition-shadow dark:bg-[#111827] ${
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white transition-shadow app-dark-panel ${
         isStacked ? 'relative h-full w-full' : 'absolute'
       } ${
         selected
-          ? 'border-slate-400 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] ring-1 ring-slate-300 dark:border-slate-500 dark:ring-slate-600'
+          ? 'border-primary shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] ring-2 ring-primary/20 dark:border-[color:var(--app-dark-accent-hover)] dark:ring-0 dark:shadow-[0_0_0_1px_var(--app-dark-accent-hover),0_0_0_4px_rgba(201,143,98,0.18),var(--app-dark-shadow-elevated)]'
           : active
-            ? 'border-slate-300 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] dark:border-slate-600'
-            : 'border-slate-200 shadow-[0_12px_32px_-16px_rgba(15,23,42,0.4)] dark:border-slate-800'
+            ? 'border-slate-300 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-raised)]'
+            : 'border-slate-200 shadow-[0_12px_32px_-16px_rgba(15,23,42,0.4)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-panel)]'
       }`}
       style={{
         left: isStacked ? undefined : panel.x,
@@ -346,6 +346,8 @@ function CanvasPanelFrameComponent({
         contain: 'layout paint',
       }}
       data-session-canvas-panel="true"
+      data-panel-selected={selected ? 'true' : 'false'}
+      data-panel-active={active ? 'true' : 'false'}
       onPointerDownCapture={() => onFocus(panel.id)}
       onFocusCapture={() => onFocus(panel.id)}
       onMouseDown={() => onFocus(panel.id)}
@@ -357,7 +359,7 @@ function CanvasPanelFrameComponent({
       }}
     >
       <div
-        className="relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-3 py-1.5 text-[12px] dark:border-slate-800 dark:bg-slate-950/80"
+        className="relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-3 py-1.5 text-[12px] app-dark-surface-raised"
         onPointerDown={(event) => {
           if (isStacked || isMaximized) return;
           if (isInteractiveTarget(event.target)) return;
@@ -422,7 +424,7 @@ function CanvasPanelFrameComponent({
       </div>
 
       <div
-        className={`relative min-h-0 flex-1 overflow-hidden ${isResizePreviewActive ? 'bg-slate-50/80 dark:bg-slate-950/70' : ''}`}
+        className={`relative min-h-0 flex-1 overflow-hidden ${isResizePreviewActive ? 'bg-slate-50/80 app-dark-surface' : ''}`}
         data-session-canvas-panel-content="true"
       >
         <div className={isResizePreviewActive ? 'hidden h-full' : 'h-full'}>
@@ -430,7 +432,7 @@ function CanvasPanelFrameComponent({
         </div>
         {isResizePreviewActive ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-medium tracking-[0.02em] text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-950/85 dark:text-slate-300">
+            <div className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-medium tracking-[0.02em] text-slate-500 shadow-sm app-dark-surface-raised">
               Resizing
             </div>
           </div>
@@ -440,7 +442,7 @@ function CanvasPanelFrameComponent({
       {!isStacked && !isMaximized ? (
         <button
           type="button"
-          className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-tl-md bg-slate-100/80 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-900/80 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-tl-md bg-slate-100/80 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 app-dark-surface-raised app-dark-hover-soft"
           onPointerDown={(event) => {
             startPointerTracking(event, 'resize');
           }}

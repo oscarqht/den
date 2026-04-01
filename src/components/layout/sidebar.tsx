@@ -175,7 +175,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
               {!isCollapsed && (
                 <span className="flex-1 flex justify-between items-center">
                   Changes
-                  {changesCount > 0 && <span className="inline-flex items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{changesCount}</span>}
+                  {changesCount > 0 && <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">{changesCount}</span>}
                 </span>
               )}
             </Link>

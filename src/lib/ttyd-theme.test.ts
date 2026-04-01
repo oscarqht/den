@@ -64,6 +64,9 @@ describe('resolveTerminalTheme', () => {
   it('keeps monochrome ANSI mapping while switching only fg/bg between modes', () => {
     assert.notStrictEqual(TERMINAL_THEME_LIGHT.background, TERMINAL_THEME_DARK.background);
     assert.notStrictEqual(TERMINAL_THEME_LIGHT.foreground, TERMINAL_THEME_DARK.foreground);
+    assert.strictEqual(TERMINAL_THEME_DARK.background, '#1b1a19');
+    assert.strictEqual(TERMINAL_THEME_DARK.foreground, '#f2efea');
+    assert.strictEqual(TERMINAL_THEME_DARK.selectionBackground, 'rgba(201, 143, 98, 0.22)');
 
     assert.strictEqual(TERMINAL_THEME_LIGHT.red, TERMINAL_THEME_LIGHT.foreground);
     assert.strictEqual(TERMINAL_THEME_LIGHT.brightBlue, TERMINAL_THEME_LIGHT.foreground);
@@ -255,7 +258,8 @@ describe('applyThemeToTerminalWindow', () => {
     // U+2500 "BOX DRAWINGS LIGHT HORIZONTAL" split across UTF-8 chunks: E2 94 80
     term.write(Uint8Array.from([0xe2, 0x94]) as unknown as string);
     term.write(Uint8Array.from([0x80, 0x0a]) as unknown as string);
-    assert.strictEqual(writes[6], '─\n');
+    assert.strictEqual(writes[6], '');
+    assert.strictEqual(writes.slice(6).join(''), '\u2500\n');
   });
 
   it('defers repaint until rows are ready to avoid blank initial render', () => {
@@ -391,3 +395,5 @@ describe('applyThemeToTerminalWindow', () => {
     assert.deepStrictEqual(triggerCalls, []);
   });
 });
+
+

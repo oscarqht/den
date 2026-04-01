@@ -342,7 +342,7 @@ export function HomeRepoCard({
               <div className="absolute -right-3 -top-2 z-10 flex gap-1">
                 {draftCount > 0 && (
                   <span
-                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-blue-500 px-1.5 text-[11px] font-bold text-white shadow-sm dark:border-[#141a25]"
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-primary px-1.5 text-[11px] font-bold text-white shadow-sm dark:border-[var(--app-dark-root)]"
                     title={`${draftCount} draft${draftCount === 1 ? '' : 's'}`}
                   >
                     {draftCount}

@@ -575,7 +575,7 @@ const MarkdownFileContent = memo(function MarkdownFileContent({ content }: { con
             a: ({ href, children }) => (
               <a
                 href={href}
-                className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+                className="font-medium text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-[var(--app-dark-accent)] dark:hover:text-[var(--app-dark-accent-hover)]"
                 target={href?.startsWith('#') ? undefined : '_blank'}
                 rel={href?.startsWith('#') ? undefined : 'noreferrer'}
               >
@@ -601,7 +601,7 @@ const MarkdownFileContent = memo(function MarkdownFileContent({ content }: { con
             td: ({ children }) => <td className="border-b border-slate-200 px-4 py-3 align-top dark:border-slate-700">{children}</td>,
             hr: () => <hr className="my-6 border-slate-200 dark:border-slate-700" />,
             pre: ({ children }) => (
-              <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-0 text-sm last:mb-0 dark:border-slate-700 dark:bg-[#020617]">
+              <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-0 text-sm last:mb-0 app-dark-code">
                 {children}
               </div>
             ),
@@ -618,7 +618,7 @@ const MarkdownFileContent = memo(function MarkdownFileContent({ content }: { con
                     customStyle={{
                       margin: 0,
                       borderRadius: '0.75rem',
-                      background: isDarkTheme ? '#020617' : '#f8fafc',
+                      background: isDarkTheme ? '#201e1d' : '#f8fafc',
                       fontSize: '12px',
                       lineHeight: 1.65,
                       padding: '1rem',
@@ -719,14 +719,14 @@ const FileViewerPanel = memo(function FileViewerPanel({
   }
 
   return (
-    <div className="h-full overflow-auto bg-slate-50 dark:bg-[#020617]">
+    <div className="h-full overflow-auto bg-slate-50 app-dark-root">
       <SyntaxHighlighter
         language={resolveFileLanguage(filePath)}
         style={syntaxTheme}
         customStyle={{
           margin: 0,
           minHeight: '100%',
-          background: isDarkTheme ? '#020617' : '#f8fafc',
+          background: isDarkTheme ? '#201e1d' : '#f8fafc',
           fontSize: '12px',
           lineHeight: 1.65,
           padding: '1rem',
@@ -808,9 +808,9 @@ function PreviewPanel({
   }, [inputUrl, loadPreview]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-[#111827]">
+    <div className="flex h-full min-h-0 flex-col bg-white app-dark-root">
       <form
-        className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800"
+        className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-2 app-dark-surface-raised"
         onSubmit={handleSubmit}
       >
         <button type="button" className="btn btn-ghost btn-xs btn-square" onClick={() => postNavigationMessage('back')}>
@@ -824,7 +824,7 @@ function PreviewPanel({
         </button>
         <input
           type="text"
-          className="input input-sm min-w-0 flex-1 border-slate-200 bg-slate-50 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="input input-sm min-w-0 flex-1 border-slate-200 bg-slate-50 text-sm app-dark-input"
           placeholder="http://localhost:3000"
           value={inputUrl}
           onChange={(event) => setInputUrl(event.target.value)}
@@ -854,7 +854,7 @@ function PreviewPanel({
           key={`${panel.payload.url}:${iframeEpoch}`}
           ref={iframeRef}
           src={panel.payload.url}
-          className="h-full w-full border-0"
+          className="h-full w-full border-0 bg-white app-dark-root"
           title={panel.title}
         />
       ) : (
@@ -1277,7 +1277,7 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
       ref={iframeRef}
       src={src}
       title={panel.title}
-      className="h-full w-full border-0 bg-white dark:bg-[#020617]"
+      className="h-full w-full border-0 bg-white app-dark-root"
       allow="clipboard-read; clipboard-write"
       onLoad={handleLoad}
     />
@@ -2460,7 +2460,7 @@ export function SessionCanvasWorkspace({
 
   return (
     <div
-      className="relative h-screen w-full overflow-hidden bg-[#f7f7f6] text-slate-900 dark:bg-[#020617] dark:text-slate-100"
+      className="relative h-screen w-full overflow-hidden bg-[#f7f7f6] text-slate-900 app-dark-root"
       onPointerDownCapture={(event) => {
         if (!(event.target instanceof Element)) {
           setSelectedPanelId(null);

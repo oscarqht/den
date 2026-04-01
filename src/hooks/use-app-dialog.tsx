@@ -80,7 +80,7 @@ function AppDialogModal({ request, onCancel, onConfirm }: AppDialogModalProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm app-dark-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onCancel();
@@ -92,7 +92,7 @@ function AppDialogModal({ request, onCancel, onConfirm }: AppDialogModalProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={request.description ? descriptionId : undefined}
-        className="w-full max-w-md rounded-2xl border border-base-300 bg-base-100 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-base-300 bg-base-100 shadow-2xl app-dark-modal"
       >
         <form
           onSubmit={(event) => {

@@ -79,8 +79,8 @@ function TreeNode({
         className={joinClassNames(
           'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] leading-4 transition',
           selectedPath === item.path
-            ? 'bg-slate-200/80 text-slate-900 dark:bg-slate-800 dark:text-slate-100'
-            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900',
+            ? 'bg-slate-200/80 text-slate-900 dark:bg-[color:var(--app-dark-elevated)] dark:text-slate-100'
+            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[color:var(--app-dark-input)]',
         )}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
         onClick={() => {
@@ -260,14 +260,14 @@ export function SessionExplorerDock({
       className={mobile ? 'relative h-full w-full' : 'relative z-30 h-full shrink-0 px-4 py-4 pr-2'}
       style={mobile ? undefined : { width: state.width + 24 }}
     >
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/92 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] backdrop-blur dark:border-slate-800 dark:bg-[#0b1020]/92 dark:shadow-[0_20px_40px_-24px_rgba(2,6,23,0.8)]">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_36px_-24px_rgba(15,23,42,0.42)] app-dark-panel">
         {error ? (
           <div className="border-b border-slate-200 px-3 py-2 text-[11px] text-red-600 dark:border-slate-800 dark:text-red-300">
             {error}
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {roots.map((root) => (
             <div key={root.path} className="mb-2">
               <button
@@ -275,8 +275,8 @@ export function SessionExplorerDock({
                 className={joinClassNames(
                   'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] font-medium leading-4 transition',
                   state.selectedPath === root.path
-                    ? 'bg-slate-200/80 text-slate-900 dark:bg-slate-800 dark:text-slate-100'
-                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900',
+                    ? 'bg-slate-200/80 text-slate-900 dark:bg-[color:var(--app-dark-elevated)] dark:text-slate-100'
+                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[color:var(--app-dark-input)]',
                 )}
                 onClick={() => toggleDirectory(root.path)}
               >

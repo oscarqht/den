@@ -48,7 +48,7 @@ export default function SessionCanvasPageClient() {
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#f7f7f6] px-6 text-center text-sm text-red-600 dark:bg-[#020617] dark:text-red-300">
+      <div className="flex h-screen items-center justify-center bg-[#f7f7f6] px-6 text-center text-sm text-red-600 app-dark-root dark:text-red-300">
         {error}
       </div>
     );
@@ -56,7 +56,7 @@ export default function SessionCanvasPageClient() {
 
   if (!bootstrap) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#f7f7f6] dark:bg-[#020617]">
+      <div className="flex h-screen items-center justify-center bg-[#f7f7f6] app-dark-root">
         <span className="loading loading-spinner loading-md text-slate-500" />
       </div>
     );

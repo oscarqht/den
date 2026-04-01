@@ -38,9 +38,9 @@ export function CloneRemoteDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
+    <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm app-dark-overlay">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6 app-dark-modal-header">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add New Project</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">Connect a local folder or clone from URL</p>
@@ -56,7 +56,7 @@ export function CloneRemoteDialog({
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Select any local folder to use as a project.
             </p>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-300">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 app-dark-surface-raised">
               Default root: <span className="font-mono">{defaultRoot || '~'}</span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -77,7 +77,7 @@ export function CloneRemoteDialog({
             </div>
           </div>
 
-          <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6 dark:bg-[#111722]">
+          <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6 app-dark-surface">
             <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Clone Remote</h4>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Clone into <span className="font-mono">~/.viba/repos</span> and open it immediately.
@@ -86,7 +86,7 @@ export function CloneRemoteDialog({
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Repository URL</label>
               <input
-                className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
                 placeholder="https://github.com/org/repo.git"
                 value={remoteRepoUrl}
                 onChange={(event) => onRemoteRepoUrlChange(event.target.value)}
@@ -97,7 +97,7 @@ export function CloneRemoteDialog({
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credential</label>
               <select
-                className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none app-dark-input"
                 value={cloneCredentialSelection}
                 onChange={(event) => onCloneCredentialSelectionChange(event.target.value)}
                 disabled={isCloningRemote || isLoadingCloneCredentialOptions}
@@ -124,7 +124,7 @@ export function CloneRemoteDialog({
             )}
 
             {isCloningRemote && (
-              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-300">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 app-dark-surface-raised">
                 <span className="loading loading-spinner loading-xs"></span>
                 Cloning repository...
               </div>
@@ -136,7 +136,7 @@ export function CloneRemoteDialog({
               </div>
             )}
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-white/10">
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
               <button
                 className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                 onClick={onClose}

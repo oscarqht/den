@@ -156,7 +156,7 @@ function estimateHistoryItemHeight(item: SessionAgentHistoryItem) {
 function runStateTone(runState: SessionAgentRunState | null | undefined) {
   switch (runState) {
     case 'running':
-      return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200';
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
     case 'queued':
       return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
     case 'completed':
@@ -166,9 +166,9 @@ function runStateTone(runState: SessionAgentRunState | null | undefined) {
     case 'error':
       return 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200';
     case 'needs_auth':
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200';
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300';
+      return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-[color:var(--app-dark-border-subtle)] dark:bg-[color:var(--app-dark-panel)] dark:text-slate-300';
   }
 }
 
@@ -204,7 +204,7 @@ function diagnosticStepTone(status: string) {
     case 'failed':
       return 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200';
     case 'running':
-      return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200';
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200';
     default:
       return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
   }
@@ -215,7 +215,7 @@ function planStepTone(status: string) {
     case 'completed':
       return 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200';
     case 'in_progress':
-      return 'border-blue-200 bg-blue-50/90 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200';
+      return 'border-amber-200 bg-amber-50/90 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200';
     case 'failed':
       return 'border-red-200 bg-red-50/90 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200';
     case 'cancelled':
@@ -230,7 +230,7 @@ function planStepMarkerTone(status: string) {
     case 'completed':
       return 'bg-emerald-500';
     case 'in_progress':
-      return 'bg-blue-500';
+      return 'bg-primary';
     case 'failed':
       return 'bg-red-500';
     case 'cancelled':
@@ -268,7 +268,7 @@ function codeBlock(value: string | null | undefined) {
   const text = trimEmpty(value);
   if (!text) return null;
   return (
-    <pre className="max-w-full overflow-x-hidden whitespace-pre-wrap break-words rounded-lg bg-slate-950/95 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-100 dark:bg-black">
+    <pre className="max-w-full overflow-x-hidden whitespace-pre-wrap break-words rounded-lg px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-100 app-dark-code">
       {text}
     </pre>
   );
@@ -371,7 +371,7 @@ function MarkdownMessage({ value }: { value: string | null | undefined }) {
           a: ({ href, children }) => (
             <a
               href={href}
-              className="text-blue-600 underline underline-offset-2 dark:text-blue-300"
+              className="font-medium text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-[var(--app-dark-accent)] dark:hover:text-[var(--app-dark-accent-hover)]"
               target={href?.startsWith('#') ? undefined : '_blank'}
               rel={href?.startsWith('#') ? undefined : 'noreferrer'}
             >
@@ -410,7 +410,7 @@ function MarkdownMessage({ value }: { value: string | null | undefined }) {
             }
 
             return (
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 app-dark-surface-raised">
                 {textContent}
               </code>
             );
@@ -484,16 +484,16 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
     case 'user':
       return (
         <div className="flex min-w-0 justify-end">
-          <div className={`min-w-0 max-w-[85%] overflow-hidden rounded-2xl rounded-br-md bg-blue-100 px-4 py-3 text-sm text-blue-950 shadow-sm dark:bg-blue-500/15 dark:text-blue-50 ${options.pulse ? 'animate-pulse' : ''}`}>
+          <div className={`min-w-0 max-w-[85%] overflow-hidden rounded-2xl rounded-br-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-sm dark:bg-amber-500/14 dark:text-amber-50 ${options.pulse ? 'animate-pulse' : ''}`}>
             {options.status ? (
               <div className="mb-2 flex items-center justify-end">
-                <span className="rounded-full border border-blue-300/80 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-300/20 dark:bg-blue-950/40 dark:text-blue-100">
+                <span className="rounded-full border border-amber-300/80 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-300/20 dark:bg-amber-950/40 dark:text-amber-100">
                   {options.status}
                 </span>
               </div>
             ) : null}
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
-            {timestamp ? <div className="mt-2 text-[10px] text-blue-700/80 dark:text-blue-100/70">{timestamp}</div> : null}
+            {timestamp ? <div className="mt-2 text-[10px] text-amber-700/80 dark:text-amber-100/70">{timestamp}</div> : null}
           </div>
         </div>
       );
@@ -514,12 +514,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
         itemId: item.id,
         label: 'Reasoning',
         title: plainTextPreview(item.summary) || plainTextPreview(item.text) || undefined,
-        className: 'rounded-xl bg-violet-50/45 px-3 py-2 text-sm text-violet-950 dark:bg-violet-500/8 dark:text-violet-100',
+        className: 'rounded-xl border border-amber-200/70 bg-amber-50/55 px-3 py-2 text-sm text-amber-950 dark:border-[rgba(201,143,98,0.18)] dark:bg-[rgba(201,143,98,0.10)] dark:text-[var(--app-dark-text-primary)]',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
-        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-200',
-        titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-violet-700/75 dark:text-violet-200/75',
+        labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800 dark:text-[var(--app-dark-accent)]',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-amber-800/80 dark:text-[var(--app-dark-text-muted)]',
         timestamp,
-        timestampClassName: 'mt-2 text-[10px] text-violet-700/65 dark:text-violet-200/65',
+        timestampClassName: 'mt-2 text-[10px] text-amber-800/70 dark:text-[var(--app-dark-text-muted)]',
         isOpen: isExpanded,
         onToggle: handleToggleExpanded,
         children: (
@@ -543,12 +543,12 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
       const inProgressCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'in_progress').length;
       const pendingCount = steps.filter((step) => normalizePlanStepStatus(step.status) === 'pending').length;
       return (
-        <div className="rounded-2xl bg-sky-50/70 px-4 py-3 text-sm text-sky-900 shadow-sm dark:bg-sky-500/10 dark:text-sky-100">
+        <div className="rounded-2xl border border-amber-200/70 bg-amber-50/55 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-[rgba(201,143,98,0.18)] dark:bg-[rgba(201,143,98,0.08)] dark:text-[var(--app-dark-text-primary)]">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-200">Plan</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-[var(--app-dark-accent)]">Plan</div>
             {steps.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-sky-700/80 dark:text-sky-200/80">
-                <span className="rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 font-semibold dark:border-sky-400/20 dark:bg-sky-950/30">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-amber-800/80 dark:text-[var(--app-dark-text-muted)]">
+                <span className="rounded-full border border-amber-200 bg-white/80 px-2 py-0.5 font-semibold dark:border-[rgba(201,143,98,0.18)] dark:bg-[rgba(42,39,38,0.92)] dark:text-[var(--app-dark-text-primary)]">
                   {completedCount}/{steps.length} completed
                 </span>
                 {inProgressCount > 0 ? <span>{inProgressCount} active</span> : null}
@@ -564,11 +564,11 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
                 return (
                   <div
                     key={`${item.id}-${index}-${step.title}`}
-                    className="flex items-start gap-3 rounded-xl border border-sky-200/70 bg-white/80 px-3 py-2 dark:border-sky-400/15 dark:bg-sky-950/25"
+                    className="flex items-start gap-3 rounded-xl border border-amber-200/70 bg-white/80 px-3 py-2 dark:border-[rgba(201,143,98,0.16)] dark:bg-[rgba(42,39,38,0.92)]"
                   >
                     <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${planStepMarkerTone(normalizedStatus)}`} />
                     <div className="min-w-0 flex-1">
-                      <div className={`break-words ${isCompleted ? 'text-sky-900/70 line-through dark:text-sky-100/60' : 'text-sky-950 dark:text-sky-50'}`}>
+                      <div className={`break-words ${isCompleted ? 'text-amber-900/70 line-through dark:text-[var(--app-dark-text-muted)]' : 'text-amber-950 dark:text-[var(--app-dark-text-primary)]'}`}>
                         {step.title}
                       </div>
                     </div>
@@ -582,7 +582,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
           ) : (
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
           )}
-          {timestamp ? <div className="mt-3 text-[10px] text-sky-700/70 dark:text-sky-200/70">{timestamp}</div> : null}
+          {timestamp ? <div className="mt-3 text-[10px] text-amber-800/70 dark:text-[var(--app-dark-text-muted)]">{timestamp}</div> : null}
         </div>
       );
     }
@@ -591,7 +591,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
         itemId: item.id,
         label: 'Command',
         title: firstLinePreview(item.command) || undefined,
-        className: 'rounded-xl bg-slate-50/65 px-3 py-2 text-sm dark:bg-[#0d1117]/75',
+        className: 'rounded-xl bg-slate-50/65 px-3 py-2 text-sm app-dark-surface',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
         labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300',
         titleClassName: 'min-w-0 truncate whitespace-nowrap font-mono text-[11px] font-normal text-slate-500 dark:text-slate-400',
@@ -609,7 +609,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
                 <span className="text-[10px] text-slate-500 dark:text-slate-400">exit {item.exitCode}</span>
               ) : null}
             </div>
-            <div className="rounded-md bg-slate-100 px-2.5 py-1.5 font-mono text-[11px] text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+            <div className="rounded-md bg-slate-100 px-2.5 py-1.5 font-mono text-[11px] text-slate-800 app-dark-surface-raised">
               {item.command}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">cwd: {item.cwd || '.'}</div>
@@ -628,7 +628,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
         itemId: item.id,
         label: `Tool: ${toolName}`,
         title: toolTitle,
-        className: 'rounded-xl bg-slate-50/65 px-3 py-2 text-sm dark:bg-[#0d1117]/75',
+        className: 'rounded-xl bg-slate-50/65 px-3 py-2 text-sm app-dark-surface',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
         labelClassName: 'shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300',
         titleClassName: 'min-w-0 truncate whitespace-nowrap text-[11px] font-normal text-slate-500 dark:text-slate-400',
@@ -1746,10 +1746,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       {isAgentDetailsDialogOpen ? (
         <dialog className="modal modal-open">
-          <div className="modal-box max-w-2xl">
+          <div className="modal-box max-w-2xl border border-slate-200 bg-white app-dark-modal">
             <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Agent Details</h3>
             <div className="mt-3 grid gap-3 text-sm">
-              <div className="grid gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/80 sm:grid-cols-2">
+              <div className="grid gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 app-dark-surface sm:grid-cols-2">
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent</div>
                   <div className="mt-0.5 font-medium text-slate-900 dark:text-slate-100">{providerName}</div>
@@ -1797,9 +1797,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                 {turnDiagnostics ? (
                   <div className="sm:col-span-2">
                     <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Startup Diagnostics</div>
-                    <div className="mt-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-[#30363d] dark:bg-[#0d1117]/80">
+                    <div className="mt-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 app-dark-surface">
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 app-dark-surface-raised">
                           {turnDiagnostics.transport}
                         </span>
                         {turnDiagnostics.timeToTurnStartMs != null ? (
@@ -1867,14 +1867,14 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
         <div ref={timelineContentRef}>
           {loading ? (
             <div className="flex h-full min-h-[180px] items-center justify-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm app-dark-surface-raised">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading agent timeline...
               </div>
             </div>
           ) : displayHistory.length === 0 ? (
             <div className="flex h-full min-h-[180px] items-center justify-center">
-              <div className="max-w-md rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/50 dark:text-slate-400">
+              <div className="max-w-md rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 app-dark-surface">
                 No agent activity yet. Send a task below to start a background turn.
               </div>
             </div>
@@ -1937,7 +1937,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
         </div>
       </div>
 
-      <div className="border-t border-slate-200 px-4 py-3 dark:border-[#30363d]">
+      <div className="border-t border-slate-200 px-4 py-3 dark:border-[color:var(--app-dark-border-subtle)]">
         {(error || runtime?.lastError) ? (
           <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1986,13 +1986,13 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             })}
           </div>
         ) : null}
-        <div className="relative rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
+        <div className="relative rounded-2xl border border-slate-200 bg-white p-3 shadow-sm app-dark-surface">
           {pendingAttachmentPaths.length > 0 ? (
             <div className="mb-3 flex flex-wrap gap-2">
               {pendingAttachmentPaths.map((attachmentPath) => (
                 <span
                   key={attachmentPath}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700 app-dark-surface-raised"
                   title={attachmentPath}
                 >
                   <Paperclip className="h-3.5 w-3.5" />
@@ -2088,7 +2088,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             }}
           />
           {showSuggestions && suggestionList.length > 0 ? (
-            <div className="absolute bottom-20 left-6 right-6 z-20 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-[#30363d] dark:bg-[#161b22]">
+            <div className="absolute bottom-20 left-6 right-6 z-20 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg app-dark-popover">
               {suggestionList.map((suggestion, index) => (
                 <button
                   key={suggestion}
@@ -2128,7 +2128,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               {onRequestAddFiles ? (
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white p-0 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937]"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white p-0 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 app-dark-input app-dark-hover"
                   onClick={onRequestAddFiles}
                   disabled={isAddingFiles}
                   title="Browse files and insert absolute paths into the agent input"
@@ -2139,7 +2139,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               ) : null}
               <button
                 type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 p-0 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary p-0 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 dark:hover:bg-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => void handleSubmit()}
                 disabled={!canSend}
                 title={isTurnActive ? 'Queue' : 'Send'}
@@ -2150,7 +2150,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
               {(isTurnActive || isCancelling) ? (
                 <button
                   type="button"
-                  className={`inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:bg-[#1f2937] ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-4'}`}
+                  className={`inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 app-dark-input app-dark-hover ${isMobileViewport ? 'w-9 justify-center p-0' : 'gap-2 px-4'}`}
                   onClick={() => void handleCancel()}
                   disabled={isCancelling}
                   title="Stop"

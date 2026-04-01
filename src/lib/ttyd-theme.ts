@@ -40,9 +40,9 @@ export const TERMINAL_THEME_LIGHT: TerminalTheme = buildMonochromeTheme(
 );
 
 export const TERMINAL_THEME_DARK: TerminalTheme = buildMonochromeTheme(
-  '#020617',
-  '#adbac7',
-  'rgba(49, 109, 202, 0.35)',
+  '#1b1a19',
+  '#f2efea',
+  'rgba(201, 143, 98, 0.22)',
 );
 
 type StorageLike = Pick<Storage, 'getItem'>;
@@ -576,6 +576,7 @@ export function applyThemeToTerminalWindow(
   theme: TerminalTheme = resolveTerminalThemeFromBrowser(),
 ): boolean {
   const ttydWindow = terminalWindow as TtydWindow | null | undefined;
+  applyThemeToTerminalDocument(ttydWindow?.document, theme);
   const term = ttydWindow?.term;
   if (!ttydWindow || !term?.options) return false;
 
@@ -584,8 +585,6 @@ export function applyThemeToTerminalWindow(
     ...theme,
   };
   installMonochromeAnsiFilter(term);
-
-  applyThemeToTerminalDocument(ttydWindow.document, theme);
   scheduleTerminalRefresh(term, ttydWindow.requestAnimationFrame?.bind(ttydWindow));
   const nudgedWithRealFocusEvent = nudgeFocusedTerminalInput(ttydWindow.document);
   if (!nudgedWithRealFocusEvent) {

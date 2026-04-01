@@ -214,14 +214,14 @@ export function QuickCreateTaskDialog({
   return (
     <>
       <div
-        className="fixed inset-0 z-[1004] flex bg-slate-950/55 backdrop-blur-sm max-[1023px]:items-stretch max-[1023px]:justify-stretch max-[1023px]:p-0 min-[1024px]:items-center min-[1024px]:justify-center min-[1024px]:p-4"
+        className="fixed inset-0 z-[1004] flex bg-slate-950/55 backdrop-blur-sm app-dark-overlay max-[1023px]:items-stretch max-[1023px]:justify-stretch max-[1023px]:p-0 min-[1024px]:items-center min-[1024px]:justify-center min-[1024px]:p-4"
         onMouseDown={(event) => {
           if (event.target === event.currentTarget && !isSubmitting) {
             onClose();
           }
         }}
       >
-        <div className="flex w-full flex-col border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26] max-[1023px]:h-[100dvh] max-[1023px]:w-screen max-[1023px]:min-w-full max-[1023px]:max-w-none max-[1023px]:rounded-none max-[1023px]:border-x-0 max-[1023px]:border-y-0 max-[1023px]:shadow-none min-[1024px]:h-[min(760px,92vh)] min-[1024px]:max-w-3xl min-[1024px]:rounded-2xl">
+        <div className="flex w-full flex-col border border-slate-200 bg-white shadow-2xl app-dark-modal max-[1023px]:h-[100dvh] max-[1023px]:w-screen max-[1023px]:min-w-full max-[1023px]:max-w-none max-[1023px]:rounded-none max-[1023px]:border-x-0 max-[1023px]:border-y-0 max-[1023px]:shadow-none min-[1024px]:h-[min(760px,92vh)] min-[1024px]:max-w-3xl min-[1024px]:rounded-2xl">
           <div className="mx-auto flex w-full items-center justify-between border-b border-slate-100 dark:border-white/10 max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:pb-3 max-[1023px]:pt-[max(1rem,env(safe-area-inset-top))] min-[1024px]:max-w-none min-[1024px]:px-5 min-[1024px]:py-4">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -257,7 +257,7 @@ export function QuickCreateTaskDialog({
               </label>
               <textarea
                 id="quick-create-message"
-                className="min-h-[260px] w-full flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100 dark:placeholder:text-slate-500"
+                className="min-h-[260px] w-full flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 app-dark-input"
                 placeholder={`Describe the task for the AI agent...\n\nExample:\n- Fix the broken checkout total on mobile.\n- Update the failing API integration tests.\n- Add screenshots or logs as attachments if useful.`}
                 value={message}
                 onChange={(event) => {
@@ -281,12 +281,12 @@ export function QuickCreateTaskDialog({
               </p>
             </div>
 
-            <div className="border-t border-slate-100 pt-4 dark:border-slate-700/70">
+            <div className="border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
               <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                 <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attachments</h4>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-amber-700 dark:hover:text-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={handleSelectAttachments}
                   disabled={isSubmitting || isUploadingAttachments}
                 >
@@ -307,12 +307,12 @@ export function QuickCreateTaskDialog({
                 </div>
               ) : null}
 
-              <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1117]/40">
+              <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 app-dark-surface">
                 <div className="flex flex-wrap gap-2">
                   {attachmentPaths.map((attachmentPath, index) => (
                     <span
                       key={`${attachmentPath}-${index}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 app-dark-surface-raised"
                       title={attachmentPath}
                     >
                       <span className="truncate">{getBaseName(attachmentPath)}</span>
@@ -347,7 +347,7 @@ export function QuickCreateTaskDialog({
             </div>
           </div>
 
-          <div className="mx-auto flex w-full items-center justify-end gap-3 border-t border-slate-100 dark:border-white/10 max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:pb-[max(1rem,env(safe-area-inset-bottom))] max-[1023px]:pt-4 min-[1024px]:max-w-none min-[1024px]:px-5 min-[1024px]:py-4">
+          <div className="mx-auto flex w-full items-center justify-end gap-3 border-t border-slate-100 dark:border-[color:var(--app-dark-border-subtle)] max-[1023px]:max-w-[42rem] max-[1023px]:px-5 max-[1023px]:pb-[max(1rem,env(safe-area-inset-bottom))] max-[1023px]:pt-4 min-[1024px]:max-w-none min-[1024px]:px-5 min-[1024px]:py-4">
             <button
               type="button"
               className="btn btn-ghost"

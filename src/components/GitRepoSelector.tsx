@@ -3194,11 +3194,11 @@ export default function GitRepoSelector({
   const newSessionPanelClass = `rounded-[22px] p-4 ${APP_PAGE_PANEL_CLASS}`;
   const newSessionToolbarClass = APP_PAGE_TOOLBAR_CLASS;
   const newSessionControlClass =
-    'border border-slate-200/70 bg-white/35 text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-100';
+    'border border-slate-200/70 bg-white/35 text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 app-dark-input';
   const newSessionSurfaceClass =
-    'border border-slate-200/70 bg-white/20 dark:border-slate-800 dark:bg-slate-950/20';
+    'border border-slate-200/70 bg-white/20 app-dark-surface';
   const newSessionRaisedSurfaceClass =
-    'border border-slate-200/70 bg-white/30 shadow-sm dark:border-slate-800 dark:bg-slate-950/30';
+    'border border-slate-200/70 bg-white/30 shadow-sm app-dark-surface-raised';
   const newSessionChipClass =
     'border border-slate-200/70 bg-white/35 text-slate-700 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-200';
   const newSessionSegmentButtonClass = 'h-full px-2.5 text-[11px] font-semibold transition lg:px-3';
@@ -3323,7 +3323,7 @@ export default function GitRepoSelector({
 
       {mode === 'home' && homeProjectGitSelector && (
         <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Select Git Repository</h3>
               <button
@@ -3342,7 +3342,7 @@ export default function GitRepoSelector({
                   <button
                     key={repoEntry.repoPath}
                     type="button"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:border-[#30363d] dark:text-slate-200 dark:hover:bg-[#30363d]/60"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 app-dark-input app-dark-hover"
                     onClick={() => {
                       setHomeProjectGitSelector(null);
                       router.push(`/git?path=${encodeURIComponent(repoEntry.repoPath)}`);
@@ -3611,7 +3611,7 @@ export default function GitRepoSelector({
                       className="group relative flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
                     >
                       <div
-                        className={`h-2 w-2 flex-shrink-0 rounded-full bg-blue-500`}
+                        className={`h-2 w-2 flex-shrink-0 rounded-full bg-primary`}
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{draft.title}</p>
@@ -3885,7 +3885,7 @@ export default function GitRepoSelector({
                       {!displayedAgentStatus?.installed && (
                         <button
                           type="button"
-                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-700 dark:hover:bg-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
                           onClick={() => void handleInstallAgentProvider(selectedAgentProvider)}
                           disabled={loading || isInstallingAgentProvider}
                         >
@@ -3897,7 +3897,7 @@ export default function GitRepoSelector({
                       {displayedAgentStatus?.installed && !displayedAgentStatus.loggedIn && (
                         <button
                           type="button"
-                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-700 dark:hover:bg-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
                           onClick={() => void handleAgentLogin(selectedAgentProvider)}
                           disabled={loading || isWaitingForLogin}
                         >
@@ -3910,7 +3910,7 @@ export default function GitRepoSelector({
                   </div>
 
                   {agentSetupMessage && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-400/30 dark:bg-blue-950/40 dark:text-blue-200">
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/12 dark:text-amber-200">
                       {agentSetupMessage}
                     </div>
                   )}
@@ -3974,7 +3974,7 @@ export default function GitRepoSelector({
                     <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attachments</h4>
                     <button
                       type="button"
-                      className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-amber-700 dark:hover:text-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={handleSelectAttachments}
                       disabled={loading || !selectedRepo || isUploadingTaskAttachments}
                     >
@@ -4048,7 +4048,7 @@ export default function GitRepoSelector({
                   </button>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-amber-700 dark:hover:bg-[var(--app-dark-accent-hover)] disabled:cursor-not-allowed disabled:opacity-70"
                     onClick={handleStartSession}
                     disabled={loading || isSavingDraft}
                   >

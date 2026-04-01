@@ -23,6 +23,7 @@ const themeBootstrapScript = `
     const mode = resolveThemeMode();
     const shouldUseDark = mode === 'dark' || (mode === 'auto' && mediaQuery.matches);
     document.documentElement.classList.toggle('dark', shouldUseDark);
+    document.documentElement.dataset.theme = shouldUseDark ? 'dark' : 'light';
     document.documentElement.dataset.themeMode = mode;
   };
 

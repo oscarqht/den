@@ -77,9 +77,9 @@ export function RepoSettingsDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
-        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
+      <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm app-dark-overlay">
+        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 app-dark-modal-header">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Project Settings</h3>
           <button
             className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
@@ -93,7 +93,7 @@ export function RepoSettingsDialog({
         <div className="space-y-5 p-5 md:p-6">
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project ID</label>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 app-dark-surface-raised">
               {projectId}
             </div>
           </div>
@@ -101,7 +101,7 @@ export function RepoSettingsDialog({
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Name</label>
             <input
-              className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+              className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
               value={projectName}
               onChange={(event) => onNameChange(event.target.value)}
               placeholder="Project name"
@@ -128,7 +128,7 @@ export function RepoSettingsDialog({
               </button>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-[#1e2532]/70">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 app-dark-surface">
               {projectFolderPaths.length === 0 ? (
                 <div className="text-sm text-slate-600 dark:text-slate-300">
                   No folders are associated yet. Sessions can still start in local mode from your home directory.
@@ -138,7 +138,7 @@ export function RepoSettingsDialog({
                   {projectFolderPaths.map((folderPath) => (
                     <div
                       key={folderPath}
-                      className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-[#151b26]"
+                      className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 app-dark-surface-raised"
                     >
                       <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700 dark:text-slate-200">
                         {folderPath}
@@ -195,7 +195,7 @@ export function RepoSettingsDialog({
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Up Command</label>
             <textarea
-              className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+              className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
               rows={3}
               value={projectStartupCommand}
               onChange={(event) => onStartupCommandChange(event.target.value)}
@@ -210,7 +210,7 @@ export function RepoSettingsDialog({
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dev Server Command</label>
             <textarea
-              className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+              className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
               rows={3}
               value={projectDevServerCommand}
               onChange={(event) => onDevServerCommandChange(event.target.value)}
@@ -226,7 +226,7 @@ export function RepoSettingsDialog({
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Service Command</label>
               <textarea
-                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
                 rows={3}
                 value={projectServiceStartCommand}
                 onChange={(event) => onServiceStartCommandChange(event.target.value)}
@@ -241,7 +241,7 @@ export function RepoSettingsDialog({
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Stop Service Command</label>
               <textarea
-                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200"
+                className="textarea w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
                 rows={3}
                 value={projectServiceStopCommand}
                 onChange={(event) => onServiceStopCommandChange(event.target.value)}
@@ -267,7 +267,7 @@ export function RepoSettingsDialog({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-white/10">
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
             <button
               className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
               onClick={onClose}

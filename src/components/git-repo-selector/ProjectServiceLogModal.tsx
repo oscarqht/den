@@ -33,9 +33,9 @@ export function ProjectServiceLogModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#151b26]">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 dark:border-white/10 dark:bg-[#1e2532]/75">
+    <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm app-dark-overlay">
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 app-dark-modal-header">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">{projectName} Service Log</h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -43,7 +43,7 @@ export function ProjectServiceLogModal({
             </p>
           </div>
           <button
-            className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className="app-ui-icon-button"
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -56,7 +56,7 @@ export function ProjectServiceLogModal({
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Managed Command
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-[#1e2532] dark:text-slate-200">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 app-dark-surface-raised dark:text-slate-200">
                 {command}
               </div>
             </div>
@@ -68,8 +68,8 @@ export function ProjectServiceLogModal({
             </div>
           ) : null}
 
-          <div className="rounded-xl border border-slate-200 bg-slate-950 dark:border-slate-700">
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs text-slate-400">
+          <div className="rounded-xl border border-slate-200 bg-slate-950 app-dark-code dark:border-slate-700">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs text-slate-400 dark:border-[color:var(--app-dark-border-subtle)]">
               <span>Terminal Output</span>
               {isLoading ? <span className="loading loading-spinner loading-xs" /> : null}
             </div>

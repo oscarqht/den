@@ -82,7 +82,7 @@ export function RepoSettingsDialog({
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 app-dark-modal-header">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Project Settings</h3>
           <button
-            className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className="app-ui-icon-button"
             onClick={onClose}
             disabled={isSavingProjectSettings || isUploadingProjectIcon}
           >
@@ -119,7 +119,7 @@ export function RepoSettingsDialog({
               </div>
               <button
                 type="button"
-                className="btn btn-sm gap-2"
+                className="app-ui-button"
                 onClick={() => setIsFolderBrowserOpen(true)}
                 disabled={isSavingProjectSettings || isUploadingProjectIcon}
               >
@@ -145,7 +145,7 @@ export function RepoSettingsDialog({
                       </div>
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs text-red-600 dark:text-red-300"
+                        className="app-ui-icon-button app-ui-icon-button-danger app-ui-icon-button-sm"
                         onClick={() => onRemoveFolderPath(folderPath)}
                         disabled={isSavingProjectSettings || isUploadingProjectIcon}
                         title="Remove associated folder"
@@ -168,7 +168,7 @@ export function RepoSettingsDialog({
               </div>
               <button
                 type="button"
-                className="btn btn-sm gap-2"
+                className="app-ui-button"
                 disabled={isUploadingProjectIcon || isSavingProjectSettings}
                 onClick={() => setIsIconBrowserOpen(true)}
               >
@@ -178,7 +178,7 @@ export function RepoSettingsDialog({
               {projectIconPath && (
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm gap-2 text-red-600"
+                  className="app-ui-button app-ui-button-danger"
                   disabled={isUploadingProjectIcon || isSavingProjectSettings}
                   onClick={onRemoveIcon}
                 >
@@ -269,7 +269,7 @@ export function RepoSettingsDialog({
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
             <button
-              className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+              className="app-ui-button"
               onClick={onClose}
               disabled={isSavingProjectSettings || isUploadingProjectIcon}
             >

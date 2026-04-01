@@ -45,7 +45,7 @@ export function CloneRemoteDialog({
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add New Project</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">Connect a local folder or clone from URL</p>
           </div>
-          <button className="btn btn-circle btn-ghost btn-sm text-slate-500 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white" onClick={onClose} disabled={isCloningRemote}>
+          <button className="app-ui-icon-button" onClick={onClose} disabled={isCloningRemote}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -68,7 +68,7 @@ export function CloneRemoteDialog({
                 Browse Local Folder
               </button>
               <button
-                className="btn btn-ghost btn-sm gap-2 text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                className="app-ui-button"
                 onClick={onSetDefaultFolder}
               >
                 <FolderCog className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function CloneRemoteDialog({
 
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
               <button
-                className="btn btn-ghost text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                className="app-ui-button"
                 onClick={onClose}
                 disabled={isCloningRemote}
               >

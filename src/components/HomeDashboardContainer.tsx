@@ -1004,7 +1004,7 @@ export default function HomeDashboardContainer({
           action: (
             <button
               type="button"
-              className="btn btn-xs btn-outline"
+              className="app-ui-button"
               onClick={() => router.push(`/session/${encodeURIComponent(sessionId)}`)}
             >
               Open Task
@@ -1447,14 +1447,14 @@ export default function HomeDashboardContainer({
       />
 
       {homeProjectGitSelector && (
-        <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
+        <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm app-dark-overlay">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10 app-dark-modal-header">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 Select Git Repository
               </h3>
               <button
-                className="btn btn-circle btn-ghost btn-sm"
+                className="app-ui-icon-button"
                 onClick={() => setHomeProjectGitSelector(null)}
               >
                 <X className="h-4 w-4" />
@@ -1486,14 +1486,14 @@ export default function HomeDashboardContainer({
       )}
 
       {projectPendingDeleteId && (
-        <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
+        <div className="fixed inset-0 z-[1003] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm app-dark-overlay">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10 app-dark-modal-header">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 Delete Project
               </h3>
               <button
-                className="btn btn-circle btn-ghost btn-sm"
+                className="app-ui-icon-button"
                 onClick={dismissDeleteProjectDialog}
                 disabled={isDeletingProject}
               >
@@ -1510,7 +1510,7 @@ export default function HomeDashboardContainer({
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="app-ui-button"
                   onClick={dismissDeleteProjectDialog}
                   disabled={isDeletingProject}
                 >
@@ -1518,7 +1518,7 @@ export default function HomeDashboardContainer({
                 </button>
                 <button
                   type="button"
-                  className="btn btn-error"
+                  className="app-ui-button app-ui-button-danger"
                   onClick={() => {
                     void handleDeleteProjectConfirm();
                   }}

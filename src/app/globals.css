@@ -240,6 +240,138 @@
   background-color: var(--app-dark-panel-30) !important;
 }
 
+.app-ui-icon-button,
+.app-ui-button {
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+
+.app-ui-icon-button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  background-color: rgba(255, 255, 255, 0.92);
+  color: rgb(100 116 139);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.app-ui-icon-button:hover {
+  border-color: rgba(203, 213, 225, 0.96);
+  background-color: rgba(241, 245, 249, 0.96);
+  color: rgb(15 23 42);
+}
+
+.app-ui-icon-button:disabled,
+.app-ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.app-ui-icon-button-sm {
+  min-height: 2rem;
+  min-width: 2rem;
+  border-radius: 0.75rem;
+}
+
+.app-ui-icon-button-danger:hover {
+  border-color: rgba(253, 164, 175, 0.78);
+  background-color: rgba(255, 241, 242, 0.96);
+  color: rgb(225 29 72);
+}
+
+.app-ui-button {
+  display: inline-flex;
+  min-height: 2.625rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  background-color: rgba(248, 250, 252, 0.92);
+  padding: 0 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(51 65 85);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.app-ui-button:hover {
+  border-color: rgba(203, 213, 225, 0.96);
+  background-color: rgba(255, 255, 255, 0.96);
+  color: rgb(15 23 42);
+}
+
+.app-ui-button-danger {
+  border-color: rgba(253, 164, 175, 0.8);
+  background-color: rgba(254, 226, 226, 0.94);
+  color: rgb(153 27 27);
+}
+
+.app-ui-button-danger:hover {
+  border-color: rgba(251, 113, 133, 0.84);
+  background-color: rgba(254, 205, 211, 0.98);
+  color: rgb(136 19 55);
+}
+
+:root.dark .app-ui-icon-button,
+[data-theme='dark'] .app-ui-icon-button {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent);
+  background-color: var(--app-dark-input-90);
+  color: var(--app-dark-text-muted);
+  box-shadow: 0 1px 2px rgba(12, 9, 8, 0.24);
+}
+
+:root.dark .app-ui-icon-button:hover,
+[data-theme='dark'] .app-ui-icon-button:hover {
+  border-color: color-mix(in srgb, var(--app-dark-accent) 34%, var(--app-dark-border-subtle));
+  background-color: var(--app-dark-elevated);
+  color: var(--app-dark-text-primary);
+}
+
+:root.dark .app-ui-icon-button-danger:hover,
+[data-theme='dark'] .app-ui-icon-button-danger:hover {
+  border-color: color-mix(in srgb, var(--color-error) 60%, var(--app-dark-border-subtle));
+  background-color: color-mix(in srgb, var(--color-error) 16%, var(--app-dark-elevated));
+  color: color-mix(in srgb, white 80%, var(--color-error));
+}
+
+:root.dark .app-ui-button,
+[data-theme='dark'] .app-ui-button {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent);
+  background-color: var(--app-dark-input-85);
+  color: var(--app-dark-text-primary);
+  box-shadow: 0 1px 2px rgba(12, 9, 8, 0.24);
+}
+
+:root.dark .app-ui-button:hover,
+[data-theme='dark'] .app-ui-button:hover {
+  border-color: color-mix(in srgb, var(--app-dark-accent) 30%, var(--app-dark-border-subtle));
+  background-color: var(--app-dark-elevated);
+  color: var(--app-dark-text-primary);
+}
+
+:root.dark .app-ui-button-danger,
+[data-theme='dark'] .app-ui-button-danger {
+  border-color: color-mix(in srgb, var(--color-error) 52%, var(--app-dark-border-subtle));
+  background-color: color-mix(in srgb, var(--color-error) 14%, var(--app-dark-elevated));
+  color: color-mix(in srgb, white 90%, var(--color-error) 10%);
+}
+
+:root.dark .app-ui-button-danger:hover,
+[data-theme='dark'] .app-ui-button-danger:hover {
+  border-color: color-mix(in srgb, var(--color-error) 64%, var(--app-dark-border-subtle));
+  background-color: color-mix(in srgb, var(--color-error) 20%, var(--app-dark-elevated));
+  color: white;
+}
+
 :root.dark .dark\:border-white\/10,
 [data-theme='dark'] .dark\:border-white\/10,
 :root.dark .dark\:border-\[\#30363d\],

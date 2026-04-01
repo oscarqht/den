@@ -235,7 +235,7 @@ export function HomeDashboard({
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs"
+                        className="app-ui-icon-button app-ui-icon-button-sm"
                         onClick={() => onEditQuickCreateDraft(draft)}
                         title="Edit failed quick create"
                       >
@@ -243,7 +243,7 @@ export function HomeDashboard({
                       </button>
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-300 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+                        className="app-ui-icon-button app-ui-icon-button-danger app-ui-icon-button-sm"
                         onClick={() => {
                           void onDeleteQuickCreateDraft(draft.id);
                         }}
@@ -268,7 +268,7 @@ export function HomeDashboard({
         ) : null}
 
         {!isLoaded ? (
-          <div className={`flex h-52 items-center justify-center ${APP_PAGE_PANEL_CLASS}`}>
+          <div className="flex h-24 items-center justify-center">
             <span className="loading loading-spinner loading-md text-primary"></span>
           </div>
         ) : filteredRecentProjects.length === 0 ? (
@@ -284,7 +284,10 @@ export function HomeDashboard({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            className="grid gap-4 sm:gap-5"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 22rem))' }}
+          >
             {filteredRecentProjects.map((project) => (
               <HomeRepoCard
                 key={project}
@@ -316,7 +319,7 @@ export function HomeDashboard({
 
             <button
               onClick={onAddProject}
-              className={`group flex h-[224px] flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200/90 bg-white/72 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/45 hover:bg-white dark:border-slate-700 dark:bg-slate-950/72 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-950 ${compactPanelShadowClass}`}
+              className={`group flex min-h-[194px] w-full flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200/90 bg-white/72 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/45 hover:bg-white dark:border-slate-700 dark:bg-slate-950/72 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-950 ${compactPanelShadowClass}`}
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-sm transition-transform group-hover:scale-105 dark:border-slate-700 dark:bg-slate-900/90">
                 <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />

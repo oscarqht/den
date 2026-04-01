@@ -479,7 +479,7 @@ export default function SessionFileBrowser({
   });
 
   return (
-    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-slate-900/45 backdrop-blur-sm app-dark-overlay p-4`}>
       <div className="bg-base-200 rounded-lg shadow-xl w-full max-w-5xl h-[82vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-base-300">
           <h2 className="text-xl font-bold flex items-center gap-2">

@@ -43,6 +43,8 @@ type TreeNodeProps = {
 
 const MIN_EXPLORER_WIDTH = 220;
 const MAX_EXPLORER_WIDTH = 420;
+const EDGE_TOGGLE_CLASS_NAME = 'absolute top-1/2 z-40 h-16 w-2 -translate-y-1/2 bg-slate-300/70 shadow-[0_8px_18px_-10px_rgba(15,23,42,0.5)] transition hover:w-2.5 hover:bg-slate-500/80 dark:bg-[color:var(--app-dark-border-subtle)] dark:shadow-[0_10px_20px_-12px_rgba(12,9,8,0.88)] dark:hover:bg-[color:var(--app-dark-accent-hover)]';
+const RESIZE_HANDLE_CLASS_NAME = 'absolute inset-y-0 right-0 w-1 cursor-col-resize bg-transparent transition hover:bg-slate-300/60 dark:hover:bg-[color:color-mix(in_srgb,var(--app-dark-accent)_34%,transparent)]';
 
 function joinClassNames(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ');
@@ -244,7 +246,7 @@ export function SessionExplorerDock({
       <div className="relative z-30 h-full w-0 shrink-0 overflow-visible">
         <button
           type="button"
-          className="absolute left-0 top-1/2 h-16 w-2 -translate-y-1/2 rounded-r-full bg-slate-300/70 shadow-[0_8px_18px_-10px_rgba(15,23,42,0.5)] transition hover:w-2.5 hover:bg-slate-500/80 dark:bg-slate-700/80 dark:hover:bg-slate-500"
+          className={joinClassNames(EDGE_TOGGLE_CLASS_NAME, 'left-0 rounded-r-full')}
           onClick={() => onStateChange({ collapsed: false })}
           aria-label="Expand explorer"
           title="Expand explorer"
@@ -318,7 +320,7 @@ export function SessionExplorerDock({
 
         {!mobile ? (
           <div
-            className="absolute inset-y-0 right-0 w-1 cursor-col-resize bg-transparent transition hover:bg-slate-300/60 dark:hover:bg-slate-600/60"
+            className={RESIZE_HANDLE_CLASS_NAME}
             onPointerDown={beginResize}
           />
         ) : null}
@@ -327,7 +329,7 @@ export function SessionExplorerDock({
       {!mobile ? (
         <button
           type="button"
-          className="absolute right-0 top-1/2 z-40 h-16 w-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-300/70 shadow-[0_8px_18px_-10px_rgba(15,23,42,0.5)] transition hover:w-2.5 hover:bg-slate-500/80 dark:bg-slate-700/80 dark:hover:bg-slate-500"
+          className={joinClassNames(EDGE_TOGGLE_CLASS_NAME, 'right-0 translate-x-1/2 rounded-full')}
           onClick={() => onStateChange({ collapsed: true })}
           aria-label="Collapse explorer"
           title="Collapse explorer"

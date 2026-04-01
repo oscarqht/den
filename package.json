@@ -24,7 +24,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "node ./bin/viba.mjs --dev",
+    "dev": "next dev --port 3200",
     "kill": "node ./scripts/kill-next-dev.mjs",
     "list": "sh -c 'lsof -nP -iTCP:3200-3299 -sTCP:LISTEN || echo \"No listening processes on 32xx ports\"'",
     "tailscale": "node ./scripts/tailscale.mjs",
@@ -33,7 +33,7 @@
     "postbuild": "node ./scripts/copy-next-shims.mjs",
     "build:webpack": "next build --webpack",
     "prepack": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && npm run build",
-    "start": "node ./bin/viba.mjs",
+    "start": "next start --port 3200",
     "tunnel": "node ./scripts/tunnel-restart.mjs 3200 -s palx",
     "tunnel:once": "nport 3200 -s palx",
     "lint": "eslint",

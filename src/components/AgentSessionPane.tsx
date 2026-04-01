@@ -410,7 +410,7 @@ function MarkdownMessage({ value }: { value: string | null | undefined }) {
             }
 
             return (
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 app-dark-surface-raised">
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 app-dark-surface-raised app-dark-text">
                 {textContent}
               </code>
             );

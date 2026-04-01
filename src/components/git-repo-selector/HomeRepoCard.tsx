@@ -89,6 +89,7 @@ export function HomeRepoCard({
   const gitRepoMenuRef = useRef<HTMLDivElement | null>(null);
   const sessionMenuRef = useRef<HTMLDivElement | null>(null);
   const serviceMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasOpenMenu = isGitRepoMenuOpen || isSessionMenuOpen || isServiceMenuOpen;
   const hasCustomProjectIcon = showProjectIcon && !!projectIconPath;
   const projectIconUrl = hasCustomProjectIcon
     ? getProjectIconUrl(projectIconPath)
@@ -131,14 +132,18 @@ export function HomeRepoCard({
       role={isProjectOpenable ? 'button' : undefined}
       tabIndex={isProjectOpenable ? 0 : -1}
       className={`group relative min-h-[194px] text-left ${
+        hasOpenMenu ? 'z-20 ' : ''
+      }${
         isProjectOpenable ? 'cursor-pointer' : 'cursor-default'
       }`}
     >
       <div
-        className={`relative h-full overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-primary/45 hover:bg-white dark:hover:border-slate-600 dark:hover:bg-slate-950 ${APP_PAGE_PANEL_CLASS}`}
+        className={`relative h-full ${
+          hasOpenMenu ? 'overflow-visible' : 'overflow-hidden'
+        } transition-all duration-200 hover:-translate-y-1 hover:border-primary/45 hover:bg-white dark:hover:border-slate-600 dark:hover:bg-slate-950 ${APP_PAGE_PANEL_CLASS}`}
         style={isDarkThemeActive ? undefined : cardGradient}
       >
-        <div className="absolute inset-0 bg-white/46 dark:bg-slate-950/44" />
+        <div className="absolute inset-0 rounded-[inherit] bg-white/46 dark:bg-slate-950/44" />
         <div className="relative flex h-full flex-col p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="relative flex shrink-0 items-center">

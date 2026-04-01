@@ -222,11 +222,27 @@ describe('resolveStartupPort', () => {
 });
 
 describe('createChildProcessSupervisor', () => {
-  it('targets the child process group on POSIX', () => {
+  it('targets the child pid directly on POSIX when attached', () => {
     const signals = [];
     const child = { pid: 4321, exitCode: null, killed: false };
     const supervisor = createChildProcessSupervisor(child, {
       platform: 'darwin',
+      killDelayMs: 0,
+      killImpl: (target, signal) => {
+        signals.push({ target, signal });
+      },
+    });
+
+    assert.strictEqual(supervisor.terminate(), true);
+    assert.deepStrictEqual(signals, [{ target: 4321, signal: 'SIGTERM' }]);
+  });
+
+  it('targets the child process group on POSIX when detached', () => {
+    const signals = [];
+    const child = { pid: 4321, exitCode: null, killed: false };
+    const supervisor = createChildProcessSupervisor(child, {
+      platform: 'darwin',
+      detached: true,
       killDelayMs: 0,
       killImpl: (target, signal) => {
         signals.push({ target, signal });
@@ -276,8 +292,8 @@ describe('createChildProcessSupervisor', () => {
     assert.strictEqual(scheduled.length, 1);
     scheduled[0].callback();
     assert.deepStrictEqual(signals, [
-      { target: -4321, signal: 'SIGTERM' },
-      { target: -4321, signal: 'SIGKILL' },
+      { target: 4321, signal: 'SIGTERM' },
+      { target: 4321, signal: 'SIGKILL' },
     ]);
   });
 

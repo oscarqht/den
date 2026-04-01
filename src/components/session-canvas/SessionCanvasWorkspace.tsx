@@ -902,7 +902,7 @@ function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/45 px-4 pb-8 pt-[12vh] backdrop-blur-sm"
+      className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/45 px-4 pb-8 pt-[12vh] backdrop-blur-sm app-dark-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -1277,7 +1277,8 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
       ref={iframeRef}
       src={src}
       title={panel.title}
-      className="h-full w-full border-0 bg-white app-dark-root"
+      className="h-full w-full border-0 bg-white"
+      style={isDocumentDarkMode ? { backgroundColor: 'var(--app-dark-panel)' } : undefined}
       allow="clipboard-read; clipboard-write"
       onLoad={handleLoad}
     />

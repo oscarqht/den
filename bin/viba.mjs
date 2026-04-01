@@ -92,22 +92,19 @@ function isMissingProcessError(error) {
   return Boolean(error && typeof error === "object" && error.code === "ESRCH");
 }
 
-function getChildTerminationTarget(pid, platform = process.platform) {
+function getChildTerminationTarget(pid, { platform = process.platform, detached = false } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) {
     return null;
   }
 
-  return platform === "win32" ? pid : -pid;
-}
-
-function supportsDetachedProcessGroup(platform = process.platform) {
-  return platform !== "win32";
+  return platform !== "win32" && detached ? -pid : pid;
 }
 
 export function createChildProcessSupervisor(
   child,
   {
     platform = process.platform,
+    detached = false,
     killImpl = process.kill.bind(process),
     setTimeoutImpl = setTimeout,
     clearTimeoutImpl = clearTimeout,
@@ -126,7 +123,7 @@ export function createChildProcessSupervisor(
   };
 
   const sendSignal = (signal) => {
-    const target = getChildTerminationTarget(child.pid, platform);
+    const target = getChildTerminationTarget(child.pid, { platform, detached });
     if (target === null) {
       return false;
     }
@@ -447,13 +444,14 @@ export async function resolveStartupPort(
 
 function runNext(args, env = process.env) {
   return new Promise((resolve, reject) => {
+    const detached = false;
     const child = spawn(process.execPath, [getNextBin(), ...args], {
       cwd: APP_ROOT,
       stdio: "inherit",
       env,
-      detached: supportsDetachedProcessGroup(),
+      detached,
     });
-    const supervisor = createChildProcessSupervisor(child);
+    const supervisor = createChildProcessSupervisor(child, { detached });
     const signalHandlers = new Map();
     const handledSignals =
       process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"];

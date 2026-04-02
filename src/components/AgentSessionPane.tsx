@@ -31,6 +31,7 @@ import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
+import { shouldReleaseSessionCanvasAgentSendLock } from '@/lib/session-canvas-agent';
 import { getModelReasoningEffortOptions, resolveReasoningEffortSelection } from '@/lib/session-reasoning';
 import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
 import {
@@ -1381,6 +1382,18 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     setOptimisticMessages((current) => reconcileOptimisticUserMessages(history, current));
   }, [history]);
 
+  useEffect(() => {
+    if (!shouldReleaseSessionCanvasAgentSendLock({
+      isSending,
+      optimisticMessageCount: optimisticMessages.length,
+      runState: runtime?.runState ?? null,
+    })) {
+      return;
+    }
+
+    setIsSending(false);
+  }, [isSending, optimisticMessages.length, runtime?.runState]);
+
   const providerName = providerLabel(runtime?.agentProvider || null);
   const turnDiagnostics = runtime?.turnDiagnostics ?? null;
   const [isAgentDetailsDialogOpen, setIsAgentDetailsDialogOpen] = useState(false);
@@ -1448,10 +1461,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     shouldStickToBottomRef.current = true;
     setIsSending(true);
 
-    let cancelled = false;
     void (async () => {
       const result = await submitMessageToAgent(normalizedAutoStartMessage, [], { markInitialized: true });
-      if (cancelled) {
+      if (autoStartRequestKeyRef.current !== requestKey) {
         return;
       }
 
@@ -1461,10 +1473,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       }
       setIsSending(false);
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [autoStartMessage, history, sessionId, submitMessageToAgent]);
 
   const hideSuggestions = useCallback(() => {

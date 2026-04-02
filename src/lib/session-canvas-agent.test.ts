@@ -5,6 +5,7 @@ import {
   formatPathsForAgentInput,
   insertPathsIntoAgentInput,
   shouldAutoStartSessionCanvasAgentTurn,
+  shouldReleaseSessionCanvasAgentSendLock,
 } from './session-canvas-agent.ts';
 
 describe('session canvas agent helpers', () => {
@@ -65,5 +66,37 @@ describe('session canvas agent helpers', () => {
       initialPrompt: 'Start the task',
       runState: 'queued',
     }), false);
+  });
+
+  it('releases the send lock once the runtime accepts the message', () => {
+    assert.equal(shouldReleaseSessionCanvasAgentSendLock({
+      isSending: false,
+      optimisticMessageCount: 0,
+      runState: 'running',
+    }), false);
+
+    assert.equal(shouldReleaseSessionCanvasAgentSendLock({
+      isSending: true,
+      optimisticMessageCount: 1,
+      runState: 'running',
+    }), false);
+
+    assert.equal(shouldReleaseSessionCanvasAgentSendLock({
+      isSending: true,
+      optimisticMessageCount: 0,
+      runState: 'idle',
+    }), false);
+
+    assert.equal(shouldReleaseSessionCanvasAgentSendLock({
+      isSending: true,
+      optimisticMessageCount: 0,
+      runState: 'queued',
+    }), true);
+
+    assert.equal(shouldReleaseSessionCanvasAgentSendLock({
+      isSending: true,
+      optimisticMessageCount: 0,
+      runState: 'completed',
+    }), true);
   });
 });

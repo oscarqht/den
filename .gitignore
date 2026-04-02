@@ -45,3 +45,4 @@ verify_sessions.py
 /.artifacts
 /artifacts
 /.den
+/.playwright-cli

@@ -38,3 +38,19 @@ export function shouldAutoStartSessionCanvasAgentTurn(args: {
 
   return !args.runState || args.runState === 'idle';
 }
+
+export function shouldReleaseSessionCanvasAgentSendLock(args: {
+  isSending: boolean;
+  optimisticMessageCount: number;
+  runState?: SessionAgentRunState | null;
+}): boolean {
+  if (!args.isSending) {
+    return false;
+  }
+
+  if (args.optimisticMessageCount > 0) {
+    return false;
+  }
+
+  return Boolean(args.runState && args.runState !== 'idle');
+}

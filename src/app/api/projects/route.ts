@@ -28,6 +28,7 @@ const updateProjectSchema = z.object({
     displayName: z.string().nullable().optional(),
     folderPaths: z.array(z.string()).optional(),
     iconPath: z.string().nullable().optional(),
+    iconEmoji: z.string().nullable().optional(),
     lastOpenedAt: z.string().optional(),
   }),
 });

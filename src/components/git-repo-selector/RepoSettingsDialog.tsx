@@ -1,8 +1,21 @@
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
-import { ImagePlus, Plus, Trash2, X } from 'lucide-react';
+import { ImagePlus, Plus, SmilePlus, Trash2, X } from 'lucide-react';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
 import FileBrowser from '@/components/FileBrowser';
 import { getProjectIconUrl } from '@/lib/project-icons';
+
+const ProjectEmojiPicker = dynamic(
+  () => import('@/components/project/ProjectEmojiPicker').then((module) => module.ProjectEmojiPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[360px] w-[320px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+        <span className="loading loading-spinner loading-sm" />
+      </div>
+    ),
+  },
+);
 
 export type RepoSettingsDialogProps = {
   isOpen: boolean;
@@ -20,6 +33,7 @@ export type RepoSettingsDialogProps = {
   defaultProjectServiceStartCommand: string;
   defaultProjectServiceStopCommand: string;
   projectIconPath: string | null;
+  projectIconEmoji: string | null;
   isSavingProjectSettings: boolean;
   isUploadingProjectIcon: boolean;
   projectSettingsError: string | null;
@@ -31,6 +45,7 @@ export type RepoSettingsDialogProps = {
   onServiceStartCommandChange: (value: string) => void;
   onServiceStopCommandChange: (value: string) => void;
   onUploadIcon: (iconPath: string) => void;
+  onChooseEmoji: (iconEmoji: string) => void;
   onRemoveIcon: () => void;
   onClose: () => void;
   onSave: () => void;
@@ -52,6 +67,7 @@ export function RepoSettingsDialog({
   defaultProjectServiceStartCommand,
   defaultProjectServiceStopCommand,
   projectIconPath,
+  projectIconEmoji,
   isSavingProjectSettings,
   isUploadingProjectIcon,
   projectSettingsError,
@@ -63,16 +79,18 @@ export function RepoSettingsDialog({
   onServiceStartCommandChange,
   onServiceStopCommandChange,
   onUploadIcon,
+  onChooseEmoji,
   onRemoveIcon,
   onClose,
   onSave,
 }: RepoSettingsDialogProps) {
   const [isIconBrowserOpen, setIsIconBrowserOpen] = useState(false);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false);
 
   if (!isOpen || !projectId) return null;
 
-  const iconPreviewUrl = getProjectIconUrl(projectIconPath);
+  const iconPreviewUrl = getProjectIconUrl({ iconPath: projectIconPath, iconEmoji: projectIconEmoji });
   const iconBrowserInitialPath = projectFolderPaths[0] || projectForSettings || defaultRoot;
 
   return (
@@ -175,7 +193,16 @@ export function RepoSettingsDialog({
                 <ImagePlus className="h-4 w-4" />
                 Choose Icon
               </button>
-              {projectIconPath && (
+              <button
+                type="button"
+                className="app-ui-button"
+                disabled={isUploadingProjectIcon || isSavingProjectSettings}
+                onClick={() => setIsEmojiPickerOpen((previous) => !previous)}
+              >
+                <SmilePlus className="h-4 w-4" />
+                Choose Emoji
+              </button>
+              {(projectIconPath || projectIconEmoji) && (
                 <button
                   type="button"
                   className="app-ui-button app-ui-button-danger"
@@ -190,6 +217,18 @@ export function RepoSettingsDialog({
             <div className="text-xs text-slate-500 dark:text-slate-400">
               Supported: png, jpg, jpeg, webp, svg, ico. Max 2MB. Projects without a custom icon use the bundled default icon.
             </div>
+            {isEmojiPickerOpen ? (
+              <div className="relative">
+                <div className="absolute left-0 top-2 z-[1004] rounded-xl border border-slate-200 bg-white p-2 shadow-xl app-dark-popover">
+                  <ProjectEmojiPicker
+                    onSelect={(iconEmoji) => {
+                      onChooseEmoji(iconEmoji);
+                      setIsEmojiPickerOpen(false);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">

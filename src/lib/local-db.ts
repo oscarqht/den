@@ -11,6 +11,7 @@ export type LocalProjectRecord = {
   name: string;
   folderPaths: string[];
   iconPath?: string | null;
+  iconEmoji?: string | null;
   lastOpenedAt?: string | null;
 };
 
@@ -284,6 +285,7 @@ function normalizeState(raw: unknown): LocalState {
         name: typeof record.name === 'string' ? record.name : key,
         folderPaths: normalizeStringArray(record.folderPaths),
         iconPath: typeof record.iconPath === 'string' || record.iconPath === null ? record.iconPath : undefined,
+        iconEmoji: typeof record.iconEmoji === 'string' || record.iconEmoji === null ? record.iconEmoji : undefined,
         lastOpenedAt: typeof record.lastOpenedAt === 'string' || record.lastOpenedAt === null
           ? record.lastOpenedAt
           : undefined,

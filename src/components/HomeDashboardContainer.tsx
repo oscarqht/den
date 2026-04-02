@@ -55,6 +55,7 @@ import {
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getQuickCreateTabId, subscribeToQuickCreateJobUpdates } from '@/lib/quick-create-updates';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
+import { type ProjectIconValue } from '@/lib/project-icons';
 import {
   resolveShouldUseDarkTheme,
   THEME_MODE_STORAGE_KEY,
@@ -162,7 +163,7 @@ export default function HomeDashboardContainer({
   const [repoDevServerCommand, setRepoDevServerCommand] = useState(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
   const [repoServiceStartCommand, setRepoServiceStartCommand] = useState(DEFAULT_PROJECT_SERVICE_START_COMMAND);
   const [repoServiceStopCommand, setRepoServiceStopCommand] = useState(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-  const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
+  const [projectIconForSettings, setProjectIconForSettings] = useState<ProjectIconValue>({ iconPath: null, iconEmoji: null });
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
   const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
@@ -427,7 +428,7 @@ export default function HomeDashboardContainer({
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
     setRepoServiceStartCommand(DEFAULT_PROJECT_SERVICE_START_COMMAND);
     setRepoServiceStopCommand(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-    setProjectIconPathForSettings(null);
+    setProjectIconForSettings({ iconPath: null, iconEmoji: null });
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
   }, [isSavingRepoSettings]);
@@ -452,7 +453,10 @@ export default function HomeDashboardContainer({
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
     setRepoServiceStartCommand(settings?.serviceStartCommand ?? DEFAULT_PROJECT_SERVICE_START_COMMAND);
     setRepoServiceStopCommand(settings?.serviceStopCommand ?? DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-    setProjectIconPathForSettings(resolvedProject.project.iconPath ?? null);
+    setProjectIconForSettings({
+      iconPath: resolvedProject.project.iconPath ?? null,
+      iconEmoji: resolvedProject.project.iconEmoji ?? null,
+    });
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
   }, [config?.projectSettings, resolveProjectEntry]);
@@ -548,13 +552,48 @@ export default function HomeDashboardContainer({
       }
 
       const uploadedIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
-      setProjectIconPathForSettings(uploadedIconPath);
+      const uploadedIconEmoji = typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null;
+      setProjectIconForSettings({ iconPath: uploadedIconPath, iconEmoji: uploadedIconEmoji });
       setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (uploadError) {
       console.error(uploadError);
       setRepoSettingsError(
         uploadError instanceof Error ? uploadError.message : 'Failed to upload project icon.',
+      );
+    } finally {
+      setIsUploadingProjectIcon(false);
+    }
+  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
+
+  const handleChooseProjectIconEmoji = useCallback(async (iconEmoji: string) => {
+    if (!projectForSettingsId || isUploadingProjectIcon) return;
+    setRepoSettingsError(null);
+    setIsUploadingProjectIcon(true);
+
+    try {
+      const response = await fetch('/api/projects/icon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: projectForSettingsId,
+          iconEmoji,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to save project emoji icon.');
+      }
+
+      const nextIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
+      const nextIconEmoji = typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null;
+      setProjectIconForSettings({ iconPath: nextIconPath, iconEmoji: nextIconEmoji });
+      setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+    } catch (error) {
+      console.error(error);
+      setRepoSettingsError(
+        error instanceof Error ? error.message : 'Failed to save project emoji icon.',
       );
     } finally {
       setIsUploadingProjectIcon(false);
@@ -577,7 +616,7 @@ export default function HomeDashboardContainer({
         throw new Error(payload?.error || 'Failed to remove project icon.');
       }
 
-      setProjectIconPathForSettings(null);
+      setProjectIconForSettings({ iconPath: null, iconEmoji: null });
       setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (removeError) {
@@ -1170,9 +1209,12 @@ export default function HomeDashboardContainer({
   }, []);
 
   const projectCardIconByKey = useMemo(() => {
-    const nextIcons: Record<string, string | null> = {};
+    const nextIcons: Record<string, ProjectIconValue> = {};
     resolvedRecentProjects.forEach((projectEntry) => {
-      nextIcons[projectEntry.key] = projectEntry.project?.iconPath ?? null;
+      nextIcons[projectEntry.key] = {
+        iconPath: projectEntry.project?.iconPath ?? null,
+        iconEmoji: projectEntry.project?.iconEmoji ?? null,
+      };
     });
     return nextIcons;
   }, [resolvedRecentProjects]);
@@ -1351,7 +1393,8 @@ export default function HomeDashboardContainer({
         defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
         defaultProjectServiceStartCommand={DEFAULT_PROJECT_SERVICE_START_COMMAND}
         defaultProjectServiceStopCommand={DEFAULT_PROJECT_SERVICE_STOP_COMMAND}
-        projectIconPath={projectIconPathForSettings}
+        projectIconPath={projectIconForSettings.iconPath ?? null}
+        projectIconEmoji={projectIconForSettings.iconEmoji ?? null}
         isSavingProjectSettings={isSavingRepoSettings}
         isUploadingProjectIcon={isUploadingProjectIcon}
         projectSettingsError={repoSettingsError}
@@ -1370,6 +1413,9 @@ export default function HomeDashboardContainer({
         onServiceStopCommandChange={setRepoServiceStopCommand}
         onUploadIcon={(iconPath) => {
           void handleUploadProjectIcon(iconPath);
+        }}
+        onChooseEmoji={(iconEmoji) => {
+          void handleChooseProjectIconEmoji(iconEmoji);
         }}
         onRemoveIcon={() => {
           void handleRemoveProjectIcon();

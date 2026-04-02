@@ -58,6 +58,8 @@
     "@types/uuid": "^10.0.0",
     "clsx": "^2.1.1",
     "daisyui": "^5.5.18",
+    "emoji-picker-element": "^1.29.1",
+    "emoji-picker-element-data": "^1.8.0",
     "gfport": "^1.0.1",
     "http-proxy-middleware": "^3.0.5",
     "keytar": "^7.9.0",

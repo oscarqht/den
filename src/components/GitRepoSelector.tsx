@@ -86,6 +86,7 @@ import { RepoSettingsDialog } from './git-repo-selector/RepoSettingsDialog';
 import { CloneRemoteDialog } from './git-repo-selector/CloneRemoteDialog';
 import { type RepoCredentialSelection } from './git-repo-selector/types';
 import { cn } from '@/lib/utils';
+import { type ProjectIconValue } from '@/lib/project-icons';
 import type {
   AgentProvider,
   AppStatus,
@@ -413,7 +414,7 @@ export default function GitRepoSelector({
   const [repoDevServerCommand, setRepoDevServerCommand] = useState<string>(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
   const [repoServiceStartCommand, setRepoServiceStartCommand] = useState<string>(DEFAULT_PROJECT_SERVICE_START_COMMAND);
   const [repoServiceStopCommand, setRepoServiceStopCommand] = useState<string>(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-  const [projectIconPathForSettings, setProjectIconPathForSettings] = useState<string | null>(null);
+  const [projectIconForSettings, setProjectIconForSettings] = useState<ProjectIconValue>({ iconPath: null, iconEmoji: null });
   const [credentialOptions, setCredentialOptions] = useState<Credential[]>([]);
 
   const router = useRouter();
@@ -476,7 +477,7 @@ export default function GitRepoSelector({
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
   const [isSavingRepoSettings, setIsSavingRepoSettings] = useState(false);
-  const [repoCardIconByRepo, setRepoCardIconByRepo] = useState<Record<string, string | null>>({});
+  const [repoCardIconByRepo, setRepoCardIconByRepo] = useState<Record<string, ProjectIconValue>>({});
   const [brokenRepoCardIcons, setBrokenRepoCardIcons] = useState<Record<string, boolean>>({});
   const [projectGitReposByPath, setProjectGitReposByPath] = useState<Record<string, HomeProjectGitRepo[]>>({});
   const [discoveringHomeProjectGitRepos, setDiscoveringHomeProjectGitRepos] = useState<Record<string, boolean>>({});
@@ -645,7 +646,7 @@ export default function GitRepoSelector({
     setRepoDevServerCommand(DEFAULT_PROJECT_DEV_SERVER_COMMAND);
     setRepoServiceStartCommand(DEFAULT_PROJECT_SERVICE_START_COMMAND);
     setRepoServiceStopCommand(DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-    setProjectIconPathForSettings(null);
+    setProjectIconForSettings({ iconPath: null, iconEmoji: null });
     setRepoSettingsError(null);
     setIsUploadingProjectIcon(false);
   }, [isSavingRepoSettings]);
@@ -2069,7 +2070,7 @@ export default function GitRepoSelector({
     setRepoDevServerCommand(settings?.devServerScript ?? DEFAULT_PROJECT_DEV_SERVER_COMMAND);
     setRepoServiceStartCommand(settings?.serviceStartCommand ?? DEFAULT_PROJECT_SERVICE_START_COMMAND);
     setRepoServiceStopCommand(settings?.serviceStopCommand ?? DEFAULT_PROJECT_SERVICE_STOP_COMMAND);
-    setProjectIconPathForSettings(repoCardIconByRepo[repo] ?? null);
+    setProjectIconForSettings(repoCardIconByRepo[repo] ?? { iconPath: null, iconEmoji: null });
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
   };
@@ -2132,13 +2133,50 @@ export default function GitRepoSelector({
         throw new Error(payload?.error || 'Failed to upload project icon.');
       }
 
-      const uploadedIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
-      setProjectIconPathForSettings(uploadedIconPath);
-      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: uploadedIconPath }));
+      const nextProjectIcon = {
+        iconPath: typeof payload?.iconPath === 'string' ? payload.iconPath : null,
+        iconEmoji: typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null,
+      };
+      setProjectIconForSettings(nextProjectIcon);
+      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: nextProjectIcon }));
       setBrokenRepoCardIcons((previous) => ({ ...previous, [repoForSettings]: false }));
     } catch (error) {
       console.error(error);
       setRepoSettingsError(error instanceof Error ? error.message : 'Failed to upload project icon.');
+    } finally {
+      setIsUploadingProjectIcon(false);
+    }
+  };
+
+  const handleChooseProjectIconEmoji = async (iconEmoji: string) => {
+    if (!repoForSettings || isUploadingProjectIcon) return;
+    setRepoSettingsError(null);
+    setIsUploadingProjectIcon(true);
+
+    try {
+      const response = await fetch('/api/projects/icon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath: repoForSettings,
+          iconEmoji,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to save project emoji icon.');
+      }
+
+      const nextProjectIcon = {
+        iconPath: typeof payload?.iconPath === 'string' ? payload.iconPath : null,
+        iconEmoji: typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null,
+      };
+      setProjectIconForSettings(nextProjectIcon);
+      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: nextProjectIcon }));
+      setBrokenRepoCardIcons((previous) => ({ ...previous, [repoForSettings]: false }));
+    } catch (error) {
+      console.error(error);
+      setRepoSettingsError(error instanceof Error ? error.message : 'Failed to save project emoji icon.');
     } finally {
       setIsUploadingProjectIcon(false);
     }
@@ -2160,8 +2198,9 @@ export default function GitRepoSelector({
         throw new Error(payload?.error || 'Failed to remove project icon.');
       }
 
-      setProjectIconPathForSettings(null);
-      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: null }));
+      const emptyProjectIcon = { iconPath: null, iconEmoji: null };
+      setProjectIconForSettings(emptyProjectIcon);
+      setRepoCardIconByRepo((previous) => ({ ...previous, [repoForSettings]: emptyProjectIcon }));
       setBrokenRepoCardIcons((previous) => ({ ...previous, [repoForSettings]: false }));
     } catch (error) {
       console.error(error);
@@ -3137,28 +3176,40 @@ export default function GitRepoSelector({
         const resolvedProject = resolveProjectEntry(projectReference);
         const iconReferencePath = resolvedProject.primaryPath;
 
+        if (resolvedProject.project?.iconEmoji?.trim()) {
+          return [projectReference, {
+            iconPath: null,
+            iconEmoji: resolvedProject.project.iconEmoji.trim(),
+          }] as const;
+        }
+
         if (resolvedProject.project?.iconPath?.trim()) {
-          return [projectReference, resolvedProject.project.iconPath.trim()] as const;
+          return [projectReference, {
+            iconPath: resolvedProject.project.iconPath.trim(),
+            iconEmoji: null,
+          }] as const;
         }
 
         if (!iconReferencePath) {
-          return [projectReference, null] as const;
+          return [projectReference, { iconPath: null, iconEmoji: null }] as const;
         }
 
         try {
           const result = await resolveRepoCardIcon(iconReferencePath);
-          return [projectReference, result.success ? result.iconPath : null] as const;
+          return [projectReference, result.success
+            ? { iconPath: result.iconPath, iconEmoji: result.iconEmoji }
+            : { iconPath: null, iconEmoji: null }] as const;
         } catch (error) {
           console.error('Failed to resolve project icon:', error);
-          return [projectReference, null] as const;
+          return [projectReference, { iconPath: null, iconEmoji: null }] as const;
         }
       }));
 
       if (!cancelled) {
         setRepoCardIconByRepo((previous) => {
           const next = { ...previous };
-          for (const [projectReference, iconPath] of resolutionEntries) {
-            next[projectReference] = iconPath;
+          for (const [projectReference, icon] of resolutionEntries) {
+            next[projectReference] = icon;
           }
           return next;
         });
@@ -3270,7 +3321,8 @@ export default function GitRepoSelector({
           defaultProjectDevServerCommand={DEFAULT_PROJECT_DEV_SERVER_COMMAND}
           defaultProjectServiceStartCommand={DEFAULT_PROJECT_SERVICE_START_COMMAND}
           defaultProjectServiceStopCommand={DEFAULT_PROJECT_SERVICE_STOP_COMMAND}
-          projectIconPath={projectIconPathForSettings}
+          projectIconPath={projectIconForSettings.iconPath ?? null}
+          projectIconEmoji={projectIconForSettings.iconEmoji ?? null}
           isSavingProjectSettings={isSavingRepoSettings}
           isUploadingProjectIcon={isUploadingProjectIcon}
           projectSettingsError={repoSettingsError}
@@ -3283,6 +3335,9 @@ export default function GitRepoSelector({
           onServiceStopCommandChange={setRepoServiceStopCommand}
           onUploadIcon={(iconPath) => {
             void handleUploadProjectIcon(iconPath);
+          }}
+          onChooseEmoji={(iconEmoji) => {
+            void handleChooseProjectIconEmoji(iconEmoji);
           }}
           onRemoveIcon={() => {
             void handleRemoveProjectIcon();

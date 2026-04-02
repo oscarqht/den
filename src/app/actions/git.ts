@@ -55,6 +55,7 @@ type AgentCliConfig = {
 type ResolveRepoCardIconResult = {
   success: boolean;
   iconPath: string | null;
+  iconEmoji: string | null;
   error?: string;
 };
 
@@ -1227,22 +1228,25 @@ export async function getDefaultDevServerScript(repoPath: string): Promise<strin
 
 export async function resolveRepoCardIcon(repoPath: string): Promise<ResolveRepoCardIconResult> {
   if (!repoPath || !path.isAbsolute(repoPath)) {
-    return { success: false, iconPath: null, error: 'Invalid project path.' };
+    return { success: false, iconPath: null, iconEmoji: null, error: 'Invalid project path.' };
   }
 
   try {
     const project = findProjectsContainingPath(repoPath)
       .sort((left, right) => left.folderPaths.length - right.folderPaths.length)[0];
+    const iconEmoji = project?.iconEmoji?.trim() || null;
+    if (iconEmoji) return { success: true, iconPath: null, iconEmoji };
+
     const iconPath = project?.iconPath?.trim() || null;
-    if (!iconPath) return { success: true, iconPath: null };
+    if (!iconPath) return { success: true, iconPath: null, iconEmoji: null };
 
     const iconStats = await fs.stat(iconPath);
-    if (!iconStats.isFile()) return { success: true, iconPath: null };
+    if (!iconStats.isFile()) return { success: true, iconPath: null, iconEmoji: null };
 
-    return { success: true, iconPath };
+    return { success: true, iconPath, iconEmoji: null };
   } catch (error) {
     console.error('Failed to resolve project card icon:', error);
-    return { success: false, iconPath: null, error: 'Failed to resolve project icon.' };
+    return { success: false, iconPath: null, iconEmoji: null, error: 'Failed to resolve project icon.' };
   }
 }
 

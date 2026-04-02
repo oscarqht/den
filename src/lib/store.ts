@@ -39,6 +39,13 @@ function normalizeIconPath(iconPath?: string | null): string | null | undefined 
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeIconEmoji(iconEmoji?: string | null): string | null | undefined {
+  if (iconEmoji === undefined) return undefined;
+  if (iconEmoji === null) return null;
+  const normalized = iconEmoji.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function toProject(record: LocalProjectRecord): Project {
   const project: Project = {
     id: record.id,
@@ -48,6 +55,9 @@ function toProject(record: LocalProjectRecord): Project {
 
   if (record.iconPath !== undefined) {
     project.iconPath = record.iconPath ?? null;
+  }
+  if (record.iconEmoji !== undefined) {
+    project.iconEmoji = record.iconEmoji ?? null;
   }
   if (record.lastOpenedAt !== undefined && record.lastOpenedAt !== null) {
     project.lastOpenedAt = record.lastOpenedAt;
@@ -124,6 +134,7 @@ function writeProject(project: Project): void {
     name: normalizeProjectName(project.name),
     folderPaths: normalizeFolderPaths(project.folderPaths),
     iconPath: normalizeIconPath(project.iconPath),
+    iconEmoji: normalizeIconEmoji(project.iconEmoji),
     lastOpenedAt: project.lastOpenedAt?.trim() || undefined,
   };
 
@@ -137,6 +148,7 @@ function writeProject(project: Project): void {
       name: normalizedProject.name,
       folderPaths: [...normalizedProject.folderPaths],
       iconPath: normalizedProject.iconPath ?? undefined,
+      iconEmoji: normalizedProject.iconEmoji ?? undefined,
       lastOpenedAt: normalizedProject.lastOpenedAt ?? undefined,
     };
   });
@@ -146,6 +158,7 @@ export function addProject(input: {
   name: string;
   folderPaths?: string[];
   iconPath?: string | null;
+  iconEmoji?: string | null;
   lastOpenedAt?: string;
 }): Project {
   const project: Project = {
@@ -153,6 +166,7 @@ export function addProject(input: {
     name: normalizeProjectName(input.name),
     folderPaths: normalizeFolderPaths(input.folderPaths),
     ...(input.iconPath !== undefined ? { iconPath: normalizeIconPath(input.iconPath) ?? null } : {}),
+    ...(input.iconEmoji !== undefined ? { iconEmoji: normalizeIconEmoji(input.iconEmoji) ?? null } : {}),
     ...(input.lastOpenedAt?.trim() ? { lastOpenedAt: input.lastOpenedAt.trim() } : {}),
   };
 
@@ -162,7 +176,7 @@ export function addProject(input: {
 
 export function updateProject(
   projectId: string,
-  updates: Partial<Pick<Project, 'name' | 'folderPaths' | 'iconPath' | 'lastOpenedAt'>>,
+  updates: Partial<Pick<Project, 'name' | 'folderPaths' | 'iconPath' | 'iconEmoji' | 'lastOpenedAt'>>,
 ): Project {
   const current = getProjectById(projectId);
   if (!current) {
@@ -174,6 +188,7 @@ export function updateProject(
     ...(updates.name !== undefined ? { name: normalizeProjectName(updates.name) } : {}),
     ...(updates.folderPaths !== undefined ? { folderPaths: normalizeFolderPaths(updates.folderPaths) } : {}),
     ...(updates.iconPath !== undefined ? { iconPath: normalizeIconPath(updates.iconPath) ?? null } : {}),
+    ...(updates.iconEmoji !== undefined ? { iconEmoji: normalizeIconEmoji(updates.iconEmoji) ?? null } : {}),
     ...(updates.lastOpenedAt !== undefined ? { lastOpenedAt: updates.lastOpenedAt?.trim() || undefined } : {}),
   };
 

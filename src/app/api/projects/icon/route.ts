@@ -13,8 +13,10 @@ const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.
 type ParsedIconUpload = {
   projectId?: string;
   projectPath?: string;
-  extension: string;
-  fileBuffer: Buffer;
+  kind: 'file' | 'emoji';
+  extension?: string;
+  fileBuffer?: Buffer;
+  iconEmoji?: string;
 };
 
 function sanitizeExtension(fileName: string): string | null {
@@ -95,6 +97,7 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
     return {
       projectId: typeof projectIdValue === 'string' ? projectIdValue.trim() : undefined,
       projectPath: typeof projectPathValue === 'string' ? projectPathValue.trim() : undefined,
+      kind: 'file',
       extension,
       fileBuffer: Buffer.from(await iconFileValue.arrayBuffer()),
     };
@@ -104,12 +107,21 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
   const projectIdValue = typeof body?.projectId === 'string' ? body.projectId.trim() : '';
   const projectPathValue = typeof body?.projectPath === 'string' ? body.projectPath.trim() : '';
   const iconPathValue = typeof body?.iconPath === 'string' ? body.iconPath.trim() : '';
+  const iconEmojiValue = typeof body?.iconEmoji === 'string' ? body.iconEmoji.trim() : '';
 
   if (!projectIdValue && !projectPathValue) {
     throw new Error('projectId or projectPath is required.');
   }
+  if (iconEmojiValue) {
+    return {
+      projectId: projectIdValue || undefined,
+      projectPath: projectPathValue || undefined,
+      kind: 'emoji',
+      iconEmoji: iconEmojiValue,
+    };
+  }
   if (!iconPathValue) {
-    throw new Error('iconPath is required.');
+    throw new Error('iconPath or iconEmoji is required.');
   }
 
   const resolvedIconPath = path.resolve(iconPathValue);
@@ -132,6 +144,7 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
   return {
     projectId: projectIdValue || undefined,
     projectPath: projectPathValue || undefined,
+    kind: 'file',
     extension,
     fileBuffer: await fs.readFile(resolvedIconPath),
   };
@@ -142,13 +155,37 @@ export async function POST(request: Request) {
     const parsedUpload = await parseIconUpload(request);
     const project = await resolveProjectReference(parsedUpload.projectId, parsedUpload.projectPath);
 
-    await fs.mkdir(ICON_DIR, { recursive: true });
-    const destinationPath = buildManagedProjectIconPath(ICON_DIR, project.id, parsedUpload.extension, parsedUpload.fileBuffer);
     await removeExistingManagedIcon(project.iconPath);
-    await fs.writeFile(destinationPath, parsedUpload.fileBuffer);
+    if (parsedUpload.kind === 'emoji') {
+      const updatedProject = updateProject(project.id, {
+        iconPath: null,
+        iconEmoji: parsedUpload.iconEmoji ?? null,
+      });
+      return NextResponse.json({
+        success: true,
+        iconPath: updatedProject.iconPath ?? null,
+        iconEmoji: updatedProject.iconEmoji ?? null,
+      });
+    }
 
-    const updatedProject = updateProject(project.id, { iconPath: destinationPath });
-    return NextResponse.json({ success: true, iconPath: updatedProject.iconPath ?? null });
+    await fs.mkdir(ICON_DIR, { recursive: true });
+    const destinationPath = buildManagedProjectIconPath(
+      ICON_DIR,
+      project.id,
+      parsedUpload.extension!,
+      parsedUpload.fileBuffer!,
+    );
+    await fs.writeFile(destinationPath, parsedUpload.fileBuffer!);
+
+    const updatedProject = updateProject(project.id, {
+      iconPath: destinationPath,
+      iconEmoji: null,
+    });
+    return NextResponse.json({
+      success: true,
+      iconPath: updatedProject.iconPath ?? null,
+      iconEmoji: updatedProject.iconEmoji ?? null,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to upload project icon.';
     const status = message === 'Project not found.'
@@ -168,7 +205,7 @@ export async function DELETE(request: Request) {
     const project = await resolveProjectReference(projectId, projectPath);
 
     await removeExistingManagedIcon(project.iconPath);
-    updateProject(project.id, { iconPath: null });
+    updateProject(project.id, { iconPath: null, iconEmoji: null });
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to remove project icon.';

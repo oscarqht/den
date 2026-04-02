@@ -10,8 +10,10 @@ const ProjectEmojiPicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[360px] w-[320px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        <span className="loading loading-spinner loading-sm" />
+      <div className="project-emoji-picker-frame">
+        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+          <span className="loading loading-spinner loading-sm" />
+        </div>
       </div>
     ),
   },
@@ -230,7 +232,7 @@ export function RepoSettingsDialog({
                   </button>
                 )}
                 {isEmojiPickerOpen ? (
-                  <div className="absolute left-0 top-full z-[1004] mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl app-dark-popover">
+                  <div className="absolute left-0 top-full z-[1004] mt-2 rounded-[1.4rem] border border-slate-200/85 bg-white/95 p-3 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.45)] backdrop-blur-sm app-dark-popover">
                     <ProjectEmojiPicker
                       onSelect={(iconEmoji) => {
                         onChooseEmoji(iconEmoji);

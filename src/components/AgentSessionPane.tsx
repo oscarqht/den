@@ -20,7 +20,11 @@ import {
   type OptimisticUserMessage,
 } from '@/lib/optimistic-user-history';
 import { normalizePlanStepStatus, parsePlanStepsFromText, parsePlanStepsFromToolInput } from '@/lib/agent/plan';
-import { AGENT_SESSION_CODE_BLOCK_CLASSNAME } from '@/lib/agent-session-pane-styles';
+import {
+  AGENT_SESSION_CODE_BLOCK_CLASSNAME,
+  AGENT_SESSION_PANE_CLASSNAME,
+  AGENT_SESSION_TIMELINE_CLASSNAME,
+} from '@/lib/agent-session-pane-styles';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
@@ -1744,7 +1748,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, [dispatchQueuedMessage, isSending, isTurnActive, pendingMessages, steerTargetId]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-transparent">
+    <div className={AGENT_SESSION_PANE_CLASSNAME}>
       {isAgentDetailsDialogOpen ? (
         <dialog className="modal modal-open">
           <div className="modal-box max-w-2xl border border-slate-200 bg-white app-dark-modal">
@@ -1857,7 +1861,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
       <div
         ref={timelineRef}
-        className="custom-scrollbar flex-1 overflow-x-hidden overflow-y-auto px-4 py-4"
+        className={AGENT_SESSION_TIMELINE_CLASSNAME}
         onScroll={(event) => {
           const target = event.currentTarget;
           setTimelineScrollTop(target.scrollTop);

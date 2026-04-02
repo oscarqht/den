@@ -321,6 +321,52 @@
   color: rgb(136 19 55);
 }
 
+.project-emoji-picker-frame {
+  display: flex;
+  height: 23.25rem;
+  width: 21rem;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 18px 40px -30px rgba(15, 23, 42, 0.4);
+}
+
+.project-emoji-picker {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 10px 24px -22px rgba(15, 23, 42, 0.35);
+  --background: rgba(255, 255, 255, 0.96);
+  --border-color: rgba(226, 232, 240, 0.9);
+  --border-radius: 1rem;
+  --border-size: 1px;
+  --button-active-background: rgba(226, 232, 240, 0.9);
+  --button-hover-background: rgba(241, 245, 249, 0.96);
+  --category-font-color: rgb(100 116 139);
+  --category-font-size: 0.82rem;
+  --emoji-padding: 0.42rem;
+  --emoji-size: 1.5rem;
+  --indicator-color: rgb(99 102 241);
+  --indicator-height: 4px;
+  --input-border-color: rgba(203, 213, 225, 0.95);
+  --input-border-radius: 0.85rem;
+  --input-border-size: 1px;
+  --input-font-color: rgb(30 41 59);
+  --input-font-size: 0.98rem;
+  --input-line-height: 1.45;
+  --input-padding: 0.7rem 0.9rem;
+  --input-placeholder-color: rgb(148 163 184);
+  --outline-color: rgba(99, 102, 241, 0.65);
+  --outline-size: 2px;
+  --skintone-border-radius: 0.95rem;
+}
+
 :root.dark .app-ui-icon-button,
 [data-theme='dark'] .app-ui-icon-button {
   border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent);
@@ -370,6 +416,31 @@
   border-color: color-mix(in srgb, var(--color-error) 64%, var(--app-dark-border-subtle));
   background-color: color-mix(in srgb, var(--color-error) 20%, var(--app-dark-elevated));
   color: white;
+}
+
+:root.dark .project-emoji-picker-frame,
+[data-theme='dark'] .project-emoji-picker-frame {
+  border-color: color-mix(in srgb, var(--app-dark-border-subtle) 82%, transparent);
+  background:
+    linear-gradient(180deg, var(--app-dark-panel-72), color-mix(in srgb, var(--app-dark-elevated) 96%, transparent));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent),
+    0 20px 44px -28px rgba(12, 9, 8, 0.72);
+}
+
+:root.dark .project-emoji-picker,
+[data-theme='dark'] .project-emoji-picker {
+  box-shadow: 0 12px 28px -24px rgba(12, 9, 8, 0.6);
+  --background: color-mix(in srgb, var(--app-dark-elevated) 96%, transparent);
+  --border-color: color-mix(in srgb, var(--app-dark-border-subtle) 86%, transparent);
+  --button-active-background: color-mix(in srgb, var(--app-dark-accent) 18%, var(--app-dark-elevated));
+  --button-hover-background: color-mix(in srgb, var(--app-dark-accent) 12%, var(--app-dark-elevated));
+  --category-font-color: var(--app-dark-text-muted);
+  --indicator-color: var(--app-dark-accent);
+  --input-border-color: color-mix(in srgb, var(--app-dark-border-subtle) 92%, transparent);
+  --input-font-color: var(--app-dark-text-primary);
+  --input-placeholder-color: color-mix(in srgb, var(--app-dark-text-muted) 88%, transparent);
+  --outline-color: var(--app-dark-accent);
 }
 
 :root.dark .dark\:border-white\/10,

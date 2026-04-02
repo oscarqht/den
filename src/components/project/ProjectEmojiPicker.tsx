@@ -1,6 +1,7 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 
 type EmojiClickDetail = {
   unicode?: string;
@@ -19,6 +20,7 @@ const EMOJI_DATA_SOURCE_PATH = '/api/emoji-data';
 export function ProjectEmojiPicker({ onSelect }: ProjectEmojiPickerProps) {
   const pickerRef = useRef<HTMLElement | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -52,19 +54,19 @@ export function ProjectEmojiPicker({ onSelect }: ProjectEmojiPickerProps) {
     };
   }, [isReady, onSelect]);
 
-  const pickerElement = useMemo(() => createElement('emoji-picker', {
-    ref: pickerRef,
-    className: 'block h-[360px] w-[320px] overflow-hidden',
-    'data-source': EMOJI_DATA_SOURCE_PATH,
-  }), []);
+  const themeClass = resolvedTheme === 'dark' ? 'dark' : 'light';
 
-  if (!isReady) {
-    return (
-      <div className="flex h-[360px] w-[320px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        <span className="loading loading-spinner loading-sm" />
-      </div>
-    );
-  }
-
-  return pickerElement;
+  return (
+    <div className="project-emoji-picker-frame">
+      {isReady ? createElement('emoji-picker', {
+        ref: pickerRef,
+        className: `project-emoji-picker ${themeClass}`,
+        'data-source': EMOJI_DATA_SOURCE_PATH,
+      }) : (
+        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+          <span className="loading loading-spinner loading-sm" />
+        </div>
+      )}
+    </div>
+  );
 }

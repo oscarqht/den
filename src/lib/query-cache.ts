@@ -44,6 +44,13 @@ export function isPersistedQuery(query: Query): boolean {
   return query.meta?.persist === true && query.state.status === 'success';
 }
 
+export function isProjectGitRepoDiscoveryQueryKey(queryKey: readonly unknown[]): boolean {
+  return (
+    (queryKey[0] === 'project' && queryKey[2] === 'git-repos')
+    || (queryKey[0] === 'home' && queryKey[1] === 'project-git-repos')
+  );
+}
+
 export function getQueryCacheState<TData>(query: QueryResultLike<TData>): QueryCacheState {
   const hasCachedData = query.data !== undefined;
   return {

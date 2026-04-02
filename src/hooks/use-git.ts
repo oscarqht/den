@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { GitStatus, GitLog, Project, Repository, AppSettings, FileDiffPayload, BranchTrackingInfo, GitError, GitWorktree, GitConflictState } from '@/lib/types';
-import { queryKeys } from '@/lib/query-cache';
+import { isProjectGitRepoDiscoveryQueryKey, queryKeys } from '@/lib/query-cache';
 import { showGitErrorToast } from './use-toast';
 
 const API_BASE = '/api';
@@ -730,6 +730,9 @@ export function useGitAction() {
       if (!READ_ONLY_ACTIONS.includes(variables.action)) {
         // Invalidate relevant queries
         queryClient.invalidateQueries({ queryKey: ['git', variables.repoPath] });
+        queryClient.invalidateQueries({
+          predicate: (query) => isProjectGitRepoDiscoveryQueryKey(query.queryKey),
+        });
       }
     },
     onError: (error: Error, variables) => {

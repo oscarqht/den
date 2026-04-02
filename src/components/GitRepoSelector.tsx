@@ -118,6 +118,7 @@ const SESSION_TITLE_MAX_LENGTH = 120;
 const COMPACT_TASK_HEADER_THRESHOLD_PX = 1024;
 const STACKED_TASK_HEADER_THRESHOLD_PX = 960;
 const HOME_PROJECT_SORT_STORAGE_KEY = 'palx-home-project-sort';
+const LIVE_PROJECT_GIT_REPOS_STALE_TIME_MS = 0;
 const SUPPORTED_AGENT_PROVIDERS = ['codex', 'gemini', 'cursor'] as const;
 const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -478,9 +479,8 @@ export default function GitRepoSelector({
     queryKey: selectedRepo ? queryKeys.projectGitRepos(selectedRepo) : ['project', 'git-repos', 'idle'],
     queryFn: async () => discoverProjectGitReposWithBranches(selectedRepo!),
     enabled: mode === 'new' && !!selectedRepo,
-    meta: { persist: true },
-    placeholderData: (previousData) => previousData,
-    staleTime: 5 * 60_000,
+    staleTime: LIVE_PROJECT_GIT_REPOS_STALE_TIME_MS,
+    refetchOnMount: 'always',
   });
   const selectedAgentStatusQuery = useAgentStatus(selectedAgentProvider, {
     enabled: mode !== 'new' || Boolean(selectedRepo),
@@ -504,41 +504,17 @@ export default function GitRepoSelector({
     const cachedActivity = queryClient.getQueryData<Awaited<ReturnType<typeof getProjectActivity>>>(
       queryKeys.projectActivity(projectPath),
     );
-    const cachedGitRepos = queryClient.getQueryData<Awaited<ReturnType<typeof discoverProjectGitReposWithBranches>>>(
-      queryKeys.projectGitRepos(projectPath),
-    );
 
     hydratedAgentRuntimeRepoRef.current = null;
     setSelectedRepo(projectPath);
     setSelectedProjectId(null);
     setRepoFilesCache([]);
-    if (cachedGitRepos) {
-      const repoPaths = cachedGitRepos.repos.map((repo) => repo.repoPath);
-      const nextBranchesByRepo: Record<string, GitBranch[]> = {};
-      const nextBaseBranchByRepo: Record<string, string> = {};
-      for (const repoPath of repoPaths) {
-        const repoBranches = cachedGitRepos.branchesByRepo[repoPath] ?? [];
-        nextBranchesByRepo[repoPath] = repoBranches;
-        const currentBranch = repoBranches.find((branch) => branch.current)?.name;
-        if (currentBranch) {
-          nextBaseBranchByRepo[repoPath] = currentBranch;
-        } else if (repoBranches[0]?.name) {
-          nextBaseBranchByRepo[repoPath] = repoBranches[0].name;
-        }
-      }
-      setProjectGitRepos(repoPaths);
-      setBranchesByRepo(nextBranchesByRepo);
-      setBaseBranchByRepo(nextBaseBranchByRepo);
-      setCurrentBranchName(repoPaths[0] ? (nextBaseBranchByRepo[repoPaths[0]] || '') : '');
-      setIsProjectGitReposTruncated(cachedGitRepos.truncated);
-    } else {
-      setProjectGitRepos([]);
-      setBranchesByRepo({});
-      setBaseBranchByRepo({});
-      setCurrentBranchName('');
-      setIsProjectGitReposTruncated(false);
-    }
-    setIsLoadingProjectGitRepos(!cachedGitRepos);
+    setProjectGitRepos([]);
+    setBranchesByRepo({});
+    setBaseBranchByRepo({});
+    setCurrentBranchName('');
+    setIsProjectGitReposTruncated(false);
+    setIsLoadingProjectGitRepos(true);
     setIsLoadingProjectActivity(!cachedActivity);
     setExistingSessions(cachedActivity?.sessions ?? []);
     setExistingDrafts(cachedActivity?.drafts ?? []);
@@ -868,6 +844,9 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     if (!selectedProjectGitReposQuery.data) return;
+    if (!selectedProjectGitReposQuery.isFetchedAfterMount && selectedProjectGitReposQuery.isFetching) {
+      return;
+    }
 
     const repoPaths = selectedProjectGitReposQuery.data.repos.map((repo) => repo.repoPath);
     const nextBranchesByRepo: Record<string, GitBranch[]> = {};
@@ -889,7 +868,11 @@ export default function GitRepoSelector({
     setIsProjectGitReposTruncated(selectedProjectGitReposQuery.data.truncated);
     setCurrentBranchName(repoPaths[0] ? (nextBaseBranchByRepo[repoPaths[0]] || '') : '');
     setIsLoadingProjectGitRepos(false);
-  }, [selectedProjectGitReposQuery.data]);
+  }, [
+    selectedProjectGitReposQuery.data,
+    selectedProjectGitReposQuery.isFetchedAfterMount,
+    selectedProjectGitReposQuery.isFetching,
+  ]);
 
   useEffect(() => {
     const payload = selectedAgentStatusQuery.data;
@@ -933,8 +916,7 @@ export default function GitRepoSelector({
       const discovery = await queryClient.fetchQuery({
         queryKey: queryKeys.projectGitRepos(projectPath),
         queryFn: () => discoverProjectGitReposWithBranches(projectPath),
-        meta: { persist: true },
-        staleTime: 5 * 60_000,
+        staleTime: LIVE_PROJECT_GIT_REPOS_STALE_TIME_MS,
       });
       if (
         selectedProjectRequestId !== undefined

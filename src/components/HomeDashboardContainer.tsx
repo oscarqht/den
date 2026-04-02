@@ -972,7 +972,7 @@ export default function HomeDashboardContainer({
     }
 
     const resolvedProject = resolveProjectEntry(projectReference);
-    const repos = await discoverHomeProjectRepos(projectReference);
+    const repos = await discoverHomeProjectRepos(projectReference, { force: true });
     if (repos.length === 0) {
       setError('No Git repositories were found in this project.');
       return;

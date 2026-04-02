@@ -50,6 +50,7 @@ const MAX_HISTORY_PANEL_HEIGHT = 900;
 const MIN_COMMIT_DETAILS_MESSAGE_RATIO = 0.15;
 const MAX_COMMIT_DETAILS_MESSAGE_RATIO = 0.75;
 const DEFAULT_COMMIT_DETAILS_MESSAGE_RATIO = 0.28;
+const LIVE_REMOTE_DISCOVERY_STALE_TIME_MS = 0;
 type MergeConflictStatus = 'checking' | 'no-conflict' | 'has-conflicts';
 type RepoCredentialOption = {
   id: string;
@@ -2270,24 +2271,13 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   }, [isMergeOpen, mergeSourceBranch, mergeTargetBranch, repoPath, runGitAction]);
 
   const confirmPushToRemote = async (branch: string) => {
-    const cachedRemotes = queryClient.getQueryData<string[]>(queryKeys.gitRemotes(repoPath)) ?? [];
-    const cachedTrackingBranch = queryClient.getQueryData<TrackingBranchInfo | null>(
-      queryKeys.gitTrackingBranch(repoPath, branch),
-    ) ?? null;
-    const cachedDefaultRemote = getPreferredRemote(cachedRemotes, cachedTrackingBranch);
-    const cachedRemoteBranches = cachedDefaultRemote
-      ? (queryClient.getQueryData<string[]>(queryKeys.gitRemoteBranches(repoPath, cachedDefaultRemote)) ?? [])
-      : [];
-
     setPushBranch(branch);
     setPushError(null);
-    setPushRemotes(cachedRemotes);
-    setPushRemoteBranches(cachedRemoteBranches);
-    setPushSelectedRemote(cachedDefaultRemote);
-    setPushSelectedRemoteBranch(
-      cachedDefaultRemote ? getDefaultPushRemoteBranch(branch, cachedDefaultRemote, cachedTrackingBranch) : '',
-    );
-    setPushTrackingBranch(cachedTrackingBranch);
+    setPushRemotes([]);
+    setPushRemoteBranches([]);
+    setPushSelectedRemote('');
+    setPushSelectedRemoteBranch('');
+    setPushTrackingBranch(null);
     setPushRebaseFirst(false);
     setPushForcePush(false);
     setPushLocalOnlyTags(true);
@@ -2311,7 +2301,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               ? result.remotes.filter((remote: unknown): remote is string => typeof remote === 'string' && remote.trim().length > 0)
               : [];
           },
-          staleTime: 60_000,
+          staleTime: LIVE_REMOTE_DISCOVERY_STALE_TIME_MS,
           meta: { persist: true },
         }),
         queryClient.fetchQuery({
@@ -2331,7 +2321,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               ? { remote: tracking.remote, branch: tracking.branch }
               : null;
           },
-          staleTime: 30_000,
+          staleTime: LIVE_REMOTE_DISCOVERY_STALE_TIME_MS,
           meta: { persist: true },
         }),
       ]);
@@ -2360,7 +2350,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
               ? result.branches.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
               : [];
           },
-          staleTime: 60_000,
+          staleTime: LIVE_REMOTE_DISCOVERY_STALE_TIME_MS,
           meta: { persist: true },
         })
         : [];
@@ -2383,10 +2373,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     setPushSelectedRemote(remote);
     setPushError(null);
     setPushLoadingBranches(true);
-    const cachedRemoteBranches = queryClient.getQueryData<string[]>(
-      queryKeys.gitRemoteBranches(repoPath, remote),
-    ) ?? [];
-    setPushRemoteBranches(cachedRemoteBranches);
+    setPushRemoteBranches([]);
     setPushSelectedRemoteBranch(getDefaultPushRemoteBranch(pushBranch || '', remote, pushTrackingBranch));
 
     try {
@@ -2402,7 +2389,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
             ? result.branches.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
             : [];
         },
-        staleTime: 60_000,
+        staleTime: LIVE_REMOTE_DISCOVERY_STALE_TIME_MS,
         meta: { persist: true },
       });
 

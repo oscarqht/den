@@ -4,6 +4,7 @@ import {
   getLatestQueryUpdatedAt,
   getLegacyAgentStatusStorageKey,
   getQueryCacheState,
+  isProjectGitRepoDiscoveryQueryKey,
   isPersistedQuery,
   readLegacyAgentStatusCache,
 } from './query-cache.ts';
@@ -89,4 +90,10 @@ test('isPersistedQuery only persists successful queries explicitly marked as per
     meta: {},
     state: { status: 'success' },
   } as never), false);
+});
+
+test('isProjectGitRepoDiscoveryQueryKey matches project and home repo discovery queries', () => {
+  assert.equal(isProjectGitRepoDiscoveryQueryKey(['project', '/tmp/demo', 'git-repos']), true);
+  assert.equal(isProjectGitRepoDiscoveryQueryKey(['home', 'project-git-repos', '/tmp/demo']), true);
+  assert.equal(isProjectGitRepoDiscoveryQueryKey(['git', '/tmp/demo', 'branches']), false);
 });

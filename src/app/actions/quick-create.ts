@@ -1,19 +1,25 @@
 'use server';
 
 import fsSync from 'node:fs';
+import fs from 'node:fs/promises';
 import os from 'node:os';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { getConfig, updateConfig, type Config } from './config.ts';
 import { buildAgentStartupPrompt } from '../../lib/agent-startup-prompt.ts';
 import { normalizeProviderReasoningEffort } from '../../lib/agent/reasoning.ts';
 import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
+import { addProject, findProjectByFolderPath } from '../../lib/store.ts';
 import {
   deriveQuickCreateTitle,
+  extractExplicitProjectMentions,
   KNOWN_QUICK_CREATE_REASONING_EFFORTS,
   parseQuickCreateRoutingSelection,
   sortQuickCreateDrafts,
   type QuickCreateDraft,
+  type QuickCreateProjectMentionCandidate,
+  type QuickCreateRoutingTarget,
 } from '../../lib/quick-create.ts';
 import { completeQuickCreateJob, getActiveQuickCreateJobCount, registerQuickCreateJob } from '../../lib/quick-create-jobs.ts';
 import { getBaseName } from '../../lib/path.ts';
@@ -66,17 +72,26 @@ type SessionCreateGitContextInput = {
 };
 
 type QuickCreateRoutingResult = {
-  projectId: string;
-  projectPath: string;
+  targets: QuickCreateRoutingTarget[];
   reasoningEffort: ReasoningEffort;
   reason: string;
+};
+
+type MaterializedQuickCreateTarget = {
+  projectId: string;
+  projectPath: string;
+  projectName: string;
 };
 
 type QuickCreateExecutionSuccess = {
   status: 'succeeded';
   sessionId: string;
+  sessionIds: string[];
   projectId: string;
+  projectIds: string[];
   projectPath: string;
+  projectPaths: string[];
+  projectNames: string[];
   draftId?: string;
 };
 
@@ -167,6 +182,9 @@ type QuickCreateDependencies = {
     options?: { force?: boolean },
   ) => Promise<{ history: Array<{ kind: string; text?: string }> }>;
   unregisterAgentSession: (sessionId: string) => unknown;
+  createProjectFromDefaultRoot: (
+    projectName: string,
+  ) => Promise<{ projectId: string; projectPath: string; projectName: string }>;
 };
 
 const QUICK_CREATE_ROUTING_SESSION_PREFIX = 'quick-create-routing';
@@ -219,8 +237,22 @@ function validateQuickCreateInput(input: QuickCreateTaskInput): {
 }
 
 function computeDisplayName(project: Project, config: Config): string {
-  const alias = config.projectSettings[project.id]?.alias?.trim();
+  const primaryFolderPath = getProjectPrimaryFolderPath(project);
+  const alias = config.projectSettings[project.id]?.alias?.trim()
+    || (primaryFolderPath ? config.projectSettings[primaryFolderPath]?.alias?.trim() : '');
   return alias || project.name || getBaseName(getProjectPrimaryFolderPath(project) || project.id);
+}
+
+function computeProjectMentionLabels(project: Project, config: Config): string[] {
+  const primaryFolderPath = getProjectPrimaryFolderPath(project);
+  const alias = config.projectSettings[project.id]?.alias?.trim()
+    || (primaryFolderPath ? config.projectSettings[primaryFolderPath]?.alias?.trim() : '');
+  return Array.from(new Set([
+    computeDisplayName(project, config),
+    project.name.trim(),
+    alias || '',
+    primaryFolderPath ? getBaseName(primaryFolderPath) : '',
+  ].filter(Boolean)));
 }
 
 function isExistingDirectory(projectPath: string): boolean {
@@ -264,6 +296,20 @@ function resolveQuickCreateProjectCandidates(
   });
 }
 
+function buildProjectMentionCandidates(
+  projects: Project[],
+  config: Config,
+): QuickCreateProjectMentionCandidate[] {
+  return resolveQuickCreateProjectCandidates(projects, config).map((candidate) => {
+    const project = projects.find((entry) => entry.id === candidate.projectId);
+    return {
+      projectId: candidate.projectId,
+      projectPath: candidate.path,
+      labels: project ? computeProjectMentionLabels(project, config) : [candidate.displayName],
+    };
+  });
+}
+
 function formatRoutingCandidates(candidates: QuickCreateProjectCandidate[]) {
   return candidates.map((candidate, index) => ({
     index: index + 1,
@@ -279,6 +325,9 @@ function buildQuickCreateRoutingPrompt(input: {
   message: string;
   attachmentPaths: string[];
   candidates: QuickCreateProjectCandidate[];
+  existingMentionLabels: string[];
+  unresolvedMentionLabels: string[];
+  allowNewProjects: boolean;
 }): string {
   const candidateList = JSON.stringify(formatRoutingCandidates(input.candidates), null, 2);
   const attachmentsSection = input.attachmentPaths.length > 0
@@ -288,18 +337,37 @@ function buildQuickCreateRoutingPrompt(input: {
       '',
     ].join('\n')
     : '';
+  const explicitMentionsSection = (input.existingMentionLabels.length > 0 || input.unresolvedMentionLabels.length > 0)
+    ? [
+      'Explicit project mentions from the task:',
+      ...(input.existingMentionLabels.length > 0
+        ? input.existingMentionLabels.map((label) => `- existing: ${label}`)
+        : ['- existing: none']),
+      ...(input.unresolvedMentionLabels.length > 0
+        ? input.unresolvedMentionLabels.map((label) => `- unresolved: ${label}`)
+        : ['- unresolved: none']),
+      '',
+    ].join('\n')
+    : '';
 
   return [
-    'You are routing a new Den task to the best project.',
-    'Choose exactly one project from the provided candidate list.',
-    'Recent projects are only a soft hint. Choose the project that best matches the task.',
-    `Return JSON only with this shape: {"projectId":"...","projectPath":"...","reasoningEffort":"...","reason":"..."}.`,
+    'You are routing a new Den task to one or more projects.',
+    'Choose every project that should receive this task. Recent projects are only a soft hint.',
+    input.allowNewProjects
+      ? 'When no candidate fits, or the task clearly requires a new project, you may create a new project target.'
+      : 'Do not create new projects because the workspace default root is unavailable.',
+    'If explicit project mentions are provided, you must include all of them in the result.',
+    'Existing explicit mentions should map to candidate projects when possible.',
+    'Unresolved explicit mentions should become new project targets when new projects are allowed.',
+    `Return JSON only with this shape: {"targets":[{"type":"existing","projectId":"...","projectPath":"...","reason":"..."}|{"type":"new","projectName":"...","reason":"..."}],"reasoningEffort":"...","reason":"..."}.`,
     `reasoningEffort must be one of: ${KNOWN_QUICK_CREATE_REASONING_EFFORTS.join(', ')}.`,
     'Do not wrap the JSON in markdown fences. Do not include any extra text.',
+    'Return at least one target.',
     '',
     'Candidate projects:',
     candidateList,
     '',
+    explicitMentionsSection,
     'Task description:',
     input.message,
     '',
@@ -355,10 +423,139 @@ async function resolveRoutingSettings(
   };
 }
 
+function validateQuickCreateProjectName(projectName: string): string {
+  const normalizedProjectName = projectName.trim();
+  if (!normalizedProjectName) {
+    throw new Error('New project name is required.');
+  }
+  if (normalizedProjectName === '.' || normalizedProjectName === '..') {
+    throw new Error('New project name is invalid.');
+  }
+  if (normalizedProjectName.includes('/') || normalizedProjectName.includes('\\')) {
+    throw new Error('New project name cannot include path separators.');
+  }
+  return normalizedProjectName;
+}
+
+async function createProjectFromDefaultRoot(
+  projectName: string,
+  config: Config,
+): Promise<{ projectId: string; projectPath: string; projectName: string }> {
+  const normalizedProjectName = validateQuickCreateProjectName(projectName);
+  const defaultRoot = config.defaultRoot.trim();
+  if (!defaultRoot) {
+    throw new Error('Default root is not configured for creating new projects.');
+  }
+
+  const defaultRootStats = await fs.stat(defaultRoot).catch(() => null);
+  if (!defaultRootStats?.isDirectory()) {
+    throw new Error('Default root does not exist or is not a directory.');
+  }
+
+  const projectPath = path.join(defaultRoot, normalizedProjectName);
+  const existingProject = findProjectByFolderPath(projectPath);
+  if (existingProject) {
+    return {
+      projectId: existingProject.id,
+      projectPath,
+      projectName: computeDisplayName(existingProject, config),
+    };
+  }
+
+  const existingPathStats = await fs.stat(projectPath).catch(() => null);
+  if (existingPathStats && !existingPathStats.isDirectory()) {
+    throw new Error(`Project path is not a directory: ${projectPath}`);
+  }
+
+  if (!existingPathStats) {
+    await fs.mkdir(projectPath, { recursive: false });
+  }
+
+  const project = addProject({
+    name: normalizedProjectName,
+    folderPaths: [projectPath],
+  });
+
+  return {
+    projectId: project.id,
+    projectPath,
+    projectName: normalizedProjectName,
+  };
+}
+
+function resolveExplicitQuickCreateRouting(input: {
+  message: string;
+  mentionCandidates: QuickCreateProjectMentionCandidate[];
+  provider: AgentProvider;
+  defaultReasoningEffort?: ReasoningEffort;
+}): QuickCreateRoutingResult | null {
+  const explicitMentions = extractExplicitProjectMentions(input.message, input.mentionCandidates);
+  if (explicitMentions.existingTargets.length === 0 && explicitMentions.newProjectNames.length === 0) {
+    return null;
+  }
+
+  return {
+    targets: [
+      ...explicitMentions.existingTargets.map((target) => ({
+        type: 'existing' as const,
+        projectId: target.projectId,
+        projectPath: target.projectPath,
+        reason: `Explicitly mentioned via @${target.matchedLabel}.`,
+      })),
+      ...explicitMentions.newProjectNames.map((projectName) => ({
+        type: 'new' as const,
+        projectName,
+        reason: `Explicitly mentioned via @${projectName}.`,
+      })),
+    ],
+    reasoningEffort: normalizeRoutingReasoningEffort(
+      input.provider,
+      input.defaultReasoningEffort ?? 'medium',
+    ),
+    reason: 'Used explicit project mentions from the task description.',
+  };
+}
+
+async function materializeQuickCreateTargets(input: {
+  routingResult: QuickCreateRoutingResult;
+  candidates: QuickCreateProjectCandidate[];
+  deps: QuickCreateDependencies;
+}): Promise<MaterializedQuickCreateTarget[]> {
+  const candidateById = new Map(input.candidates.map((candidate) => [candidate.projectId, candidate] as const));
+  const seenProjectIds = new Set<string>();
+  const materializedTargets: MaterializedQuickCreateTarget[] = [];
+
+  for (const target of input.routingResult.targets) {
+    const materializedTarget = target.type === 'existing'
+      ? {
+          projectId: target.projectId,
+          projectPath: target.projectPath,
+          projectName: candidateById.get(target.projectId)?.displayName || getBaseName(target.projectPath) || target.projectId,
+        }
+      : await input.deps.createProjectFromDefaultRoot(target.projectName);
+
+    if (seenProjectIds.has(materializedTarget.projectId)) {
+      continue;
+    }
+
+    seenProjectIds.add(materializedTarget.projectId);
+    materializedTargets.push(materializedTarget);
+  }
+
+  if (materializedTargets.length === 0) {
+    throw new Error('Quick create did not resolve any project targets.');
+  }
+
+  return materializedTargets;
+}
+
 async function runRoutingAgent(input: {
   message: string;
   attachmentPaths: string[];
   candidates: QuickCreateProjectCandidate[];
+  existingMentionLabels: string[];
+  unresolvedMentionLabels: string[];
+  allowNewProjects: boolean;
   workspacePath: string;
   settings: QuickCreateRoutingSettings;
   deps: QuickCreateDependencies;
@@ -368,6 +565,9 @@ async function runRoutingAgent(input: {
     message: input.message,
     attachmentPaths: input.attachmentPaths,
     candidates: input.candidates,
+    existingMentionLabels: input.existingMentionLabels,
+    unresolvedMentionLabels: input.unresolvedMentionLabels,
+    allowNewProjects: input.allowNewProjects,
   });
 
   input.deps.registerAgentSession({
@@ -391,12 +591,13 @@ async function runRoutingAgent(input: {
     await input.deps.waitForAgentSessionRun(routingSessionId);
     const hydratedView = await input.deps.hydrateAgentSessionHistory(routingSessionId, { force: true });
     const assistantText = getLatestAssistantText(hydratedView.history);
-    const validProjectIds = new Set(input.candidates.map((candidate) => candidate.projectId));
-    const parsed = parseQuickCreateRoutingSelection(assistantText, validProjectIds);
+    const validProjects = new Map(
+      input.candidates.map((candidate) => [candidate.projectId, candidate.path] as const),
+    );
+    const parsed = parseQuickCreateRoutingSelection(assistantText, validProjects);
 
     return {
-      projectId: parsed.projectId,
-      projectPath: parsed.projectPath,
+      targets: parsed.targets,
       reasoningEffort: normalizeRoutingReasoningEffort(input.settings.provider, parsed.reasoningEffort),
       reason: parsed.reason,
     };
@@ -538,6 +739,9 @@ async function getQuickCreateDependencies(): Promise<QuickCreateDependencies> {
     waitForAgentSessionRun: runtimeModule.waitForAgentSessionRun,
     hydrateAgentSessionHistory: runtimeModule.hydrateAgentSessionHistory,
     unregisterAgentSession: runtimeModule.unregisterAgentSession,
+    createProjectFromDefaultRoot: async (projectName: string) => (
+      await createProjectFromDefaultRoot(projectName, await getConfig())
+    ),
   };
 }
 
@@ -545,106 +749,139 @@ export async function executeQuickCreateTaskJob(
   input: QuickCreateTaskInput,
   deps?: QuickCreateDependencies,
 ): Promise<QuickCreateExecutionResult> {
-  let createdSessionName: string | null = null;
+  const createdSessionNames: string[] = [];
   const resolvedDeps = deps ?? await getQuickCreateDependencies();
 
   try {
     const normalizedInput = validateQuickCreateInput(input);
     const config = await resolvedDeps.getConfig();
-    const candidates = resolveQuickCreateProjectCandidates(resolvedDeps.getProjects(), config);
-    if (candidates.length === 0) {
-      throw new Error('No registered projects are available for quick create.');
-    }
+    const projects = resolvedDeps.getProjects();
+    const candidates = resolveQuickCreateProjectCandidates(projects, config);
+    const mentionCandidates = buildProjectMentionCandidates(projects, config);
 
     const routingSettings = await resolveRoutingSettings(config, resolvedDeps);
-    const routingResult = await runRoutingAgent({
+    const attachmentMetadata = buildAttachmentMetadata(normalizedInput.attachmentPaths);
+    const title = deriveQuickCreateTitle(normalizedInput.message);
+
+    const explicitRoutingResult = resolveExplicitQuickCreateRouting({
+      message: normalizedInput.message,
+      mentionCandidates,
+      provider: routingSettings.provider,
+      defaultReasoningEffort: config.defaultAgentReasoningEffort,
+    });
+    const allowNewProjects = Boolean(config.defaultRoot.trim());
+    if (!explicitRoutingResult && candidates.length === 0 && !allowNewProjects) {
+      throw new Error('No registered projects are available and default root is not configured for creating new projects.');
+    }
+
+    const explicitMentions = explicitRoutingResult
+      ? null
+      : extractExplicitProjectMentions(normalizedInput.message, mentionCandidates);
+    const routingResult = explicitRoutingResult ?? await runRoutingAgent({
       message: normalizedInput.message,
       attachmentPaths: normalizedInput.attachmentPaths,
       candidates,
+      existingMentionLabels: explicitMentions?.existingTargets.map((target) => target.matchedLabel) ?? [],
+      unresolvedMentionLabels: explicitMentions?.newProjectNames ?? [],
+      allowNewProjects,
       workspacePath: config.defaultRoot?.trim() || os.homedir(),
       settings: routingSettings,
       deps: resolvedDeps,
     });
 
-    const sessionGitContext = await resolveSessionGitContexts(routingResult.projectId, resolvedDeps);
-    const attachmentMetadata = buildAttachmentMetadata(normalizedInput.attachmentPaths);
-    const title = deriveQuickCreateTitle(normalizedInput.message);
+    const materializedTargets = await materializeQuickCreateTargets({
+      routingResult,
+      candidates,
+      deps: resolvedDeps,
+    });
+    const sessionIds: string[] = [];
 
-    await moveProjectToRecent(routingResult.projectId, resolvedDeps);
+    for (const target of materializedTargets) {
+      const sessionGitContext = await resolveSessionGitContexts(target.projectPath, resolvedDeps);
+      const sessionResult = await resolvedDeps.createSession(
+        target.projectPath,
+        sessionGitContext.gitContexts,
+        {
+          agent: routingSettings.provider,
+          agentProvider: routingSettings.provider,
+          model: routingSettings.model,
+          reasoningEffort: routingResult.reasoningEffort,
+          title,
+          workspacePreference: 'workspace',
+        },
+      );
 
-    const sessionResult = await resolvedDeps.createSession(
-      routingResult.projectId,
-      sessionGitContext.gitContexts,
-      {
-        agent: routingSettings.provider,
+      if (!sessionResult.success || !sessionResult.sessionName) {
+        throw new Error(sessionResult.error || 'Failed to create quick create session.');
+      }
+
+      createdSessionNames.push(sessionResult.sessionName);
+
+      const launchContextResult = await resolvedDeps.saveSessionLaunchContext(sessionResult.sessionName, {
+        title,
+        initialMessage: normalizedInput.message,
+        rawInitialMessage: normalizedInput.message,
+        attachmentPaths: attachmentMetadata.attachmentPaths,
+        attachmentNames: attachmentMetadata.attachmentNames,
+        projectRepoPaths: sessionGitContext.projectRepoPaths,
+        projectRepoRelativePaths: sessionGitContext.projectRepoRelativePaths,
         agentProvider: routingSettings.provider,
         model: routingSettings.model,
         reasoningEffort: routingResult.reasoningEffort,
-        title,
-        workspacePreference: 'workspace',
-      },
-    );
+        sessionMode: 'plan',
+      });
 
-    if (!sessionResult.success || !sessionResult.sessionName) {
-      throw new Error(sessionResult.error || 'Failed to create quick create session.');
+      if (!launchContextResult.success) {
+        throw new Error(launchContextResult.error || 'Failed to save quick create launch context.');
+      }
+
+      const startupPrompt = buildAgentStartupPrompt({
+        taskDescription: normalizedInput.message,
+        attachmentPaths: attachmentMetadata.attachmentPaths,
+        sessionMode: 'plan',
+        workspaceMode: sessionResult.workspaceMode || 'folder',
+        workspaceFolders: sessionResult.workspaceFolders,
+        gitRepos: sessionResult.gitRepos,
+        discoveredRepoRelativePaths: sessionGitContext.projectRepoRelativePaths,
+      });
+
+      if (!startupPrompt) {
+        throw new Error('Quick create task description is missing.');
+      }
+
+      const turnResult = await resolvedDeps.startSessionTurn({
+        sessionId: sessionResult.sessionName,
+        message: startupPrompt,
+        displayMessage: startupPrompt,
+        markInitialized: true,
+      });
+
+      if (!turnResult.success) {
+        throw new Error(turnResult.error || 'Failed to queue quick create agent turn.');
+      }
+
+      sessionIds.push(sessionResult.sessionName);
     }
 
-    createdSessionName = sessionResult.sessionName;
-
-    const launchContextResult = await resolvedDeps.saveSessionLaunchContext(sessionResult.sessionName, {
-      title,
-      initialMessage: normalizedInput.message,
-      rawInitialMessage: normalizedInput.message,
-      attachmentPaths: attachmentMetadata.attachmentPaths,
-      attachmentNames: attachmentMetadata.attachmentNames,
-      projectRepoPaths: sessionGitContext.projectRepoPaths,
-      projectRepoRelativePaths: sessionGitContext.projectRepoRelativePaths,
-      agentProvider: routingSettings.provider,
-      model: routingSettings.model,
-      reasoningEffort: routingResult.reasoningEffort,
-      sessionMode: 'plan',
-    });
-
-    if (!launchContextResult.success) {
-      throw new Error(launchContextResult.error || 'Failed to save quick create launch context.');
-    }
-
-    const startupPrompt = buildAgentStartupPrompt({
-      taskDescription: normalizedInput.message,
-      attachmentPaths: attachmentMetadata.attachmentPaths,
-      sessionMode: 'plan',
-      workspaceMode: sessionResult.workspaceMode || 'folder',
-      workspaceFolders: sessionResult.workspaceFolders,
-      gitRepos: sessionResult.gitRepos,
-      discoveredRepoRelativePaths: sessionGitContext.projectRepoRelativePaths,
-    });
-
-    if (!startupPrompt) {
-      throw new Error('Quick create task description is missing.');
-    }
-
-    const turnResult = await resolvedDeps.startSessionTurn({
-      sessionId: sessionResult.sessionName,
-      message: startupPrompt,
-      displayMessage: startupPrompt,
-      markInitialized: true,
-    });
-
-    if (!turnResult.success) {
-      throw new Error(turnResult.error || 'Failed to queue quick create agent turn.');
+    for (const target of materializedTargets) {
+      await moveProjectToRecent(target.projectId, resolvedDeps);
     }
 
     await removeQuickCreateDraftIfPresent(normalizedInput.draftId);
 
     return {
       status: 'succeeded',
-      sessionId: sessionResult.sessionName,
-      projectId: routingResult.projectId,
-      projectPath: routingResult.projectPath,
+      sessionId: sessionIds[0]!,
+      sessionIds,
+      projectId: materializedTargets[0]!.projectId,
+      projectIds: materializedTargets.map((target) => target.projectId),
+      projectPath: materializedTargets[0]!.projectPath,
+      projectPaths: materializedTargets.map((target) => target.projectPath),
+      projectNames: materializedTargets.map((target) => target.projectName),
       draftId: normalizedInput.draftId || undefined,
     };
   } catch (error) {
-    if (createdSessionName) {
+    for (const createdSessionName of createdSessionNames.reverse()) {
       try {
         await resolvedDeps.deleteSession(createdSessionName);
       } catch (cleanupError) {
@@ -774,8 +1011,12 @@ export async function startQuickCreateTask(input: QuickCreateTaskInput): Promise
         activeCount: nextActiveCount,
         sourceTabId: normalizedInput.sourceTabId,
         sessionId: result.status === 'succeeded' ? result.sessionId : undefined,
+        sessionIds: result.status === 'succeeded' ? result.sessionIds : undefined,
         projectId: result.status === 'succeeded' ? result.projectId : undefined,
+        projectIds: result.status === 'succeeded' ? result.projectIds : undefined,
         projectPath: result.status === 'succeeded' ? result.projectPath : undefined,
+        projectPaths: result.status === 'succeeded' ? result.projectPaths : undefined,
+        projectNames: result.status === 'succeeded' ? result.projectNames : undefined,
         draftId: result.draftId,
         error: result.status === 'failed' ? result.error : undefined,
       });

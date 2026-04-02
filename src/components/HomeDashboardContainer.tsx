@@ -62,6 +62,7 @@ import {
   resolveClientProjectReference,
   resolveClientRecentProjects,
 } from '@/lib/project-client';
+import type { ProjectMentionSuggestionCandidate } from '@/lib/project-mention-suggestions';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import { getQuickCreateTabId, subscribeToQuickCreateJobUpdates } from '@/lib/quick-create-updates';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
@@ -1159,6 +1160,21 @@ export default function HomeDashboardContainer({
     return settings.serviceStartCommand?.trim() || '';
   }, [config?.projectSettings, resolveProjectEntry]);
 
+  const quickCreateProjectMentionCandidates = useMemo<ProjectMentionSuggestionCandidate[]>(() => (
+    projects.map((project) => {
+      const alias = config?.projectSettings?.[project.id]?.alias?.trim()
+        || (project.folderPaths[0] ? config?.projectSettings?.[project.folderPaths[0]]?.alias?.trim() : '');
+      return {
+        suggestion: alias || project.name,
+        aliases: [
+          project.name,
+          alias || '',
+          ...project.folderPaths.map((folderPath) => folderPath.split(/[\\/]/).filter(Boolean).pop() || ''),
+        ].filter(Boolean),
+      };
+    })
+  ), [config?.projectSettings, projects]);
+
   useEffect(() => {
     const unsubscribe = subscribeToQuickCreateJobUpdates((payload) => {
       setQuickCreateActiveCount(payload.activeCount);
@@ -1168,20 +1184,28 @@ export default function HomeDashboardContainer({
         return;
       }
 
-      if (payload.status === 'succeeded' && payload.sessionId && payload.projectPath) {
-        const { projectPath, sessionId } = payload;
-        const projectLabel = getProjectDisplayName(projectPath);
+      if (payload.status === 'succeeded' && payload.sessionId) {
+        const sessionIds = payload.sessionIds?.length ? payload.sessionIds : [payload.sessionId];
+        const projectLabels = (payload.projectNames?.length
+          ? payload.projectNames
+          : (payload.projectPaths?.length
+              ? payload.projectPaths.map((projectPath) => getProjectDisplayName(projectPath))
+              : (payload.projectPath ? [getProjectDisplayName(payload.projectPath)] : [])))
+          .filter(Boolean);
+        const description = projectLabels.length <= 1
+          ? `Created a new task for ${projectLabels[0] || 'the selected project'}.`
+          : `Created ${sessionIds.length} tasks for ${projectLabels.join(', ')}.`;
         toast({
           type: 'success',
           title: 'Quick create finished',
-          description: `Created a new task for ${projectLabel}.`,
+          description,
           action: (
             <button
               type="button"
               className="app-ui-button"
-              onClick={() => router.push(`/session/${encodeURIComponent(sessionId)}`)}
+              onClick={() => router.push(`/session/${encodeURIComponent(sessionIds[0]!)}`)}
             >
-              Open Task
+              {sessionIds.length > 1 ? 'Open First Task' : 'Open Task'}
             </button>
           ),
         });
@@ -1634,6 +1658,8 @@ export default function HomeDashboardContainer({
         isOpen={isQuickCreateDialogOpen}
         draft={quickCreateDraftForEdit}
         defaultRoot={config?.defaultRoot || undefined}
+        defaultAgentProvider={config?.defaultAgentProvider}
+        projectMentionCandidates={quickCreateProjectMentionCandidates}
         onClose={handleCloseQuickCreateDialog}
         onSubmit={handleSubmitQuickCreateTask}
       />

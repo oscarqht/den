@@ -138,6 +138,11 @@ function createWorkflowDependencies(overrides: Record<string, unknown> = {}) {
       }],
     })),
     unregisterAgentSession: mock.fn(() => true),
+    createProjectFromDefaultRoot: mock.fn(async (projectName: string) => ({
+      projectId: `${projectName}-id`,
+      projectPath: path.join(getWorkspaceRoot(), projectName),
+      projectName,
+    })),
     ...overrides,
   };
 
@@ -156,8 +161,12 @@ describe('executeQuickCreateTaskJob', () => {
     assert.deepStrictEqual(result, {
       status: 'succeeded',
       sessionId: 'session-1',
+      sessionIds: ['session-1'],
       projectId: getProjectId(),
+      projectIds: [getProjectId()],
       projectPath: getProjectPath(),
+      projectPaths: [getProjectPath()],
+      projectNames: ['project-a'],
       draftId: undefined,
     });
 
@@ -194,5 +203,117 @@ describe('executeQuickCreateTaskJob', () => {
     const deleteResult = await quickCreateModule.deleteQuickCreateDraft(drafts[0]!.id);
     assert.equal(deleteResult.success, true);
     assert.equal((await quickCreateModule.listQuickCreateDrafts()).length, 0);
+  });
+
+  it('creates one session per routed project target', async () => {
+    await mkdir(path.join(getWorkspaceRoot(), 'project-b'), { recursive: true });
+    let createSessionCount = 0;
+    const dependencies = createWorkflowDependencies({
+      getProjects: mock.fn(() => [
+        {
+          id: getProjectId(),
+          name: 'project-a',
+          folderPaths: [getProjectPath()],
+        },
+        {
+          id: 'project-b-id',
+          name: 'project-b',
+          folderPaths: [path.join(getWorkspaceRoot(), 'project-b')],
+        },
+      ]),
+      hydrateAgentSessionHistory: mock.fn(async () => ({
+        snapshot: {} as never,
+        history: [{
+          kind: 'assistant',
+          id: 'assistant-1',
+          text: JSON.stringify({
+            targets: [
+              {
+                type: 'existing',
+                projectId: getProjectId(),
+                projectPath: getProjectPath(),
+                reason: 'The task references project a.',
+              },
+              {
+                type: 'existing',
+                projectId: 'project-b-id',
+                projectPath: path.join(getWorkspaceRoot(), 'project-b'),
+                reason: 'The task also references project b.',
+              },
+            ],
+            reasoningEffort: 'minimal',
+            reason: 'The task spans two projects.',
+          }),
+          phase: null,
+        }],
+      })),
+      createSession: mock.fn(async () => {
+        createSessionCount += 1;
+        return {
+          success: true,
+          sessionName: `session-${createSessionCount}`,
+          workspacePath: getSessionWorkspacePath(),
+          workspaceMode: 'single_worktree',
+          activeRepoPath: getProjectPath(),
+          gitRepos: [{
+            sourceRepoPath: getProjectPath(),
+            relativeRepoPath: '',
+            worktreePath: getSessionWorkspacePath(),
+            branchName: 'palx/session-1',
+            baseBranch: 'main',
+          }],
+        };
+      }),
+    });
+
+    const result = await quickCreateModule.executeQuickCreateTaskJob({
+      message: 'Fix bug in ai and ak project.',
+    }, dependencies as never);
+
+    assert.deepStrictEqual(result, {
+      status: 'succeeded',
+      sessionId: 'session-1',
+      sessionIds: ['session-1', 'session-2'],
+      projectId: getProjectId(),
+      projectIds: [getProjectId(), 'project-b-id'],
+      projectPath: getProjectPath(),
+      projectPaths: [getProjectPath(), path.join(getWorkspaceRoot(), 'project-b')],
+      projectNames: ['project-a', 'project-b'],
+      draftId: undefined,
+    });
+
+    assert.equal(dependencies.createSession.mock.callCount(), 2);
+  });
+
+  it('creates a new project under the default root when routing returns a new target', async () => {
+    const dependencies = createWorkflowDependencies({
+      getProjects: mock.fn(() => []),
+      hydrateAgentSessionHistory: mock.fn(async () => ({
+        snapshot: {} as never,
+        history: [{
+          kind: 'assistant',
+          id: 'assistant-1',
+          text: JSON.stringify({
+            targets: [{
+              type: 'new',
+              projectName: 'ak',
+              reason: 'No suitable existing project matches.',
+            }],
+            reasoningEffort: 'medium',
+            reason: 'This task needs a new project.',
+          }),
+          phase: null,
+        }],
+      })),
+    });
+
+    const result = await quickCreateModule.executeQuickCreateTaskJob({
+      message: 'Create a new task for the ak project.',
+    }, dependencies as never);
+
+    assert.equal(result.status, 'succeeded');
+    assert.deepStrictEqual(result.projectNames, ['ak']);
+    assert.equal(dependencies.createProjectFromDefaultRoot.mock.callCount(), 1);
+    assert.equal(dependencies.createProjectFromDefaultRoot.mock.calls[0]?.arguments[0], 'ak');
   });
 });

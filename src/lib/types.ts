@@ -136,8 +136,12 @@ export type QuickCreateJobUpdatePayload = {
   activeCount: number;
   sourceTabId?: string | null;
   sessionId?: string;
+  sessionIds?: string[];
   projectId?: string;
+  projectIds?: string[];
   projectPath?: string;
+  projectPaths?: string[];
+  projectNames?: string[];
   draftId?: string;
   error?: string;
   timestamp: string;

@@ -1,12 +1,21 @@
 'use client';
 
+import { listInstalledAgentSkills } from '@/app/actions/git';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
+import { buildProjectMentionSuggestions, type ProjectMentionSuggestionCandidate } from '@/lib/project-mention-suggestions';
 import type { QuickCreateDraft } from '@/lib/quick-create';
+import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
+import {
+  findActiveMention,
+  replaceActiveMention,
+  type ActiveMention,
+} from '@/lib/task-description-mentions';
 import { getBaseName } from '@/lib/path';
 import { SESSION_MOBILE_VIEWPORT_QUERY } from '@/lib/responsive';
 import { uploadAttachments } from '@/lib/upload-attachments';
 import { shouldUseDeviceFilePicker } from '@/lib/url';
+import type { AgentProvider } from '@/lib/types';
 import { CloudDownload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -20,9 +29,19 @@ type QuickCreateTaskDialogProps = {
   isOpen: boolean;
   draft?: QuickCreateDraft | null;
   defaultRoot?: string;
+  defaultAgentProvider?: AgentProvider;
+  projectMentionCandidates: ProjectMentionSuggestionCandidate[];
   onClose: () => void;
   onSubmit: (input: QuickCreateSubmitInput) => Promise<{ success: boolean; error?: string }>;
 };
+
+function areMentionsEqual(left: ActiveMention | null, right: ActiveMention | null): boolean {
+  if (!left || !right) return left === right;
+  return left.trigger === right.trigger
+    && left.start === right.start
+    && left.end === right.end
+    && left.query === right.query;
+}
 
 function getClipboardImageFiles(data: DataTransfer | null): File[] {
   if (!data) return [];
@@ -51,6 +70,8 @@ export function QuickCreateTaskDialog({
   isOpen,
   draft = null,
   defaultRoot,
+  defaultAgentProvider,
+  projectMentionCandidates,
   onClose,
   onSubmit,
 }: QuickCreateTaskDialogProps) {
@@ -63,7 +84,16 @@ export function QuickCreateTaskDialog({
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
+  const [suggestionList, setSuggestionList] = useState<string[]>([]);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [skillSuggestionsByProvider, setSkillSuggestionsByProvider] = useState<Partial<Record<AgentProvider, string[]>>>({});
   const mobileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const latestMessageRef = useRef('');
+  const latestCursorPositionRef = useRef(0);
+  const latestProviderRef = useRef<AgentProvider | undefined>(defaultAgentProvider);
 
   useEffect(() => {
     if (!isOpen) {
@@ -71,10 +101,16 @@ export function QuickCreateTaskDialog({
       setIsSubmitting(false);
       setIsPastingAttachments(false);
       setIsUploadingAttachments(false);
+      setActiveMention(null);
+      setSuggestionList([]);
+      setSelectedSuggestionIndex(0);
+      setShowSuggestions(false);
       return;
     }
 
     setMessage(draft?.message ?? '');
+    latestMessageRef.current = draft?.message ?? '';
+    latestCursorPositionRef.current = latestMessageRef.current.length;
     setAttachmentPaths(draft?.attachmentPaths ?? []);
     setAttachmentNamespaceId(createAttachmentNamespaceId(draft));
     setError(draft?.lastError ?? null);
@@ -82,7 +118,15 @@ export function QuickCreateTaskDialog({
     setIsPastingAttachments(false);
     setIsUploadingAttachments(false);
     setIsAttachmentBrowserOpen(false);
+    setActiveMention(null);
+    setSuggestionList([]);
+    setSelectedSuggestionIndex(0);
+    setShowSuggestions(false);
   }, [draft, isOpen]);
+
+  useEffect(() => {
+    latestProviderRef.current = defaultAgentProvider;
+  }, [defaultAgentProvider]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -103,6 +147,88 @@ export function QuickCreateTaskDialog({
     ])));
     setError(null);
   }, []);
+
+  const hideSuggestions = useCallback(() => {
+    setActiveMention(null);
+    setSuggestionList([]);
+    setSelectedSuggestionIndex(0);
+    setShowSuggestions(false);
+  }, []);
+
+  const applySuggestionList = useCallback((mention: ActiveMention, suggestions: string[]) => {
+    setActiveMention(mention);
+    setSuggestionList(suggestions);
+    setSelectedSuggestionIndex(0);
+    setShowSuggestions(suggestions.length > 0);
+  }, []);
+
+  const refreshMentionSuggestions = useCallback(async (value: string, position: number) => {
+    latestMessageRef.current = value;
+    latestCursorPositionRef.current = position;
+
+    const mention = findActiveMention(value, position);
+    if (!mention) {
+      hideSuggestions();
+      return;
+    }
+
+    setActiveMention(mention);
+
+    if (mention.trigger === '@') {
+      const suggestions = buildProjectMentionSuggestions({
+        query: mention.query,
+        candidates: projectMentionCandidates,
+      });
+      applySuggestionList(mention, suggestions);
+      return;
+    }
+
+    const provider = latestProviderRef.current;
+    if (!provider) {
+      applySuggestionList(mention, []);
+      return;
+    }
+
+    let installedSkills = skillSuggestionsByProvider[provider];
+    if (!Object.prototype.hasOwnProperty.call(skillSuggestionsByProvider, provider)) {
+      installedSkills = await listInstalledAgentSkills(provider);
+      setSkillSuggestionsByProvider((previous) => (
+        Object.prototype.hasOwnProperty.call(previous, provider)
+          ? previous
+          : { ...previous, [provider]: installedSkills ?? [] }
+      ));
+    }
+
+    const latestMention = findActiveMention(latestMessageRef.current, latestCursorPositionRef.current);
+    if (!areMentionsEqual(latestMention, mention) || latestProviderRef.current !== provider) {
+      return;
+    }
+
+    const suggestions = buildSkillMentionSuggestions(mention.query, installedSkills ?? []);
+    applySuggestionList(mention, suggestions);
+  }, [
+    applySuggestionList,
+    hideSuggestions,
+    projectMentionCandidates,
+    skillSuggestionsByProvider,
+  ]);
+
+  const handleSelectSuggestion = useCallback((suggestion: string) => {
+    if (!activeMention) return;
+
+    const result = replaceActiveMention(message, activeMention, suggestion);
+    latestMessageRef.current = result.value;
+    latestCursorPositionRef.current = result.cursorPosition;
+    setMessage(result.value);
+    hideSuggestions();
+
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(result.cursorPosition, result.cursorPosition);
+    });
+  }, [activeMention, hideSuggestions, message]);
 
   const handleTaskDescriptionPaste = useCallback(async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFiles = getClipboardImageFiles(event.clipboardData);
@@ -255,29 +381,100 @@ export function QuickCreateTaskDialog({
               >
                 Task Description
               </label>
-              <textarea
-                id="quick-create-message"
-                className="min-h-[260px] w-full flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 app-dark-input"
-                placeholder={`Describe the task for the AI agent...\n\nExample:\n- Fix the broken checkout total on mobile.\n- Update the failing API integration tests.\n- Add screenshots or logs as attachments if useful.`}
-                value={message}
-                onChange={(event) => {
-                  setMessage(event.target.value);
-                  if (error) {
-                    setError(null);
-                  }
-                }}
-                onPaste={(event) => {
-                  void handleTaskDescriptionPaste(event);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' || event.shiftKey) return;
-                  event.preventDefault();
-                  void handleSubmit();
-                }}
-                disabled={isSubmitting}
-              />
+              <div className="relative flex flex-1 flex-col">
+                <textarea
+                  ref={textareaRef}
+                  id="quick-create-message"
+                  className="min-h-[260px] w-full flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 app-dark-input"
+                  placeholder={`Describe the task for the AI agent...\n\nExample:\n- Fix the broken checkout total on mobile.\n- Update the failing API integration tests.\n- Add screenshots or logs as attachments if useful.\n\nTip: Type @ to mention projects and $ to mention skills.`}
+                  value={message}
+                  onChange={(event) => {
+                    setMessage(event.target.value);
+                    if (error) {
+                      setError(null);
+                    }
+                    void refreshMentionSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
+                  }}
+                  onClick={(event) => {
+                    void refreshMentionSuggestions(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                  }}
+                  onKeyUp={(event) => {
+                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'Enter' || event.key === 'Tab' || event.key === 'Escape') {
+                      return;
+                    }
+                    void refreshMentionSuggestions(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                  }}
+                  onPaste={(event) => {
+                    void handleTaskDescriptionPaste(event);
+                  }}
+                  onKeyDown={(event) => {
+                    if (showSuggestions && suggestionList.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setSelectedSuggestionIndex((current) => (
+                          current + 1 >= suggestionList.length ? 0 : current + 1
+                        ));
+                        return;
+                      }
+
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setSelectedSuggestionIndex((current) => (
+                          current === 0 ? suggestionList.length - 1 : current - 1
+                        ));
+                        return;
+                      }
+
+                      if (event.key === 'Enter' || event.key === 'Tab') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleSelectSuggestion(suggestionList[selectedSuggestionIndex]!);
+                        return;
+                      }
+
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        hideSuggestions();
+                        return;
+                      }
+                    }
+
+                    if (event.key !== 'Enter' || event.shiftKey) return;
+                    event.preventDefault();
+                    void handleSubmit();
+                  }}
+                  disabled={isSubmitting}
+                />
+
+                {showSuggestions && suggestionList.length > 0 ? (
+                  <div className="absolute inset-x-0 top-full z-10 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-slate-900">
+                    <ul className="max-h-56 overflow-y-auto py-1">
+                      {suggestionList.map((suggestion, index) => (
+                        <li key={`${suggestion}-${index}`}>
+                          <button
+                            type="button"
+                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${index === selectedSuggestionIndex ? 'bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5'}`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectSuggestion(suggestion);
+                            }}
+                          >
+                            <span className="truncate">{suggestion}</span>
+                            <span className="ml-3 shrink-0 text-[11px] uppercase tracking-wide text-slate-400">
+                              {activeMention?.trigger === '@' ? 'Project' : 'Skill'}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Press Enter to start background create, Shift+Enter for a new line.
+                Press Enter to start background create, Shift+Enter for a new line, and Enter or Tab to accept an active mention suggestion.
               </p>
             </div>
 

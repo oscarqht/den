@@ -8,6 +8,7 @@ import {
   getSessionMetadata,
   markSessionInitialized,
   readSessionLaunchContext,
+  updateSessionAgentRuntimeState,
 } from '@/app/actions/session';
 import { getAgentAdapter } from '@/lib/agent/providers';
 import {
@@ -38,6 +39,7 @@ import type {
   ChatStreamEvent,
   FileChange,
   HistoryEntry,
+  ReasoningEffort,
   SessionAgentHistoryInput,
   SessionAgentHistoryItem,
   SessionAgentRunState,
@@ -51,6 +53,7 @@ type StartTurnInput = {
   message: string;
   displayMessage?: string | null;
   attachmentPaths?: string[];
+  reasoningEffort?: ReasoningEffort | null;
   markInitialized?: boolean;
 };
 
@@ -790,6 +793,18 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
   if (!provider) {
     return { success: false, error: 'Session agent provider is missing.' };
   }
+
+  let effectiveReasoningEffort = metadata.reasoningEffort ?? null;
+  if (input.reasoningEffort !== undefined && input.reasoningEffort !== metadata.reasoningEffort) {
+    const updateResult = await updateSessionAgentRuntimeState(sessionId, {
+      reasoningEffort: input.reasoningEffort,
+    });
+    if (!updateResult.success) {
+      return { success: false, error: updateResult.error || 'Failed to update reasoning effort.' };
+    }
+    effectiveReasoningEffort = updateResult.runtime?.reasoningEffort ?? null;
+  }
+
   const extraEnv = await resolveSessionGitAuthEnv(metadata);
 
   const adapter = getAgentAdapter(provider as AgentProvider);
@@ -827,7 +842,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
         threadId: metadata.threadId ?? null,
         message,
         model: metadata.model || null,
-        reasoningEffort: metadata.reasoningEffort ?? null,
+        reasoningEffort: effectiveReasoningEffort,
         extraEnv,
       }, async (event) => {
         projector.applyEvent(event as ChatStreamEvent);

@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   ExternalLink,
   FolderOpen,
   GitBranch,
@@ -57,7 +58,7 @@ import {
   SESSION_CANVAS_DEFAULT_EXPLORER_WIDTH,
   shouldBootstrapSessionCanvasTerminalPanel,
 } from '@/lib/session-canvas';
-import AgentSessionPane from '@/components/AgentSessionPane';
+import AgentSessionPane, { type AgentSessionHeaderMeta } from '@/components/AgentSessionPane';
 import {
   insertPathsIntoAgentInput,
   shouldAutoStartSessionCanvasAgentTurn,
@@ -1304,7 +1305,7 @@ export function SessionCanvasWorkspace({
   const agentInputHandlesRef = useRef<Record<string, SessionCanvasAgentInputHandle | null>>({});
   const [layout, setLayout] = useState<SessionCanvasLayout>(bootstrap.layout);
   const [activePanelId, setActivePanelId] = useState<string | null>(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
-  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
+  const [agentHeaderMetaByPanelId, setAgentHeaderMetaByPanelId] = useState<Record<string, AgentSessionHeaderMeta>>({});
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileExplorerCollapsed, setMobileExplorerCollapsed] = useState(true);
   const [terminalServiceReady, setTerminalServiceReady] = useState(false);
@@ -1492,7 +1493,6 @@ export function SessionCanvasWorkspace({
   useEffect(() => {
     setLayout(bootstrap.layout);
     setActivePanelId(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
-    setSelectedPanelId(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
     setMobileExplorerCollapsed(true);
     setAgentFileTargetPanelId(null);
     setIsAgentFileBrowserOpen(false);
@@ -1503,6 +1503,7 @@ export function SessionCanvasWorkspace({
     setCommandPaletteLoading(false);
     setCommandPaletteError(null);
     setCommandPaletteHighlightedIndex(0);
+    setAgentHeaderMetaByPanelId({});
     commandPaletteRequestIdRef.current = 0;
     agentInputHandlesRef.current = {};
     didHydrateLayoutRef.current = false;
@@ -1584,6 +1585,13 @@ export function SessionCanvasWorkspace({
         delete agentInputHandlesRef.current[panelId];
       }
     }
+    setAgentHeaderMetaByPanelId((current) => {
+      const nextEntries = Object.entries(current).filter(([panelId]) => activePanelIds.has(panelId));
+      if (nextEntries.length === Object.keys(current).length) {
+        return current;
+      }
+      return Object.fromEntries(nextEntries);
+    });
 
     setAgentFileTargetPanelId((current) => {
       if (!current || activePanelIds.has(current)) {
@@ -1600,7 +1608,6 @@ export function SessionCanvasWorkspace({
 
   const focusPanel = useCallback((panelId: string) => {
     setActivePanelId(panelId);
-    setSelectedPanelId(panelId);
     if (isMobileViewport) {
       return;
     }
@@ -1700,7 +1707,6 @@ export function SessionCanvasWorkspace({
       );
     });
     setActivePanelId(panelId);
-    setSelectedPanelId(panelId);
   }, [getMaximizedPanelBounds]);
 
   const restorePanel = useCallback((panelId: string) => {
@@ -1728,19 +1734,19 @@ export function SessionCanvasWorkspace({
       );
     });
     setActivePanelId(panelId);
-    setSelectedPanelId(panelId);
   }, []);
 
   const closePanel = useCallback((panelId: string) => {
+    let nextActivePanelId: string | null = null;
     setLayout((previous) => {
       const remainingPanels = previous.panels.filter((panel) => panel.id !== panelId);
+      nextActivePanelId = getDefaultSessionCanvasPanelId(remainingPanels);
       return {
         ...previous,
         panels: remainingPanels,
       };
     });
-    setActivePanelId((current) => (current === panelId ? null : current));
-    setSelectedPanelId((current) => (current === panelId ? null : current));
+    setActivePanelId((current) => (current === panelId ? nextActivePanelId : current));
   }, []);
 
   const updatePanel = useCallback((panelId: string, updates: Partial<SessionCanvasPanel>) => {
@@ -1835,7 +1841,6 @@ export function SessionCanvasWorkspace({
       ],
     }));
     setActivePanelId(panel.id);
-    setSelectedPanelId(panel.id);
   }, []);
 
   const openFileViewer = useCallback((filePath: string) => {
@@ -1849,7 +1854,6 @@ export function SessionCanvasWorkspace({
 
       if (existingPanel) {
         setActivePanelId(existingPanel.id);
-        setSelectedPanelId(existingPanel.id);
         if (isMobileViewport) {
           return previous;
         }
@@ -1876,7 +1880,6 @@ export function SessionCanvasWorkspace({
       };
 
       setActivePanelId(newPanel.id);
-      setSelectedPanelId(newPanel.id);
       return {
         ...previous,
         explorer: {
@@ -1958,6 +1961,27 @@ export function SessionCanvasWorkspace({
     }
     delete agentInputHandlesRef.current[panelId];
   }, []);
+
+  const handleAgentHeaderMetaChange = useCallback((panelId: string, meta: AgentSessionHeaderMeta) => {
+    setAgentHeaderMetaByPanelId((current) => {
+      const previous = current[panelId];
+      if (previous && JSON.stringify(previous) === JSON.stringify(meta)) {
+        return current;
+      }
+      return {
+        ...current,
+        [panelId]: meta,
+      };
+    });
+  }, []);
+
+  const handleSetAgentReasoningEffort = useCallback((panelId: string, effort: string) => {
+    const updated = agentInputHandlesRef.current[panelId]?.setReasoningEffort?.(effort) ?? false;
+    if (!updated) {
+      return;
+    }
+    focusPanel(panelId);
+  }, [focusPanel]);
 
   const insertPathsIntoAgentPanel = useCallback(async (targetPanelId: string | null, paths: string[]) => {
     if (!targetPanelId) {
@@ -2194,52 +2218,42 @@ export function SessionCanvasWorkspace({
   const handleCanvasWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
 
+    event.preventDefault();
     const rect = canvasRef.current.getBoundingClientRect();
     const pointerX = event.clientX - rect.left;
     const pointerY = event.clientY - rect.top;
+    const deltaUnit = event.deltaMode === 1
+      ? CANVAS_WHEEL_LINE_PIXELS
+      : (event.deltaMode === 2 ? CANVAS_WHEEL_PAGE_PIXELS : 1);
+    const scaledDeltaY = event.deltaY * deltaUnit;
 
-    if (event.ctrlKey || event.metaKey) {
-      event.preventDefault();
-      const deltaUnit = event.deltaMode === 1
-        ? CANVAS_WHEEL_LINE_PIXELS
-        : (event.deltaMode === 2 ? CANVAS_WHEEL_PAGE_PIXELS : 1);
-      const scaledDeltaY = event.deltaY * deltaUnit;
+    setLayout((previous) => {
+      const zoomFactor = Math.exp(-scaledDeltaY * CANVAS_ZOOM_SENSITIVITY);
+      const nextScale = clampSessionCanvasScale(previous.viewport.scale * zoomFactor);
+      if (nextScale === previous.viewport.scale) {
+        return previous;
+      }
 
-      setLayout((previous) => {
-        const zoomFactor = Math.exp(-scaledDeltaY * CANVAS_ZOOM_SENSITIVITY);
-        const nextScale = clampSessionCanvasScale(previous.viewport.scale * zoomFactor);
-        const worldX = (pointerX - previous.viewport.x) / previous.viewport.scale;
-        const worldY = (pointerY - previous.viewport.y) / previous.viewport.scale;
+      const worldX = (pointerX - previous.viewport.x) / previous.viewport.scale;
+      const worldY = (pointerY - previous.viewport.y) / previous.viewport.scale;
 
-        if (nextScale === previous.viewport.scale) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          viewport: {
-            x: pointerX - worldX * nextScale,
-            y: pointerY - worldY * nextScale,
-            scale: nextScale,
-          },
-        };
-      });
-      return;
-    }
-
-    event.preventDefault();
-    setLayout((previous) => ({
-      ...previous,
-      viewport: {
-        ...previous.viewport,
-        x: previous.viewport.x - event.deltaX,
-        y: previous.viewport.y - event.deltaY,
-      },
-    }));
+      return {
+        ...previous,
+        viewport: {
+          x: pointerX - worldX * nextScale,
+          y: pointerY - worldY * nextScale,
+          scale: nextScale,
+        },
+      };
+    });
   }, []);
 
   const beginViewportDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
+    if (event.button !== 0) return;
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest('[data-session-canvas-panel="true"]')) return;
+
+    event.preventDefault();
 
     dragViewportRef.current = {
       pointerId: event.pointerId,
@@ -2294,6 +2308,7 @@ export function SessionCanvasWorkspace({
             initialPrompt: bootstrap.initialAgentPrompt,
             runState: bootstrap.metadata.runState ?? null,
           }) ? bootstrap.initialAgentPrompt : null}
+          onHeaderMetaChange={(meta) => handleAgentHeaderMetaChange(panel.id, meta)}
           onRequestAddFiles={() => handleOpenAgentFileBrowser(panel.id)}
           isAddingFiles={isAgentFileInsertPending && agentFileTargetPanelId === panel.id}
           isMobileViewport={isMobileViewport}
@@ -2438,41 +2453,66 @@ export function SessionCanvasWorkspace({
   ]);
   const renderPanelHeaderActions = useCallback((panel: SessionCanvasPanel) => {
     if (panel.type === 'agent-terminal') {
+      const headerMeta = agentHeaderMetaByPanelId[panel.id];
       return (
-        <button
-          type="button"
-          className={panelHeaderButtonClass}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleOpenAgentFileBrowser(panel.id);
-          }}
-          disabled={isAgentFileInsertPending}
-          title="Browse files and insert absolute paths into the agent input"
-          aria-label="Add files"
-        >
-          <FolderOpen className="h-3.5 w-3.5" />
-          <span>Add Files</span>
-        </button>
+        <div className="flex items-center gap-2" data-panel-interactive="true">
+          {headerMeta?.reasoningEffortOptions?.length ? (
+            <>
+              <div className="relative" data-panel-interactive="true">
+                <select
+                  className="h-7 appearance-none rounded-md border border-slate-300 bg-white pl-2 pr-10 text-[11px] font-medium text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 app-dark-input"
+                  value={headerMeta.effectiveReasoningEffort || headerMeta.reasoningEffort || ''}
+                  onChange={(event) => {
+                    event.stopPropagation();
+                    handleSetAgentReasoningEffort(panel.id, event.target.value);
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  aria-label="Reasoning effort"
+                  data-panel-interactive="true"
+                >
+                  {headerMeta.reasoningEffortOptions.map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                  aria-hidden="true"
+                />
+              </div>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400" data-panel-interactive="true">
+                {headerMeta.hasPendingReasoningChange
+                  ? `Next: ${headerMeta.effectiveReasoningEffort} · Current: ${headerMeta.reasoningEffort || 'n/a'}`
+                  : `Current: ${headerMeta.effectiveReasoningEffort || headerMeta.reasoningEffort || 'n/a'}`}
+              </span>
+            </>
+          ) : null}
+          <button
+            type="button"
+            className={panelHeaderButtonClass}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleOpenAgentFileBrowser(panel.id);
+            }}
+            disabled={isAgentFileInsertPending}
+            title="Browse files and insert absolute paths into the agent input"
+            aria-label="Add files"
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+            <span>Add Files</span>
+          </button>
+        </div>
       );
     }
 
     return null;
-  }, [handleOpenAgentFileBrowser, isAgentFileInsertPending, panelHeaderButtonClass]);
+  }, [agentHeaderMetaByPanelId, handleOpenAgentFileBrowser, handleSetAgentReasoningEffort, isAgentFileInsertPending, panelHeaderButtonClass]);
 
   return (
-    <div
-      className="relative h-screen w-full overflow-hidden bg-[#f7f7f6] text-slate-900 app-dark-root"
-      onPointerDownCapture={(event) => {
-        if (!(event.target instanceof Element)) {
-          setSelectedPanelId(null);
-          return;
-        }
-
-        if (!event.target.closest('[data-session-canvas-panel="true"]')) {
-          setSelectedPanelId(null);
-        }
-      }}
-    >
+    <div className="relative h-screen w-full overflow-hidden bg-[#f7f7f6] text-slate-900 app-dark-root">
       <input
         ref={agentLocalFileInputRef}
         type="file"
@@ -2564,7 +2604,6 @@ export function SessionCanvasWorkspace({
                   scale={1}
                   interactionMode="stacked"
                   active={activePanelId === panel.id}
-                  selected={selectedPanelId === panel.id}
                   closable={panel.type !== 'agent-terminal'}
                   onFocus={focusPanel}
                   onUpdate={updatePanelGeometry}
@@ -2573,8 +2612,8 @@ export function SessionCanvasWorkspace({
                   onRestore={restorePanel}
                   headerActions={renderPanelHeaderActions(panel)}
                 >
-                    {renderPanel(panel)}
-                  </CanvasPanelFrame>
+                  {renderPanel(panel)}
+                </CanvasPanelFrame>
               </div>
             ))}
           </div>
@@ -2673,6 +2712,11 @@ export function SessionCanvasWorkspace({
               className="h-full w-full overflow-hidden"
               onWheel={handleCanvasWheel}
               onPointerDown={beginViewportDrag}
+              onDoubleClick={(event) => {
+                if (!(event.target instanceof Element)) return;
+                if (event.target.closest('[data-session-canvas-panel="true"]')) return;
+                handleFitPanels();
+              }}
               style={{
                 backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.35) 1px, transparent 1px)',
                 backgroundSize: `${scaledGridSize}px ${scaledGridSize}px`,
@@ -2691,14 +2735,13 @@ export function SessionCanvasWorkspace({
                     key={panel.id}
                     panel={panel}
                     scale={layout.viewport.scale}
-                  active={activePanelId === panel.id}
-                  selected={selectedPanelId === panel.id}
-                  closable={panel.type !== 'agent-terminal'}
-                  onFocus={focusPanel}
-                  onUpdate={updatePanelGeometry}
-                  onClose={closePanel}
-                  onMaximize={maximizePanel}
-                  onRestore={restorePanel}
+                    active={activePanelId === panel.id}
+                    closable={panel.type !== 'agent-terminal'}
+                    onFocus={focusPanel}
+                    onUpdate={updatePanelGeometry}
+                    onClose={closePanel}
+                    onMaximize={maximizePanel}
+                    onRestore={restorePanel}
                     headerActions={renderPanelHeaderActions(panel)}
                   >
                     {renderPanel(panel)}

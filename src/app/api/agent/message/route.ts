@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { startSessionTurn } from '@/lib/agent/session-manager';
+import { parseReasoningEffort } from '@/lib/agent/route-utils';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,7 @@ export async function POST(request: Request) {
     message?: string;
     displayMessage?: string | null;
     attachmentPaths?: string[];
+    reasoningEffort?: string | null;
     markInitialized?: boolean;
   } | null;
 
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
     message: body?.message ?? '',
     displayMessage: body?.displayMessage ?? null,
     attachmentPaths: Array.isArray(body?.attachmentPaths) ? body?.attachmentPaths : [],
+    reasoningEffort: parseReasoningEffort(body?.reasoningEffort),
     markInitialized: Boolean(body?.markInitialized),
   });
 

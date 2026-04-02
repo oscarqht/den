@@ -18,7 +18,6 @@ type CanvasPanelFrameProps = {
   scale: number;
   interactionMode?: 'canvas' | 'stacked';
   active: boolean;
-  selected: boolean;
   closable?: boolean;
   onFocus: (panelId: string) => void;
   onUpdate: (
@@ -62,7 +61,6 @@ function CanvasPanelFrameComponent({
   scale,
   interactionMode = 'canvas',
   active,
-  selected,
   closable = true,
   onFocus,
   onUpdate,
@@ -331,11 +329,9 @@ function CanvasPanelFrameComponent({
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white transition-shadow app-dark-panel ${
         isStacked ? 'relative h-full w-full' : 'absolute'
       } ${
-        selected
-          ? 'border-primary shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] ring-2 ring-primary/20 dark:border-[color:var(--app-dark-accent-hover)] dark:ring-0 dark:shadow-[0_0_0_1px_var(--app-dark-accent-hover),0_0_0_4px_rgba(201,143,98,0.18),var(--app-dark-shadow-elevated)]'
-          : active
-            ? 'border-slate-300 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-raised)]'
-            : 'border-slate-200 shadow-[0_12px_32px_-16px_rgba(15,23,42,0.4)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-panel)]'
+        active
+          ? 'border-slate-300 shadow-[0_18px_42px_-18px_rgba(15,23,42,0.48)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-raised)]'
+          : 'border-slate-200 shadow-[0_12px_32px_-16px_rgba(15,23,42,0.4)] dark:border-[color:var(--app-dark-border-subtle)] dark:shadow-[var(--app-dark-shadow-panel)]'
       }`}
       style={{
         left: isStacked ? undefined : panel.x,
@@ -346,15 +342,12 @@ function CanvasPanelFrameComponent({
         contain: 'layout paint',
       }}
       data-session-canvas-panel="true"
-      data-panel-selected={selected ? 'true' : 'false'}
       data-panel-active={active ? 'true' : 'false'}
       onPointerDownCapture={() => onFocus(panel.id)}
       onFocusCapture={() => onFocus(panel.id)}
       onMouseDown={() => onFocus(panel.id)}
       onWheelCapture={(event) => {
         if (isStacked) return;
-        if (!selected) return;
-        if (event.ctrlKey || event.metaKey) return;
         event.stopPropagation();
       }}
     >

@@ -177,7 +177,7 @@ export function HomeRepoCard({
               </div>
             </div>
 
-            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5">
               {isProjectServiceConfigured ? (
                 <div className="relative" ref={serviceMenuRef}>
                   <button

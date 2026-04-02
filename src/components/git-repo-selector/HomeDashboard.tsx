@@ -285,8 +285,8 @@ export function HomeDashboard({
           </div>
         ) : (
           <div
-            className="grid gap-4 sm:gap-5"
-            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 22rem))' }}
+            className="grid gap-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 20.25rem), 1fr))' }}
           >
             {filteredRecentProjects.map((project) => (
               <HomeRepoCard

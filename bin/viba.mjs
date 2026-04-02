@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "../src/lib/cli-args.mjs";
 import { syncNextNativeShims } from "../src/lib/next-native-shims.mjs";
 import { cleanupOrphanNextServers, startOrphanNextServerCleanupLoop } from "../src/lib/orphan-next-servers.mjs";
+import { withServerActionsEncryptionKey } from "../src/lib/server-actions-key.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -445,10 +446,11 @@ export async function resolveStartupPort(
 function runNext(args, env = process.env) {
   return new Promise((resolve, reject) => {
     const detached = false;
+    const nextEnv = withServerActionsEncryptionKey(env, { appRoot: APP_ROOT });
     const child = spawn(process.execPath, [getNextBin(), ...args], {
       cwd: APP_ROOT,
       stdio: "inherit",
-      env,
+      env: nextEnv,
       detached,
     });
     const supervisor = createChildProcessSupervisor(child, { detached });

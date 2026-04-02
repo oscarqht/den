@@ -1,5 +1,5 @@
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Plus, SmilePlus, Trash2, X } from 'lucide-react';
 import SessionFileBrowser from '@/components/SessionFileBrowser';
 import FileBrowser from '@/components/FileBrowser';
@@ -87,6 +87,20 @@ export function RepoSettingsDialog({
   const [isIconBrowserOpen, setIsIconBrowserOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false);
+  const emojiPickerContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isEmojiPickerOpen) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!emojiPickerContainerRef.current?.contains(event.target as Node)) {
+        setIsEmojiPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isEmojiPickerOpen]);
 
   if (!isOpen || !projectId) return null;
 
@@ -184,51 +198,51 @@ export function RepoSettingsDialog({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={iconPreviewUrl} alt="Project icon" className="h-full w-full object-cover" />
               </div>
-              <button
-                type="button"
-                className="app-ui-button"
-                disabled={isUploadingProjectIcon || isSavingProjectSettings}
-                onClick={() => setIsIconBrowserOpen(true)}
-              >
-                <ImagePlus className="h-4 w-4" />
-                Choose Icon
-              </button>
-              <button
-                type="button"
-                className="app-ui-button"
-                disabled={isUploadingProjectIcon || isSavingProjectSettings}
-                onClick={() => setIsEmojiPickerOpen((previous) => !previous)}
-              >
-                <SmilePlus className="h-4 w-4" />
-                Choose Emoji
-              </button>
-              {(projectIconPath || projectIconEmoji) && (
+              <div ref={emojiPickerContainerRef} className="relative flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  className="app-ui-button app-ui-button-danger"
+                  className="app-ui-button"
                   disabled={isUploadingProjectIcon || isSavingProjectSettings}
-                  onClick={onRemoveIcon}
+                  onClick={() => setIsIconBrowserOpen(true)}
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Remove
+                  <ImagePlus className="h-4 w-4" />
+                  Choose Icon
                 </button>
-              )}
+                <button
+                  type="button"
+                  className="app-ui-button"
+                  disabled={isUploadingProjectIcon || isSavingProjectSettings}
+                  onClick={() => setIsEmojiPickerOpen((previous) => !previous)}
+                >
+                  <SmilePlus className="h-4 w-4" />
+                  Choose Emoji
+                </button>
+                {(projectIconPath || projectIconEmoji) && (
+                  <button
+                    type="button"
+                    className="app-ui-button app-ui-button-danger"
+                    disabled={isUploadingProjectIcon || isSavingProjectSettings}
+                    onClick={onRemoveIcon}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove
+                  </button>
+                )}
+                {isEmojiPickerOpen ? (
+                  <div className="absolute left-0 top-full z-[1004] mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl app-dark-popover">
+                    <ProjectEmojiPicker
+                      onSelect={(iconEmoji) => {
+                        onChooseEmoji(iconEmoji);
+                        setIsEmojiPickerOpen(false);
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
               Supported: png, jpg, jpeg, webp, svg, ico. Max 2MB. Projects without a custom icon use the bundled default icon.
             </div>
-            {isEmojiPickerOpen ? (
-              <div className="relative">
-                <div className="absolute left-0 top-2 z-[1004] rounded-xl border border-slate-200 bg-white p-2 shadow-xl app-dark-popover">
-                  <ProjectEmojiPicker
-                    onSelect={(iconEmoji) => {
-                      onChooseEmoji(iconEmoji);
-                      setIsEmojiPickerOpen(false);
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="space-y-2">

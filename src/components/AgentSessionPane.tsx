@@ -124,17 +124,7 @@ type PendingMessage = {
   displayText: string;
 };
 
-type VirtualHistoryMetrics = {
-  end: number;
-  size: number;
-  start: number;
-};
-
-const HISTORY_ITEM_GAP_PX = 12;
-const HISTORY_ITEM_OVERSCAN_PX = 600;
-const VIRTUALIZED_HISTORY_MIN_COUNT = 80;
 const COMPOSER_MAX_HEIGHT = 112;
-const STREAMING_HISTORY_TAIL_COUNT = 4;
 const ACTIVE_TURN_REFRESH_INTERVAL_MS = 15_000;
 const SOCKET_IDLE_REFRESH_THRESHOLD_MS = 90_000;
 const POSSIBLE_STALE_THRESHOLD_MS = 5 * 60_000;
@@ -149,29 +139,6 @@ const PROVIDER_LABELS: Record<string, string> = {
 function providerLabel(provider: string | null | undefined) {
   if (!provider) return 'Agent';
   return PROVIDER_LABELS[provider] || provider;
-}
-
-function estimateHistoryItemHeight(item: SessionAgentHistoryItem) {
-  switch (item.kind) {
-    case 'user':
-      return 88;
-    case 'assistant':
-      return 164;
-    case 'reasoning':
-      return 116;
-    case 'plan': {
-      const stepCount = (item.steps?.length ?? 0) || parsePlanStepsFromText(item.text).length;
-      return Math.max(112, 92 + (stepCount * 36));
-    }
-    case 'command':
-      return 132;
-    case 'tool':
-      return 124;
-    case 'fileChange':
-      return 148;
-    default:
-      return 120;
-  }
 }
 
 function runStateTone(runState: SessionAgentRunState | null | undefined) {
@@ -744,7 +711,6 @@ function createPendingMessage(text: string, attachmentPaths: string[]): PendingM
 
 type MeasuredHistoryRowProps = {
   item: SessionAgentHistoryItem;
-  onMeasure: (key: string, height: number) => void;
   expandedItems: Record<string, boolean>;
   onToggleExpanded: (itemId: string, open: boolean) => void;
   planFallbackStepsById: Record<string, PlanStep[]>;
@@ -758,32 +724,9 @@ type RenderHistoryItemOptions = {
   planFallbackStepsById?: Record<string, PlanStep[]>;
 };
 
-function MeasuredHistoryRow({ item, onMeasure, expandedItems, onToggleExpanded, planFallbackStepsById }: MeasuredHistoryRowProps) {
-  const itemKey = item.id;
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const element = rowRef.current;
-    if (!element) return;
-
-    const reportSize = () => {
-      onMeasure(itemKey, element.getBoundingClientRect().height);
-    };
-
-    reportSize();
-
-    const observer = new ResizeObserver(() => {
-      reportSize();
-    });
-
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, [itemKey, onMeasure]);
-
+function MeasuredHistoryRow({ item, expandedItems, onToggleExpanded, planFallbackStepsById }: MeasuredHistoryRowProps) {
   return (
-    <div ref={rowRef} className="min-w-0 max-w-full">
+    <div className="min-w-0 max-w-full">
       {renderHistoryItem(item, {
         ...(item.itemStatus === 'sending' ? { status: 'sending', pulse: true } : {}),
         expandedItems,
@@ -864,10 +807,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const pendingSelectionRef = useRef<number | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const refreshTimerRef = useRef<number | null>(null);
-  const historySizeMapRef = useRef<Record<string, number>>({});
-  const [historySizeVersion, setHistorySizeVersion] = useState(0);
-  const [timelineScrollTop, setTimelineScrollTop] = useState(0);
-  const [timelineViewportHeight, setTimelineViewportHeight] = useState(0);
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Record<string, boolean>>({});
   const [lastSocketMessageAt, setLastSocketMessageAt] = useState<number | null>(null);
   const [possibleStale, setPossibleStale] = useState(false);
@@ -962,7 +901,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     if (!shouldStickToBottomRef.current) return;
 
     timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-  }, [historySizeVersion, loading, optimisticMessages, history]);
+  }, [displayHistory, loading]);
 
   useEffect(() => {
     latestComposerValueRef.current = composerValue;
@@ -1246,96 +1185,13 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
     return fallbackById;
   }, [displayHistory]);
-  const liveHistoryTailCount = useMemo(
-    () => Math.min(displayHistory.length, isTurnActive ? STREAMING_HISTORY_TAIL_COUNT : Math.min(2, displayHistory.length)),
-    [displayHistory.length, isTurnActive],
-  );
-  const virtualizedHistory = useMemo(
-    () => displayHistory.slice(0, Math.max(0, displayHistory.length - liveHistoryTailCount)),
-    [displayHistory, liveHistoryTailCount],
-  );
-  const liveTailHistory = useMemo(
-    () => displayHistory.slice(Math.max(0, displayHistory.length - liveHistoryTailCount)),
-    [displayHistory, liveHistoryTailCount],
-  );
-  const shouldVirtualizeHistory = virtualizedHistory.length >= VIRTUALIZED_HISTORY_MIN_COUNT;
-  const historyMetrics = useMemo(() => {
-    void historySizeVersion;
-    const metrics: VirtualHistoryMetrics[] = [];
-    let offset = 0;
-
-    virtualizedHistory.forEach((item, index) => {
-      const itemKey = item.id;
-      const size = historySizeMapRef.current[itemKey] ?? estimateHistoryItemHeight(item);
-      metrics.push({
-        start: offset,
-        size,
-        end: offset + size,
-      });
-      offset += size;
-      if (index < virtualizedHistory.length - 1) {
-        offset += HISTORY_ITEM_GAP_PX;
-      }
-    });
-
-    return {
-      items: metrics,
-      totalHeight: offset,
-    };
-  }, [historySizeVersion, virtualizedHistory]);
-  const visibleHistoryRange = useMemo(() => {
-    if (virtualizedHistory.length === 0) {
-      return { startIndex: 0, endIndex: -1 };
-    }
-
-    const viewportTop = Math.max(0, timelineScrollTop - HISTORY_ITEM_OVERSCAN_PX);
-    const viewportBottom = timelineScrollTop + timelineViewportHeight + HISTORY_ITEM_OVERSCAN_PX;
-    const metrics = historyMetrics.items;
-
-    let startIndex = 0;
-    while (startIndex < metrics.length && metrics[startIndex].end < viewportTop) {
-      startIndex += 1;
-    }
-
-    let endIndex = startIndex;
-    while (endIndex < metrics.length && metrics[endIndex].start <= viewportBottom) {
-      endIndex += 1;
-    }
-
-    return {
-      startIndex,
-      endIndex: Math.min(metrics.length - 1, Math.max(startIndex, endIndex - 1)),
-    };
-  }, [historyMetrics.items, timelineScrollTop, timelineViewportHeight, virtualizedHistory.length]);
-  const visibleHistoryItems = useMemo(() => {
-    if (visibleHistoryRange.endIndex < visibleHistoryRange.startIndex) return [];
-
-    return virtualizedHistory
-      .slice(visibleHistoryRange.startIndex, visibleHistoryRange.endIndex + 1)
-      .map((item, index) => {
-        const actualIndex = visibleHistoryRange.startIndex + index;
-        return {
-          item,
-          itemKey: item.id,
-          top: historyMetrics.items[actualIndex]?.start ?? 0,
-        };
-      });
-  }, [historyMetrics.items, virtualizedHistory, visibleHistoryRange.endIndex, visibleHistoryRange.startIndex]);
 
   useEffect(() => {
     const element = timelineRef.current;
     const content = timelineContentRef.current;
     if (!element || !content) return;
 
-    const updateViewport = () => {
-      setTimelineViewportHeight(element.clientHeight);
-      setTimelineScrollTop(element.scrollTop);
-    };
-
-    updateViewport();
-
     const observer = new ResizeObserver(() => {
-      updateViewport();
       if (shouldStickToBottomRef.current) {
         element.scrollTop = element.scrollHeight;
       }
@@ -1346,35 +1202,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     return () => {
       observer.disconnect();
     };
-  }, [displayHistory.length, liveTailHistory.length, virtualizedHistory.length]);
-
-  const handleMeasureHistoryItem = useCallback((key: string, height: number) => {
-    const nextHeight = Math.ceil(height);
-    if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
-    if (historySizeMapRef.current[key] === nextHeight) return;
-
-    historySizeMapRef.current = {
-      ...historySizeMapRef.current,
-      [key]: nextHeight,
-    };
-    setHistorySizeVersion((current) => current + 1);
-  }, []);
-
-  useEffect(() => {
-    const activeKeys = new Set(displayHistory.map((item) => item.id));
-    const currentKeys = Object.keys(historySizeMapRef.current);
-    if (currentKeys.every((key) => activeKeys.has(key))) return;
-
-    const nextSizeMap: Record<string, number> = {};
-    activeKeys.forEach((key) => {
-      const existing = historySizeMapRef.current[key];
-      if (typeof existing === 'number') {
-        nextSizeMap[key] = existing;
-      }
-    });
-    historySizeMapRef.current = nextSizeMap;
-    setHistorySizeVersion((current) => current + 1);
-  }, [displayHistory]);
+  }, [displayHistory.length]);
 
   useEffect(() => {
     const activeItemIds = new Set(displayHistory.map((item) => item.id));
@@ -1973,8 +1801,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
         className={AGENT_SESSION_TIMELINE_CLASSNAME}
         onScroll={(event) => {
           const target = event.currentTarget;
-          setTimelineScrollTop(target.scrollTop);
-          setTimelineViewportHeight(target.clientHeight);
           shouldStickToBottomRef.current = isTimelineNearBottom(target);
         }}
       >
@@ -1992,61 +1818,21 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                 No agent activity yet. Send a task below to start a background turn.
               </div>
             </div>
-          ) : !shouldVirtualizeHistory ? (
+          ) : (
+            // Keep the timeline in normal document flow. This pane mixes markdown and
+            // expandable cards, and absolute-position virtualization led to stale
+            // height placement that could overlap adjacent rows.
             <div className="space-y-3">
               {displayHistory.map((item) => (
                 <MeasuredHistoryRow
                   key={item.id}
                   item={item}
-                  onMeasure={handleMeasureHistoryItem}
                   expandedItems={expandedHistoryItems}
                   onToggleExpanded={handleToggleExpanded}
                   planFallbackStepsById={planFallbackStepsById}
                 />
               ))}
             </div>
-          ) : (
-            <>
-              {virtualizedHistory.length > 0 ? (
-                <div
-                  style={{
-                    height: historyMetrics.totalHeight,
-                    marginBottom: liveTailHistory.length > 0 ? HISTORY_ITEM_GAP_PX : 0,
-                    position: 'relative',
-                  }}
-                >
-                  {visibleHistoryItems.map(({ item, itemKey, top }) => (
-                    <div
-                      key={itemKey}
-                      className="absolute left-0 right-0"
-                      style={{ top }}
-                    >
-                      <MeasuredHistoryRow
-                        item={item}
-                        onMeasure={handleMeasureHistoryItem}
-                        expandedItems={expandedHistoryItems}
-                        onToggleExpanded={handleToggleExpanded}
-                        planFallbackStepsById={planFallbackStepsById}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {liveTailHistory.length > 0 ? (
-                <div className="space-y-3">
-                  {liveTailHistory.map((item) => (
-                    <MeasuredHistoryRow
-                      key={item.id}
-                      item={item}
-                      onMeasure={handleMeasureHistoryItem}
-                      expandedItems={expandedHistoryItems}
-                      onToggleExpanded={handleToggleExpanded}
-                      planFallbackStepsById={planFallbackStepsById}
-                    />
-                  ))}
-                </div>
-              ) : null}
-            </>
           )}
         </div>
       </div>

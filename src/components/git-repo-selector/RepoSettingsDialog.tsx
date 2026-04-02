@@ -110,36 +110,37 @@ export function RepoSettingsDialog({
   return (
     <>
       <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm app-dark-overlay">
-        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 app-dark-modal-header">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Project Settings</h3>
-          <button
-            className="app-ui-icon-button"
-            onClick={onClose}
-            disabled={isSavingProjectSettings || isUploadingProjectIcon}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-5 p-5 md:p-6">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project ID</label>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 app-dark-surface-raised">
-              {projectId}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Name</label>
-            <input
-              className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
-              value={projectName}
-              onChange={(event) => onNameChange(event.target.value)}
-              placeholder="Project name"
+        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl app-dark-modal">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6 app-dark-modal-header">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Project Settings</h3>
+            <button
+              className="app-ui-icon-button"
+              onClick={onClose}
               disabled={isSavingProjectSettings || isUploadingProjectIcon}
-            />
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+
+          <div className="min-h-0 overflow-y-auto">
+            <div className="space-y-5 p-5 md:p-6">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project ID</label>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 app-dark-surface-raised">
+                  {projectId}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Project Name</label>
+                <input
+                  className="input w-full border-slate-200 bg-slate-50 text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
+                  value={projectName}
+                  onChange={(event) => onNameChange(event.target.value)}
+                  placeholder="Project name"
+                  disabled={isSavingProjectSettings || isUploadingProjectIcon}
+                />
+              </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -307,20 +308,22 @@ export function RepoSettingsDialog({
             </div>
           </div>
 
-          {(isUploadingProjectIcon || isSavingProjectSettings) && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-              <span className="loading loading-spinner loading-xs"></span>
-              {isUploadingProjectIcon ? 'Uploading icon...' : 'Saving project settings...'}
-            </div>
-          )}
+              {(isUploadingProjectIcon || isSavingProjectSettings) && (
+                <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span className="loading loading-spinner loading-xs"></span>
+                  {isUploadingProjectIcon ? 'Uploading icon...' : 'Saving project settings...'}
+                </div>
+              )}
 
-          {projectSettingsError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {projectSettingsError}
+              {projectSettingsError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {projectSettingsError}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[color:var(--app-dark-border-subtle)]">
+          <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4 md:px-6 dark:border-[color:var(--app-dark-border-subtle)]">
             <button
               className="app-ui-button"
               onClick={onClose}
@@ -336,7 +339,6 @@ export function RepoSettingsDialog({
               Save
             </button>
           </div>
-        </div>
         </div>
       </div>
 

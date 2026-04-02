@@ -1,7 +1,6 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useQueryClient } from '@tanstack/react-query';
 import { Monitor, Moon, Sun, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
@@ -14,6 +13,7 @@ import {
 import { getConfig, updateConfig, updateProjectSettings, type Config } from '@/app/actions/config';
 import { listCredentials } from '@/app/actions/credentials';
 import { listDrafts, type DraftMetadata } from '@/app/actions/draft';
+import { getHomeDashboardBootstrap } from '@/app/actions/home';
 import {
   getProjectServiceLog,
   getProjectServiceStatuses,
@@ -37,6 +37,7 @@ import {
   sortHomeProjects,
   type HomeProjectSort,
 } from '@/lib/home-project-sort';
+import { filterHomeProjects } from '@/lib/home-dashboard-state';
 import { groupHomeProjectSessionsByProject } from '@/lib/home-project-sessions';
 import {
   omitRecordKeys,
@@ -62,7 +63,6 @@ import {
   THEME_REFRESH_EVENT,
 } from '@/lib/ttyd-theme';
 import type { Project } from '@/lib/types';
-import { useProjects } from '@/hooks/use-git';
 import { HomeDashboard } from './git-repo-selector/HomeDashboard';
 import type { RepoCredentialSelection } from './git-repo-selector/types';
 
@@ -137,15 +137,15 @@ export default function HomeDashboardContainer({
 }: HomeDashboardContainerProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { data: projects = [] } = useProjects();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
   const [allSessions, setAllSessions] = useState<SessionMetadata[]>([]);
   const [allDrafts, setAllDrafts] = useState<DraftMetadata[]>([]);
   const [quickCreateDrafts, setQuickCreateDrafts] = useState<QuickCreateDraft[]>([]);
   const [quickCreateActiveCount, setQuickCreateActiveCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isBootstrapLoaded, setIsBootstrapLoaded] = useState(false);
+  const [isActivityLoaded, setIsActivityLoaded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [homeProjectSort, setHomeProjectSort] = useState<HomeProjectSort>(() => (
     readStoredHomeProjectSort() ?? DEFAULT_HOME_PROJECT_SORT
@@ -201,6 +201,25 @@ export default function HomeDashboardContainer({
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = useState(false);
   const [quickCreateDraftForEdit, setQuickCreateDraftForEdit] = useState<QuickCreateDraft | null>(null);
 
+  const upsertProject = useCallback((project: Project) => {
+    setProjects((previous) => {
+      const existingIndex = previous.findIndex((candidate) => candidate.id === project.id);
+      if (existingIndex === -1) {
+        return [...previous, project];
+      }
+
+      const nextProjects = previous.slice();
+      nextProjects[existingIndex] = project;
+      return nextProjects;
+    });
+  }, []);
+
+  const updateProjectState = useCallback((projectId: string, updates: Partial<Project>) => {
+    setProjects((previous) => previous.map((project) => (
+      project.id === projectId ? { ...project, ...updates } : project
+    )));
+  }, []);
+
   const refreshQuickCreateState = useCallback(async () => {
     try {
       const state = await getHomeQuickCreateState();
@@ -246,36 +265,48 @@ export default function HomeDashboardContainer({
   useEffect(() => {
     let cancelled = false;
 
-    const loadData = async () => {
+    const loadDeferredData = async () => {
       try {
-        const [nextConfig, sessions, drafts, quickCreateState] = await Promise.all([
-          getConfig(),
-          listSessions(),
-          listDrafts(),
-          getHomeQuickCreateState(),
+        await Promise.all([
+          refreshActivity(),
+          refreshQuickCreateState(),
         ]);
-        if (cancelled) return;
-        setConfig(nextConfig);
-        setHomeProjectSort(readStoredHomeProjectSort() ?? nextConfig.homeProjectSort);
-        setAllSessions(sessions);
-        setAllDrafts(drafts);
-        setQuickCreateDrafts(quickCreateState.drafts);
-        setQuickCreateActiveCount(quickCreateState.activeCount);
       } catch (loadError) {
-        console.error('Failed to load home dashboard data:', loadError);
+        console.error('Failed to load deferred home dashboard data:', loadError);
       } finally {
         if (!cancelled) {
-          setIsLoaded(true);
+          setIsActivityLoaded(true);
         }
       }
     };
 
-    void loadData();
+    const loadBootstrap = async () => {
+      try {
+        const bootstrap = await getHomeDashboardBootstrap();
+        if (cancelled) return;
+        setProjects(bootstrap.projects);
+        setConfig(bootstrap.config);
+        setHomeProjectSort(readStoredHomeProjectSort() ?? bootstrap.config.homeProjectSort);
+      } catch (loadError) {
+        console.error('Failed to load home dashboard data:', loadError);
+        if (!cancelled) {
+          setError('Failed to load the home dashboard.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsBootstrapLoaded(true);
+        }
+      }
+
+      void loadDeferredData();
+    };
+
+    void loadBootstrap();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshActivity, refreshQuickCreateState]);
 
   useEffect(() => {
     const syncForegroundState = () => {
@@ -492,7 +523,7 @@ export default function HomeDashboardContainer({
           },
         }),
       });
-      const projectPayload = await projectResponse.json().catch(() => null) as { error?: string } | null;
+      const projectPayload = await projectResponse.json().catch(() => null) as (Project & { error?: string }) | null;
       if (!projectResponse.ok) {
         throw new Error(projectPayload?.error || 'Failed to save project.');
       }
@@ -510,7 +541,9 @@ export default function HomeDashboardContainer({
       setHomeProjectGitSelector((current) => (
         current?.projectKey === projectForSettingsId ? null : current
       ));
-      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      if (projectPayload?.id) {
+        upsertProject(projectPayload);
+      }
       dismissRepoSettingsDialog();
     } catch (saveError) {
       console.error(saveError);
@@ -529,7 +562,7 @@ export default function HomeDashboardContainer({
     projectFolderPaths,
     projectForSettingsId,
     projectName,
-    queryClient,
+    upsertProject,
   ]);
 
   const handleUploadProjectIcon = useCallback(async (iconPath: string) => {
@@ -554,8 +587,11 @@ export default function HomeDashboardContainer({
       const uploadedIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
       const uploadedIconEmoji = typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null;
       setProjectIconForSettings({ iconPath: uploadedIconPath, iconEmoji: uploadedIconEmoji });
+      updateProjectState(projectForSettingsId, {
+        iconPath: uploadedIconPath,
+        iconEmoji: uploadedIconEmoji,
+      });
       setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (uploadError) {
       console.error(uploadError);
       setRepoSettingsError(
@@ -564,7 +600,7 @@ export default function HomeDashboardContainer({
     } finally {
       setIsUploadingProjectIcon(false);
     }
-  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
+  }, [isUploadingProjectIcon, projectForSettingsId, updateProjectState]);
 
   const handleChooseProjectIconEmoji = useCallback(async (iconEmoji: string) => {
     if (!projectForSettingsId || isUploadingProjectIcon) return;
@@ -588,8 +624,11 @@ export default function HomeDashboardContainer({
       const nextIconPath = typeof payload?.iconPath === 'string' ? payload.iconPath : null;
       const nextIconEmoji = typeof payload?.iconEmoji === 'string' ? payload.iconEmoji : null;
       setProjectIconForSettings({ iconPath: nextIconPath, iconEmoji: nextIconEmoji });
+      updateProjectState(projectForSettingsId, {
+        iconPath: nextIconPath,
+        iconEmoji: nextIconEmoji,
+      });
       setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       console.error(error);
       setRepoSettingsError(
@@ -598,7 +637,7 @@ export default function HomeDashboardContainer({
     } finally {
       setIsUploadingProjectIcon(false);
     }
-  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
+  }, [isUploadingProjectIcon, projectForSettingsId, updateProjectState]);
 
   const handleRemoveProjectIcon = useCallback(async () => {
     if (!projectForSettingsId || isUploadingProjectIcon) return;
@@ -617,8 +656,11 @@ export default function HomeDashboardContainer({
       }
 
       setProjectIconForSettings({ iconPath: null, iconEmoji: null });
+      updateProjectState(projectForSettingsId, {
+        iconPath: null,
+        iconEmoji: null,
+      });
       setBrokenRepoCardIcons((previous) => ({ ...previous, [projectForSettingsId]: false }));
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (removeError) {
       console.error(removeError);
       setRepoSettingsError(
@@ -627,7 +669,7 @@ export default function HomeDashboardContainer({
     } finally {
       setIsUploadingProjectIcon(false);
     }
-  }, [isUploadingProjectIcon, projectForSettingsId, queryClient]);
+  }, [isUploadingProjectIcon, projectForSettingsId, updateProjectState]);
 
   const openCloneRemoteDialog = useCallback(() => {
     setIsCloneRemoteDialogOpen(true);
@@ -687,6 +729,11 @@ export default function HomeDashboardContainer({
       });
       const responsePayload = await response.json().catch(() => null) as {
         id?: string;
+        name?: string;
+        folderPaths?: string[];
+        iconPath?: string | null;
+        iconEmoji?: string | null;
+        lastOpenedAt?: string;
         error?: string;
       } | null;
       if (!response.ok || !responsePayload?.id) {
@@ -700,7 +747,14 @@ export default function HomeDashboardContainer({
         ],
       });
       setConfig(nextConfig);
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      upsertProject({
+        id: responsePayload.id,
+        name: responsePayload.name ?? payload.name,
+        folderPaths: responsePayload.folderPaths ?? payload.folderPaths,
+        iconPath: responsePayload.iconPath ?? null,
+        iconEmoji: responsePayload.iconEmoji ?? null,
+        lastOpenedAt: responsePayload.lastOpenedAt,
+      });
       setIsCreateProjectDialogOpen(false);
     } catch (createError) {
       console.error(createError);
@@ -710,7 +764,7 @@ export default function HomeDashboardContainer({
     } finally {
       setIsCreatingProject(false);
     }
-  }, [config?.recentProjects, queryClient]);
+  }, [config?.recentProjects, upsertProject]);
 
   const handleCloneRemoteRepo = useCallback(async () => {
     if (isCloningRemote) return;
@@ -735,8 +789,11 @@ export default function HomeDashboardContainer({
         setCloneRemoteError(result.error || 'Failed to clone project.');
         return;
       }
-
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      upsertProject({
+        id: result.projectId,
+        name: result.projectPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Project',
+        folderPaths: [result.projectPath],
+      });
       const opened = await handleSelectProject(result.projectId, {
         navigateToNewInHome: false,
       });
@@ -757,8 +814,8 @@ export default function HomeDashboardContainer({
     dismissCloneRemoteDialog,
     handleSelectProject,
     isCloningRemote,
-    queryClient,
     remoteRepoUrl,
+    upsertProject,
   ]);
 
   const handleSetDefaultRoot = useCallback(async (path: string) => {
@@ -809,8 +866,8 @@ export default function HomeDashboardContainer({
       setHomeProjectGitSelector((current) => (
         current?.projectKey === projectPendingDeleteId ? null : current
       ));
+      setProjects((previous) => previous.filter((project) => project.id !== projectPendingDeleteId));
       setProjectPendingDeleteId(null);
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (deleteError) {
       console.error(deleteError);
       setError(
@@ -824,7 +881,6 @@ export default function HomeDashboardContainer({
     getProjectByReference,
     isDeletingProject,
     projectPendingDeleteId,
-    queryClient,
   ]);
 
   const discoverHomeProjectRepos = useCallback(async (
@@ -1075,17 +1131,12 @@ export default function HomeDashboardContainer({
   ), [getProjectDisplayName, homeProjectSort, resolvedRecentProjects]);
 
   const filteredRecentProjects = useMemo(() => {
-    const normalizedQuery = homeSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return sortedRecentProjects;
-
-    return sortedRecentProjects.filter((projectReference) => {
-      const displayName = getProjectDisplayName(projectReference).toLowerCase();
-      const secondaryLabel = getProjectSecondaryLabel(projectReference).toLowerCase();
-      return (
-        displayName.includes(normalizedQuery)
-        || secondaryLabel.includes(normalizedQuery)
-      );
-    });
+    return filterHomeProjects(
+      sortedRecentProjects,
+      homeSearchQuery,
+      getProjectDisplayName,
+      getProjectSecondaryLabel,
+    );
   }, [getProjectDisplayName, getProjectSecondaryLabel, homeSearchQuery, sortedRecentProjects]);
 
   const trackedProjectServiceReferences = useMemo(() => {
@@ -1335,7 +1386,8 @@ export default function HomeDashboardContainer({
     <>
       <HomeDashboard
         error={error}
-        isLoaded={isLoaded}
+        isBootstrapLoaded={isBootstrapLoaded}
+        isActivityLoaded={isActivityLoaded}
         homeSearchQuery={homeSearchQuery}
         homeProjectSort={homeProjectSort}
         showLogout={showLogout}

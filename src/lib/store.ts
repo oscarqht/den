@@ -5,6 +5,7 @@ import type { AppSettings, Project, Repository } from './types.ts';
 import {
   readLocalState,
   updateLocalState,
+  type LocalState,
   type LocalProjectRecord,
   type LocalRepositoryRecord,
 } from './local-db.ts';
@@ -65,6 +66,15 @@ function toProject(record: LocalProjectRecord): Project {
   return project;
 }
 
+export function getProjectsFromState(state: Pick<LocalState, 'projects'>): Project[] {
+  return Object.values(state.projects)
+    .sort((left, right) => (
+      (left.lastOpenedAt ?? '').localeCompare(right.lastOpenedAt ?? '')
+      || left.id.localeCompare(right.id)
+    ))
+    .map(toProject);
+}
+
 function toRepository(record: LocalRepositoryRecord): Repository {
   const repository: Repository = {
     path: record.path,
@@ -100,10 +110,7 @@ function ensureRepositoryRecord(repoPath: string): void {
 }
 
 export function getProjects(): Project[] {
-  const state = readLocalState();
-  return Object.values(state.projects)
-    .sort((left, right) => (left.lastOpenedAt ?? '').localeCompare(right.lastOpenedAt ?? '') || left.id.localeCompare(right.id))
-    .map(toProject);
+  return getProjectsFromState(readLocalState());
 }
 
 export function getProjectById(projectId: string): Project | null {

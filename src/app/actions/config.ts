@@ -5,18 +5,19 @@ import {
   updateLocalState,
   type LocalProjectSettingsRecord,
 } from '../../lib/local-db.ts';
-import { findProjectByFolderPath, getProjectById } from '../../lib/store.ts';
-import { getProjectPrimaryFolderPath } from '../../lib/project-folders.ts';
+import { getProjectsFromState } from '../../lib/store.ts';
+import { getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '../../lib/project-folders.ts';
 import {
   normalizeNullableProviderReasoningEffort,
   normalizeProviderReasoningEffort,
 } from '../../lib/agent/reasoning.ts';
+import { getConfigFromLocalState } from '../../lib/config-state.ts';
 import {
   DEFAULT_HOME_PROJECT_SORT,
   normalizeHomeProjectSort,
   type HomeProjectSort,
 } from '../../lib/home-project-sort.ts';
-import type { AgentProvider, ReasoningEffort } from '../../lib/types.ts';
+import type { AgentProvider, Project, ReasoningEffort } from '../../lib/types.ts';
 
 export interface ProjectSettings {
   agentProvider?: AgentProvider;
@@ -58,23 +59,6 @@ const DEFAULT_CONFIG: Config = {
   repoSettings: {},
   pinnedFolderShortcuts: [],
 };
-
-function toProjectSettings(record: LocalProjectSettingsRecord): ProjectSettings {
-  const settings: ProjectSettings = {};
-  if (record.agentProvider != null) settings.agentProvider = record.agentProvider as AgentProvider;
-  if (record.agentModel != null) settings.agentModel = record.agentModel;
-  const normalizedReasoning = normalizeProviderReasoningEffort(
-    record.agentProvider,
-    record.agentReasoningEffort,
-  );
-  if (normalizedReasoning) settings.agentReasoningEffort = normalizedReasoning;
-  if (record.startupScript != null) settings.startupScript = record.startupScript;
-  if (record.devServerScript != null) settings.devServerScript = record.devServerScript;
-  if (record.serviceStartCommand != null) settings.serviceStartCommand = record.serviceStartCommand;
-  if (record.serviceStopCommand != null) settings.serviceStopCommand = record.serviceStopCommand;
-  if (record.alias != null) settings.alias = record.alias;
-  return settings;
-}
 
 function toLocalProjectSettings(settings: ProjectSettings): LocalProjectSettingsRecord {
   return {
@@ -139,20 +123,31 @@ function normalizeConfig(config: Config): Config {
   };
 }
 
-function resolveProjectId(projectIdOrPath: string): string | null {
+function getProjectByIdFromProjects(projects: Project[], projectId: string): Project | null {
+  const trimmedProjectId = projectId.trim();
+  if (!trimmedProjectId) return null;
+  return projects.find((project) => project.id === trimmedProjectId) ?? null;
+}
+
+function findProjectByFolderPathInProjects(projects: Project[], folderPath: string): Project | null {
+  const normalizedFolderPath = normalizeProjectFolderPath(folderPath);
+  return projects.find((project) => project.folderPaths.includes(normalizedFolderPath)) ?? null;
+}
+
+function resolveProjectIdFromProjects(projects: Project[], projectIdOrPath: string): string | null {
   const trimmedValue = projectIdOrPath.trim();
   if (!trimmedValue) return null;
 
-  const projectById = getProjectById(trimmedValue);
+  const projectById = getProjectByIdFromProjects(projects, trimmedValue);
   if (projectById) {
     return projectById.id;
   }
 
-  return findProjectByFolderPath(trimmedValue)?.id ?? null;
+  return findProjectByFolderPathInProjects(projects, trimmedValue)?.id ?? null;
 }
 
-function getProjectCompatibilityKeys(projectId: string): string[] {
-  const project = getProjectById(projectId);
+function getProjectCompatibilityKeysFromProjects(projectsById: Map<string, Project>, projectId: string): string[] {
+  const project = projectsById.get(projectId);
   if (!project) return [projectId];
 
   return Array.from(new Set([
@@ -166,15 +161,17 @@ function writeConfig(config: Config): void {
   const normalizedConfig = normalizeConfig(config);
 
   updateLocalState((state) => {
+    const projects = getProjectsFromState(state);
+    const projectsById = new Map(projects.map((project) => [project.id, project]));
     const recentProjectIds = Array.from(new Set(
       normalizedConfig.recentProjects
-        .map((projectEntry) => resolveProjectId(projectEntry))
+        .map((projectEntry) => resolveProjectIdFromProjects(projects, projectEntry))
         .filter((projectId): projectId is string => Boolean(projectId)),
     ));
 
     const normalizedProjectSettingsEntries = new Map<string, ProjectSettings>();
     for (const [projectIdOrPath, projectSettings] of Object.entries(normalizedConfig.projectSettings)) {
-      const projectId = resolveProjectId(projectIdOrPath);
+      const projectId = resolveProjectIdFromProjects(projects, projectIdOrPath);
       if (!projectId) continue;
       normalizedProjectSettingsEntries.set(projectId, projectSettings);
     }
@@ -202,42 +199,7 @@ function writeConfig(config: Config): void {
 }
 
 export async function getConfig(): Promise<Config> {
-  const state = readLocalState();
-  const appConfig = state.appConfig;
-
-  const projectSettings = Object.fromEntries(
-    Object.entries(appConfig.projectSettings).flatMap(([projectId, record]) => {
-      const trimmedProjectId = projectId.trim();
-      if (!trimmedProjectId) return [];
-      const projectSettings = toProjectSettings(record);
-      return getProjectCompatibilityKeys(trimmedProjectId).map((key) => [key, projectSettings] as const);
-    }),
-  );
-
-  const recentProjectPaths = appConfig.recentProjects
-    .map((projectId) => getProjectPrimaryFolderPath(getProjectById(projectId) ?? { folderPaths: [] }) || projectId)
-    .filter((projectPath) => projectPath.trim().length > 0);
-
-  return {
-    ...DEFAULT_CONFIG,
-    homeProjectSort: normalizeHomeProjectSort(appConfig.homeProjectSort),
-    defaultRoot: appConfig.defaultRoot ?? DEFAULT_CONFIG.defaultRoot,
-    selectedIde: appConfig.selectedIde ?? DEFAULT_CONFIG.selectedIde,
-    agentWidth: appConfig.agentWidth ?? DEFAULT_CONFIG.agentWidth,
-    defaultAgentProvider: appConfig.defaultAgentProvider
-      ? appConfig.defaultAgentProvider as AgentProvider
-      : undefined,
-    defaultAgentModel: appConfig.defaultAgentModel ?? undefined,
-    defaultAgentReasoningEffort: normalizeProviderReasoningEffort(
-      appConfig.defaultAgentProvider,
-      appConfig.defaultAgentReasoningEffort,
-    ),
-    recentProjects: [...appConfig.recentProjects],
-    recentRepos: recentProjectPaths,
-    pinnedFolderShortcuts: [...appConfig.pinnedFolderShortcuts],
-    projectSettings,
-    repoSettings: projectSettings,
-  };
+  return getConfigFromLocalState(readLocalState());
 }
 
 export async function saveConfig(config: Config): Promise<void> {
@@ -250,7 +212,7 @@ export async function saveConfig(config: Config): Promise<void> {
 }
 
 export async function updateConfig(updates: Partial<Config>): Promise<Config> {
-  const currentConfig = await getConfig();
+  const currentConfig = getConfigFromLocalState(readLocalState());
   const normalizedUpdates = { ...updates };
   if (normalizedUpdates.recentRepos && !normalizedUpdates.recentProjects) {
     normalizedUpdates.recentProjects = normalizedUpdates.recentRepos;
@@ -266,25 +228,30 @@ export async function updateConfig(updates: Partial<Config>): Promise<Config> {
 }
 
 export async function getProjectAlias(projectId: string): Promise<string | null> {
-  const resolvedProjectId = resolveProjectId(projectId);
-  const project = resolvedProjectId ? getProjectById(resolvedProjectId) : null;
+  const state = readLocalState();
+  const projects = getProjectsFromState(state);
+  const resolvedProjectId = resolveProjectIdFromProjects(projects, projectId);
+  const project = resolvedProjectId ? getProjectByIdFromProjects(projects, resolvedProjectId) : null;
   if (!project) return null;
 
-  const config = await getConfig();
+  const config = getConfigFromLocalState(state);
   const alias = config.projectSettings[resolvedProjectId!]?.alias?.trim()
     || config.projectSettings[getProjectPrimaryFolderPath(project) || '']?.alias?.trim();
   return alias || project.name;
 }
 
 export async function updateProjectSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<Config> {
-  const resolvedProjectId = resolveProjectId(projectId);
+  const state = readLocalState();
+  const projects = getProjectsFromState(state);
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
+  const resolvedProjectId = resolveProjectIdFromProjects(projects, projectId);
   if (!resolvedProjectId) {
     throw new Error('Project not found.');
   }
-  const currentConfig = await getConfig();
+  const currentConfig = getConfigFromLocalState(state);
   const currentProjectSettings = currentConfig.projectSettings[resolvedProjectId] || currentConfig.projectSettings[projectId] || {};
   const nextProjectSettings = mergeProjectSettings(currentProjectSettings, updates);
-  const compatibilityKeys = getProjectCompatibilityKeys(resolvedProjectId);
+  const compatibilityKeys = getProjectCompatibilityKeysFromProjects(projectsById, resolvedProjectId);
   const nextProjectSettingsMap = {
     ...currentConfig.projectSettings,
   };

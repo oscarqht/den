@@ -3,9 +3,10 @@
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { getConfig } from './config.ts';
+import { readLocalState } from '../../lib/local-db.ts';
+import { getConfigFromLocalState } from '../../lib/config-state.ts';
 import { buildTerminalProcessEnv } from '../../lib/terminal-process-env.ts';
-import { getProjectPrimaryFolderPath } from '../../lib/project-folders.ts';
+import { getProjectPrimaryFolderPath, normalizeProjectFolderPath } from '../../lib/project-folders.ts';
 import {
   clearTrackedSessionProcessLog,
   getTrackedSessionProcess,
@@ -15,7 +16,8 @@ import {
   terminateProcessGracefully,
   type SessionTrackedProcess,
 } from '../../lib/session-processes.ts';
-import { findProjectByFolderPath, getProjectById } from '../../lib/store.ts';
+import { getProjectsFromState } from '../../lib/store.ts';
+import type { Project } from '../../lib/types.ts';
 
 const PROJECT_SERVICE_SESSION_NAME = '__project-service__';
 const DEFAULT_LOG_BYTES = 64 * 1024;
@@ -70,12 +72,27 @@ function buildProjectServiceStatus(processEntry: SessionTrackedProcess | null, c
 }
 
 async function resolveManagedProject(projectReference: string): Promise<ResolvedManagedProject> {
+  const state = readLocalState();
+  const projects = getProjectsFromState(state);
+  const config = getConfigFromLocalState(state);
+  return resolveManagedProjectFromSnapshot(projects, config, projectReference);
+}
+
+function resolveManagedProjectFromSnapshot(
+  projects: Project[],
+  config: ReturnType<typeof getConfigFromLocalState>,
+  projectReference: string,
+): ResolvedManagedProject {
   const trimmedReference = projectReference.trim();
   if (!trimmedReference) {
     throw new Error('Project reference is required.');
   }
 
-  const project = getProjectById(trimmedReference) ?? findProjectByFolderPath(trimmedReference);
+  const normalizedFolderReference = normalizeProjectFolderPath(trimmedReference);
+  const project = projects.find((candidate) => (
+    candidate.id === trimmedReference
+    || candidate.folderPaths.includes(normalizedFolderReference)
+  ));
   if (!project) {
     throw new Error('Project not found.');
   }
@@ -85,7 +102,6 @@ async function resolveManagedProject(projectReference: string): Promise<Resolved
     throw new Error('Project has no associated folder.');
   }
 
-  const config = await getConfig();
   const settings = config.projectSettings[project.id] || config.projectSettings[workspacePath] || {};
   return {
     requestKey: trimmedReference,
@@ -140,13 +156,16 @@ export async function getProjectServiceStatuses(
   projectReferences: string[],
 ): Promise<Record<string, ProjectServiceStatus>> {
   const statuses: Record<string, ProjectServiceStatus> = {};
+  const state = readLocalState();
+  const projects = getProjectsFromState(state);
+  const config = getConfigFromLocalState(state);
 
   await Promise.all(projectReferences.map(async (projectReference) => {
     const requestKey = projectReference.trim();
     if (!requestKey) return;
 
     try {
-      const resolved = await resolveManagedProject(requestKey);
+      const resolved = resolveManagedProjectFromSnapshot(projects, config, requestKey);
       const processEntry = await getTrackedSessionProcess(
         resolved.projectId,
         PROJECT_SERVICE_SESSION_NAME,

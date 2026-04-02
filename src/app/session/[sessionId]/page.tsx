@@ -44,8 +44,8 @@ async function resolveSessionFavicon(projectId?: string, projectPath?: string): 
     (projectPath ? findProjectByFolderPath(projectPath) : null)
     ?? (projectId ? getProjectById(projectId) : null)
   );
-  if (resolvedProject?.iconPath) {
-    return getProjectIconUrl(resolvedProject.iconPath);
+  if (resolvedProject?.iconPath || resolvedProject?.iconEmoji) {
+    return getProjectIconUrl(resolvedProject);
   }
 
   return SESSION_FALLBACK_FAVICON_PATH;

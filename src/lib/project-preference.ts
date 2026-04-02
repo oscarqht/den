@@ -1,6 +1,6 @@
 import type { Project } from './types.ts';
 
-type ProjectPreferenceFields = Pick<Project, 'id' | 'iconPath' | 'lastOpenedAt'>;
+type ProjectPreferenceFields = Pick<Project, 'id' | 'iconPath' | 'iconEmoji' | 'lastOpenedAt'>;
 
 function parseProjectLastOpenedAt(project: Pick<Project, 'lastOpenedAt'>): number {
   const rawValue = project.lastOpenedAt?.trim();
@@ -12,8 +12,8 @@ function parseProjectLastOpenedAt(project: Pick<Project, 'lastOpenedAt'>): numbe
   return Number.isFinite(parsedValue) ? parsedValue : Number.NEGATIVE_INFINITY;
 }
 
-function hasProjectIcon(project: Pick<Project, 'iconPath'>): boolean {
-  return Boolean(project.iconPath?.trim());
+function hasProjectIcon(project: Pick<Project, 'iconPath' | 'iconEmoji'>): boolean {
+  return Boolean(project.iconEmoji?.trim() || project.iconPath?.trim());
 }
 
 export function compareProjectPreference(

@@ -3,6 +3,7 @@ export interface Project {
   name: string;
   folderPaths: string[];
   iconPath?: string | null;
+  iconEmoji?: string | null;
   lastOpenedAt?: string;
 }
 

@@ -2,6 +2,7 @@ import type { SessionMetadata } from '@/app/actions/session';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
+import { hasProjectIcon, type ProjectIconValue } from '@/lib/project-icons';
 import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-shell/AppPageSurface';
 import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
@@ -31,7 +32,7 @@ export type HomeDashboardProps = {
   runningSessionCountByProject: Map<string, number>;
   runningSessionsByProject: Map<string, SessionMetadata[]>;
   draftCountByProject: Map<string, number>;
-  projectCardIconByPath: Record<string, string | null>;
+  projectCardIconByPath: Record<string, ProjectIconValue>;
   brokenProjectCardIcons: Record<string, boolean>;
   projectGitReposByPath: Record<string, HomeProjectGitRepo[]>;
   discoveringProjectGitRepos: Record<string, boolean>;
@@ -299,8 +300,8 @@ export function HomeDashboard({
                 runningSessionCount={runningSessionCountByProject.get(project) ?? 0}
                 runningSessions={runningSessionsByProject.get(project) ?? []}
                 draftCount={draftCountByProject.get(project) ?? 0}
-                projectIconPath={projectCardIconByPath[project] ?? null}
-                showProjectIcon={!!projectCardIconByPath[project] && !brokenProjectCardIcons[project]}
+                projectIcon={projectCardIconByPath[project] ?? null}
+                showProjectIcon={hasProjectIcon(projectCardIconByPath[project]) && !brokenProjectCardIcons[project]}
                 projectGitRepos={projectGitReposByPath[project]}
                 isDiscoveringProjectGitRepos={!!discoveringProjectGitRepos[project]}
                 isProjectServiceConfigured={!!projectServiceStatusByProject[project]?.configured}

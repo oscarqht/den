@@ -14,7 +14,7 @@ import type { SessionMetadata } from '@/app/actions/session';
 import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
 import { getBaseName } from '@/lib/path';
-import { getProjectIconUrl } from '@/lib/project-icons';
+import { getProjectIconUrl, type ProjectIconValue } from '@/lib/project-icons';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 
 export type HomeRepoCardProps = {
@@ -26,7 +26,7 @@ export type HomeRepoCardProps = {
   runningSessionCount: number;
   runningSessions: SessionMetadata[];
   draftCount: number;
-  projectIconPath: string | null;
+  projectIcon: ProjectIconValue | null;
   showProjectIcon: boolean;
   projectGitRepos?: HomeProjectGitRepo[];
   isDiscoveringProjectGitRepos: boolean;
@@ -60,7 +60,7 @@ export function HomeRepoCard({
   runningSessionCount,
   runningSessions,
   draftCount,
-  projectIconPath,
+  projectIcon,
   showProjectIcon,
   projectGitRepos,
   isDiscoveringProjectGitRepos,
@@ -90,10 +90,8 @@ export function HomeRepoCard({
   const sessionMenuRef = useRef<HTMLDivElement | null>(null);
   const serviceMenuRef = useRef<HTMLDivElement | null>(null);
   const hasOpenMenu = isGitRepoMenuOpen || isSessionMenuOpen || isServiceMenuOpen;
-  const hasCustomProjectIcon = showProjectIcon && !!projectIconPath;
-  const projectIconUrl = hasCustomProjectIcon
-    ? getProjectIconUrl(projectIconPath)
-    : getProjectIconUrl();
+  const hasCustomProjectIcon = showProjectIcon;
+  const projectIconUrl = getProjectIconUrl(projectIcon);
   const discoveredProjectGitRepos = projectGitRepos ?? [];
   const hasDiscoveredGitRepos = Array.isArray(projectGitRepos);
   const hasGitRepos = discoveredProjectGitRepos.length > 0;
@@ -153,7 +151,7 @@ export function HomeRepoCard({
                   src={projectIconUrl}
                   alt={`${projectName} icon`}
                   className="h-10 w-10 rounded-lg object-cover"
-                  onError={hasCustomProjectIcon ? () => onProjectIconError(project) : undefined}
+                  onError={hasCustomProjectIcon && projectIcon?.iconPath ? () => onProjectIconError(project) : undefined}
                 />
               </div>
               <div className="absolute -right-3 -top-2 z-10 flex gap-1">

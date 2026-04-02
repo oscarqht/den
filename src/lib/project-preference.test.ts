@@ -36,4 +36,23 @@ describe('pickPreferredProject', () => {
 
     assert.equal(preferred?.id, 'project-with-icon');
   });
+
+  it('treats an emoji icon as a project icon when recency ties', () => {
+    const preferred = pickPreferredProject([
+      {
+        id: 'project-without-icon',
+        lastOpenedAt: '2026-03-27T09:57:17.978Z',
+        iconPath: null,
+        iconEmoji: null,
+      },
+      {
+        id: 'project-with-emoji',
+        lastOpenedAt: '2026-03-27T09:57:17.978Z',
+        iconPath: null,
+        iconEmoji: '🧪',
+      },
+    ]);
+
+    assert.equal(preferred?.id, 'project-with-emoji');
+  });
 });

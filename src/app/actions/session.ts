@@ -22,6 +22,11 @@ import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '../..
 import { sortSessionHistoryForTimeline } from '../../lib/agent/history-order.ts';
 import { publishSessionListUpdated } from '../../lib/sessionNotificationServer.ts';
 import { runInBackground } from '../../lib/background-task.ts';
+import {
+  sessionRecordToMetadata,
+  toSessionCompatibilityFields,
+  type SessionMetadataValue,
+} from '../../lib/session-metadata.ts';
 import { buildTerminalProcessEnv } from '../../lib/terminal-process-env.ts';
 import { getTmuxSessionName } from '../../lib/terminal-session.ts';
 import {
@@ -63,34 +68,7 @@ import type {
   SessionWorkspacePreference,
 } from '../../lib/types.ts';
 
-export type SessionMetadata = {
-  sessionName: string;
-  projectId?: string;
-  projectPath: string;
-  workspacePath: string;
-  workspaceFolders: SessionWorkspaceFolder[];
-  workspaceMode: SessionWorkspaceMode;
-  activeRepoPath?: string;
-  gitRepos: SessionGitRepoContext[];
-  agent: string;
-  agentProvider?: AgentProvider;
-  model: string;
-  reasoningEffort?: ReasoningEffort;
-  threadId?: string;
-  activeTurnId?: string;
-  runState?: SessionAgentRunState;
-  lastError?: string;
-  lastActivityAt?: string;
-  title?: string;
-  devServerScript?: string;
-  initialized?: boolean;
-  timestamp: string;
-  // Backward compatibility fields.
-  repoPath?: string;
-  worktreePath?: string;
-  branchName?: string;
-  baseBranch?: string;
-};
+export type SessionMetadata = SessionMetadataValue;
 
 export type SessionLaunchContext = {
   sessionName: string;
@@ -524,92 +502,6 @@ function normalizeSessionWorkspacePreference(
   value: SessionWorkspacePreference | string | null | undefined,
 ): SessionWorkspacePreference {
   return value === 'local' ? 'local' : 'workspace';
-}
-
-function toCompatibilityFields(metadata: SessionMetadata): Pick<SessionMetadata, 'repoPath' | 'worktreePath' | 'branchName' | 'baseBranch'> {
-  const activeContext = metadata.gitRepos.find((context) => context.sourceRepoPath === metadata.activeRepoPath)
-    || metadata.gitRepos[0];
-  const compatibilityWorktreePath = metadata.workspaceMode === 'local_source'
-    ? metadata.workspacePath
-    : (activeContext?.worktreePath || metadata.workspacePath);
-
-  return {
-    repoPath: activeContext?.sourceRepoPath || metadata.activeRepoPath || metadata.projectPath,
-    worktreePath: compatibilityWorktreePath,
-    branchName: activeContext?.branchName,
-    baseBranch: activeContext?.baseBranch,
-  };
-}
-
-async function getSessionGitRepos(sessionName: string): Promise<SessionGitRepoContext[]> {
-  const record = readLocalState().sessions[sessionName];
-  const rows = record
-    ? toSessionGitRepoRows(record).sort((left, right) => left.source_repo_path.localeCompare(right.source_repo_path))
-    : [];
-
-  return rows.map(toSessionGitRepoContext);
-}
-
-async function rowToSessionMetadata(row: SessionRow): Promise<SessionMetadata> {
-  const projectPath = row.project_path?.trim() || row.repo_path?.trim() || '';
-  const workspacePath = row.workspace_path?.trim() || row.worktree_path?.trim() || projectPath;
-  const workspaceFolders = parseWorkspaceFolders(row.workspace_folders_json);
-  const gitRepos = await getSessionGitRepos(row.session_name);
-
-  const fallbackRepo = row.repo_path?.trim();
-  const fallbackWorktree = row.worktree_path?.trim();
-  const fallbackBranch = row.branch_name?.trim();
-  const fallbackBase = row.base_branch?.trim() || undefined;
-
-  if (gitRepos.length === 0 && fallbackRepo && fallbackWorktree && fallbackBranch) {
-    gitRepos.push({
-      sourceRepoPath: fallbackRepo,
-      relativeRepoPath: projectPath ? (path.relative(projectPath, fallbackRepo) === '.' ? '' : path.relative(projectPath, fallbackRepo)) : '',
-      worktreePath: fallbackWorktree,
-      branchName: fallbackBranch,
-      baseBranch: fallbackBase,
-    });
-  }
-
-  const metadata: SessionMetadata = {
-    sessionName: row.session_name,
-    projectId: normalizeOptionalText(row.project_id) ?? undefined,
-    projectPath,
-    workspacePath,
-    workspaceFolders,
-    workspaceMode: normalizeSessionWorkspaceMode(row.workspace_mode),
-    activeRepoPath: row.active_repo_path?.trim() || undefined,
-    gitRepos,
-    agent: row.agent,
-    agentProvider: row.agent as AgentProvider,
-    model: row.model,
-    reasoningEffort: normalizeProviderReasoningEffort(row.agent, row.reasoning_effort),
-    threadId: normalizeOptionalText(row.thread_id),
-    activeTurnId: normalizeOptionalText(row.active_turn_id),
-    runState: normalizeOptionalText(row.run_state) as SessionAgentRunState | undefined,
-    lastError: normalizeOptionalText(row.last_error),
-    lastActivityAt: normalizeOptionalText(row.last_activity_at),
-    title: row.title ?? undefined,
-    devServerScript: row.dev_server_script ?? undefined,
-    initialized: row.initialized === null ? undefined : Boolean(row.initialized),
-    timestamp: row.timestamp,
-  };
-
-  if (metadata.workspaceFolders.length === 0 && projectPath && workspacePath) {
-    metadata.workspaceFolders = [
-      buildLocalWorkspaceFolderMapping(
-        projectPath,
-        workspacePath,
-        '.',
-        metadata.workspaceMode === 'local_source' ? 'direct' : 'copy',
-      ),
-    ];
-  }
-
-  return {
-    ...metadata,
-    ...toCompatibilityFields(metadata),
-  };
 }
 
 function rowToSessionLaunchContext(row: SessionLaunchContextRow): SessionLaunchContext {
@@ -1491,7 +1383,7 @@ async function persistSessionMetadataFromProvision(
 }
 
 function toSessionCreateResult(metadata: SessionMetadata): SessionCreateResult {
-  const compatibility = toCompatibilityFields(metadata);
+  const compatibility = toSessionCompatibilityFields(metadata);
   return {
     success: true,
     sessionName: metadata.sessionName,
@@ -1807,7 +1699,7 @@ async function getSessionPromptsDir(): Promise<string> {
 }
 
 export async function saveSessionMetadata(metadata: SessionMetadata): Promise<void> {
-  const compatibility = toCompatibilityFields(metadata);
+  const compatibility = toSessionCompatibilityFields(metadata);
   const agentProvider = normalizeOptionalText(metadata.agentProvider ?? metadata.agent) ?? metadata.agent;
   const reasoningEffort = normalizeNullableProviderReasoningEffort(
     agentProvider,
@@ -2044,10 +1936,8 @@ export async function copySessionAttachments(
 export async function getSessionMetadata(sessionName: string): Promise<SessionMetadata | null> {
   try {
     const record = readLocalState().sessions[sessionName];
-    const row = record ? toSessionRow(record) : undefined;
-
-    if (!row) return null;
-    return await rowToSessionMetadata(row);
+    if (!record) return null;
+    return sessionRecordToMetadata(record);
   } catch {
     return null;
   }
@@ -2058,20 +1948,19 @@ export async function listSessions(projectReference?: string): Promise<SessionMe
     repairMissingSessionProjectIds(projectReference);
 
     const resolvedFilter = resolveProjectActivityFilter(projectReference);
-    const rows = Object.values(readLocalState().sessions)
-      .filter((session) => {
+    const records = Object.values(readLocalState().sessions)
+      .filter((record) => {
         if (!projectReference || !resolvedFilter) {
           return true;
         }
 
         return resolvedFilter.filterColumn === 'project_id'
-          ? session.projectId === resolvedFilter.filterValue
-          : session.projectPath === resolvedFilter.filterValue;
+          ? record.projectId === resolvedFilter.filterValue
+          : record.projectPath === resolvedFilter.filterValue;
       })
-      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
-      .map((session) => toSessionRow(session));
+      .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
 
-    return Promise.all(rows.map((row) => rowToSessionMetadata(row)));
+    return records.map((record) => sessionRecordToMetadata(record));
   } catch (error) {
     console.error('Failed to list sessions:', error);
     return [];

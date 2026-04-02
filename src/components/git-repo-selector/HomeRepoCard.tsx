@@ -9,10 +9,17 @@ import {
   X,
   GitBranch as GitBranchIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import type { SessionMetadata } from '@/app/actions/session';
 import { APP_PAGE_PANEL_CLASS } from '@/components/app-shell/AppPageSurface';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
+import { shouldShowHomeProjectGitAction } from '@/lib/home-project-card-actions';
 import { getBaseName } from '@/lib/path';
 import { getProjectIconUrl, type ProjectIconValue } from '@/lib/project-icons';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
@@ -22,6 +29,7 @@ export type HomeRepoCardProps = {
   projectDisplayName?: string;
   projectSecondaryLabel?: string;
   isProjectOpenable?: boolean;
+  areActionButtonsReady?: boolean;
   isDarkThemeActive: boolean;
   runningSessionCount: number;
   runningSessions: SessionMetadata[];
@@ -51,11 +59,51 @@ function normalizePathForComparison(pathValue: string): string {
   return pathValue.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+function HomeRepoCardAction({
+  isVisible,
+  children,
+}: {
+  isVisible: boolean;
+  children: ReactNode;
+}) {
+  const [isAnimatedIn, setIsAnimatedIn] = useState(false);
+
+  useEffect(() => {
+    if (!isVisible) {
+      setIsAnimatedIn(false);
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setIsAnimatedIn(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [isVisible]);
+
+  if (!isVisible) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${
+        isAnimatedIn ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function HomeRepoCard({
   project,
   projectDisplayName,
   projectSecondaryLabel,
   isProjectOpenable = true,
+  areActionButtonsReady = true,
   isDarkThemeActive,
   runningSessionCount,
   runningSessions,
@@ -93,10 +141,9 @@ export function HomeRepoCard({
   const hasCustomProjectIcon = showProjectIcon;
   const projectIconUrl = getProjectIconUrl(projectIcon);
   const discoveredProjectGitRepos = projectGitRepos ?? [];
-  const hasDiscoveredGitRepos = Array.isArray(projectGitRepos);
   const hasGitRepos = discoveredProjectGitRepos.length > 0;
   const hasMultipleGitRepos = discoveredProjectGitRepos.length > 1;
-  const shouldShowGitWorkspaceButton = isDiscoveringProjectGitRepos || !hasDiscoveredGitRepos || hasGitRepos;
+  const shouldShowGitWorkspaceButton = shouldShowHomeProjectGitAction(projectGitRepos);
 
   useEffect(() => {
     if (!isGitRepoMenuOpen && !isSessionMenuOpen && !isServiceMenuOpen) return;
@@ -175,8 +222,15 @@ export function HomeRepoCard({
               </div>
             </div>
 
-            <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5">
-              {isProjectServiceConfigured ? (
+            <div
+              className={`flex min-h-10 shrink-0 flex-nowrap items-center justify-end gap-1.5 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${
+                areActionButtonsReady
+                  ? 'translate-y-0 opacity-100'
+                  : 'pointer-events-none translate-y-1 opacity-0'
+              }`}
+              aria-hidden={!areActionButtonsReady}
+            >
+              <HomeRepoCardAction isVisible={isProjectServiceConfigured}>
                 <div className="relative" ref={serviceMenuRef}>
                   <button
                     type="button"
@@ -257,9 +311,9 @@ export function HomeRepoCard({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+              </HomeRepoCardAction>
 
-              {isProjectOpenable && shouldShowGitWorkspaceButton ? (
+              <HomeRepoCardAction isVisible={isProjectOpenable && shouldShowGitWorkspaceButton}>
                 <div className="relative" ref={gitRepoMenuRef}>
                   <button
                     type="button"
@@ -306,9 +360,9 @@ export function HomeRepoCard({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+              </HomeRepoCardAction>
 
-              {runningSessions.length > 0 ? (
+              <HomeRepoCardAction isVisible={runningSessions.length > 0}>
                 <div className="relative" ref={sessionMenuRef}>
                   <button
                     type="button"
@@ -349,7 +403,7 @@ export function HomeRepoCard({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+              </HomeRepoCardAction>
 
               <button
                 type="button"

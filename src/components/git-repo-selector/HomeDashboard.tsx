@@ -2,6 +2,7 @@ import type { SessionMetadata } from '@/app/actions/session';
 import type { QuickCreateDraft } from '@/lib/quick-create';
 import type { HomeProjectSort } from '@/lib/home-project-sort';
 import type { HomeProjectGitRepo } from '@/lib/home-project-git';
+import { getHomeDashboardRenderState } from '@/lib/home-dashboard-state';
 import { hasProjectIcon, type ProjectIconValue } from '@/lib/project-icons';
 import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-shell/AppPageSurface';
 import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
@@ -17,7 +18,9 @@ type HomeProjectServiceStatus = {
 
 export type HomeDashboardProps = {
   error: string | null;
-  isLoaded: boolean;
+  isLoaded?: boolean;
+  isBootstrapLoaded?: boolean;
+  isActivityLoaded?: boolean;
   homeSearchQuery: string;
   homeProjectSort: HomeProjectSort;
   showLogout: boolean;
@@ -66,6 +69,8 @@ export type HomeDashboardProps = {
 export function HomeDashboard({
   error,
   isLoaded,
+  isBootstrapLoaded,
+  isActivityLoaded,
   homeSearchQuery,
   homeProjectSort,
   showLogout,
@@ -110,6 +115,14 @@ export function HomeDashboard({
     'btn btn-ghost btn-sm h-8 min-h-8 shrink-0 gap-2 rounded-lg px-2.5 text-[12px] font-medium text-slate-700 shadow-none hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white';
   const compactPanelShadowClass =
     'rounded-[22px] shadow-[0_18px_36px_-24px_rgba(15,23,42,0.38)] backdrop-blur dark:shadow-[0_20px_42px_-26px_rgba(2,6,23,0.82)]';
+  const effectiveBootstrapLoaded = isBootstrapLoaded ?? isLoaded ?? false;
+  const effectiveActivityLoaded = isActivityLoaded ?? effectiveBootstrapLoaded;
+  const renderState = getHomeDashboardRenderState({
+    isBootstrapLoaded: effectiveBootstrapLoaded,
+    isActivityLoaded: effectiveActivityLoaded,
+    filteredRecentProjects,
+    homeSearchQuery,
+  });
 
   return (
     <div className="w-full max-w-[1380px]">
@@ -268,14 +281,14 @@ export function HomeDashboard({
           </div>
         ) : null}
 
-        {!isLoaded ? (
+        {renderState.kind === 'loading' ? (
           <div className="flex h-24 items-center justify-center">
             <span className="loading loading-spinner loading-md text-primary"></span>
           </div>
-        ) : filteredRecentProjects.length === 0 ? (
+        ) : renderState.kind === 'empty' ? (
           <div className={`flex h-52 flex-col items-center justify-center text-center ${APP_PAGE_PANEL_CLASS}`}>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {homeSearchQuery.trim() ? 'No projects match your search.' : 'No recent projects found.'}
+              {renderState.emptyMessage}
             </p>
             {!homeSearchQuery.trim() && (
               <button className="btn btn-primary btn-sm mt-3 h-8 min-h-8 gap-2 rounded-lg px-3 text-[12px]" onClick={onAddProject}>
@@ -296,6 +309,7 @@ export function HomeDashboard({
                 projectDisplayName={getProjectDisplayName(project)}
                 projectSecondaryLabel={getProjectSecondaryLabel(project)}
                 isProjectOpenable={isProjectOpenable(project)}
+                areActionButtonsReady={effectiveActivityLoaded}
                 isDarkThemeActive={isDarkThemeActive}
                 runningSessionCount={runningSessionCountByProject.get(project) ?? 0}
                 runningSessions={runningSessionsByProject.get(project) ?? []}

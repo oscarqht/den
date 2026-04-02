@@ -28,6 +28,7 @@ import {
 import { getCodexModelOptions } from '@/lib/agent/transports/codex-models';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
+import { buildPendingAssistantItem } from '@/lib/agent/pending-assistant';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
@@ -69,6 +70,12 @@ type AgentSocketPayload = {
   snapshot: SessionAgentRuntimeState;
   event: ChatStreamEvent;
   timestamp: string;
+};
+
+type SendMessageResponse = {
+  success: boolean;
+  runtime?: SessionAgentRuntimeState | null;
+  error?: string;
 };
 
 export type AgentSessionPaneHandle = {
@@ -512,8 +519,17 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
         </div>
       );
     case 'assistant':
+      const assistantStatus = options.status ?? item.itemStatus ?? null;
+      const assistantPulse = options.pulse || assistantStatus === 'pending';
       return (
-        <div className="min-w-0 overflow-hidden px-1 py-1 text-sm text-slate-800 dark:text-slate-100">
+        <div className={`min-w-0 overflow-hidden px-1 py-1 text-sm text-slate-800 dark:text-slate-100 ${assistantPulse ? 'animate-pulse' : ''}`}>
+          {assistantStatus ? (
+            <div className="mb-2 flex items-center">
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300">
+                {assistantStatus}
+              </span>
+            </div>
+          ) : null}
           {item.phase ? (
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {item.phase}
@@ -1191,9 +1207,19 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     )),
     [history.length, optimisticMessages, runtime?.sessionName, sessionId],
   );
-  const displayHistory = useMemo(
+  const baseDisplayHistory = useMemo(
     () => [...history, ...optimisticHistory],
     [history, optimisticHistory],
+  );
+  const pendingAssistantItem = useMemo(
+    () => buildPendingAssistantItem(sessionId, runtime, baseDisplayHistory),
+    [baseDisplayHistory, runtime, sessionId],
+  );
+  const displayHistory = useMemo(
+    () => pendingAssistantItem
+      ? [...baseDisplayHistory, pendingAssistantItem]
+      : baseDisplayHistory,
+    [baseDisplayHistory, pendingAssistantItem],
   );
   const planFallbackStepsById = useMemo<Record<string, PlanStep[]>>(() => {
     const planToolStepsByTurnId = new Map<string, PlanStep[]>();
@@ -1424,9 +1450,13 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           ...(options?.markInitialized ? { markInitialized: true } : {}),
         }),
       });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
-      if (!response.ok) {
+      const payload = await response.json().catch(() => null) as SendMessageResponse | null;
+      if (!response.ok || !payload?.success) {
         throw new Error(payload?.error || 'Failed to send message.');
+      }
+      if (payload.runtime) {
+        setRuntime(payload.runtime);
+        setPossibleStale(false);
       }
       shouldStickToBottomRef.current = true;
       scheduleRefresh(0);

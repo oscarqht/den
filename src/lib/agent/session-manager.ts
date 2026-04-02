@@ -805,16 +805,10 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
     effectiveReasoningEffort = updateResult.runtime?.reasoningEffort ?? null;
   }
 
-  const extraEnv = await resolveSessionGitAuthEnv(metadata);
-
   const adapter = getAgentAdapter(provider as AgentProvider);
   const existingHistory = listSessionHistory(sessionId);
   const projector = new HistoryProjector(sessionId, existingHistory);
   projector.addUserMessage(displayMessage || message);
-
-  if (input.markInitialized) {
-    await markSessionInitialized(sessionId);
-  }
 
   const startedAt = new Date().toISOString();
   const initialRuntime = updateSessionRuntime(sessionId, {
@@ -837,6 +831,11 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
   state.runs.set(sessionId, activeRun);
   const promise = (async () => {
     try {
+      if (input.markInitialized) {
+        await markSessionInitialized(sessionId);
+      }
+
+      const extraEnv = await resolveSessionGitAuthEnv(metadata);
       await adapter.streamChat({
         workspacePath: metadata.workspacePath,
         threadId: metadata.threadId ?? null,

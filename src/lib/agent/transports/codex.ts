@@ -28,6 +28,7 @@ import {
 import { buildCodexAppServerEnv } from "@/lib/agent/spawn-env";
 import type { AgentRuntimeUpdate } from "@/lib/agent/providers/types";
 import { getCodexModelOptions } from "@/lib/agent/transports/codex-models";
+import { CodexConnectionPool } from "@/lib/agent/transports/codex-connection-pool";
 
 type JsonRpcMessage = {
   id?: number;
@@ -169,9 +170,14 @@ const CLIENT_INFO = {
   version: "0.66.0",
 };
 const SESSION_CODEX_SANDBOX_MODE = "danger-full-access";
+const CODEX_CONNECTION_REUSE_IDLE_TTL_MS = 30_000;
+const ENABLE_CODEX_CONNECTION_REUSE = process.env.PALX_ENABLE_CODEX_CONNECTION_REUSE === "1";
 
 let activeInstall: Promise<void> | null = null;
 let activeLoginSession: CodexLoginSession | null = null;
+const codexConnectionPool = new CodexConnectionPool<CodexAppServerConnection>(
+  CODEX_CONNECTION_REUSE_IDLE_TTL_MS,
+);
 
 function installCommandParts() {
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -328,7 +334,9 @@ class CodexAppServerConnection {
     });
     this.child.on("error", (error) => this.failAll(error));
     this.child.on("close", () => {
-      if (!this.closed) {
+      const closedByConnection = this.closed;
+      this.closed = true;
+      if (!closedByConnection) {
         this.failAll(new Error("Codex app-server closed unexpectedly."));
       }
     });
@@ -393,6 +401,10 @@ class CodexAppServerConnection {
 
   getRuntimePid() {
     return this.child.pid ?? null;
+  }
+
+  isUsable() {
+    return !this.closed && this.child.exitCode === null && !this.child.killed;
   }
 
   private consumeStdout(chunk: string) {
@@ -567,6 +579,76 @@ async function readAccount() {
 
     return result.account ?? null;
   });
+}
+
+function normalizeEnvEntries(extraEnv?: Record<string, string> | null) {
+  return Object.entries(extraEnv ?? {})
+    .filter(([, value]) => typeof value === "string" && value.length > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+function buildConnectionPoolKey(input: {
+  workspacePath: string;
+  model?: string | null;
+  reasoningEffort?: AgentReasoningEffort | null;
+  extraEnv?: Record<string, string> | null;
+}) {
+  return JSON.stringify({
+    workspacePath: input.workspacePath,
+    model: normalizeText(input.model) || null,
+    reasoningEffort: normalizeProviderReasoningEffort("codex", input.reasoningEffort) ?? null,
+    extraEnv: normalizeEnvEntries(input.extraEnv),
+  });
+}
+
+async function acquireStreamingConnection(input: {
+  workspacePath: string;
+  model?: string | null;
+  reasoningEffort?: AgentReasoningEffort | null;
+  extraEnv?: Record<string, string> | null;
+}) {
+  if (!ENABLE_CODEX_CONNECTION_REUSE) {
+    const connection = new CodexAppServerConnection(input.workspacePath, {
+      model: input.model,
+      reasoningEffort: input.reasoningEffort,
+      extraEnv: input.extraEnv,
+    });
+    return {
+      connection,
+      reused: false,
+      release: (options?: { destroy?: boolean }) => {
+        if (options?.destroy) {
+          connection.close();
+          return;
+        }
+        connection.close();
+      },
+    };
+  }
+
+  const lease = await codexConnectionPool.acquire(
+    buildConnectionPoolKey(input),
+    async () => {
+      const connection = new CodexAppServerConnection(input.workspacePath, {
+        model: input.model,
+        reasoningEffort: input.reasoningEffort,
+        extraEnv: input.extraEnv,
+      });
+      return {
+        resource: connection,
+        destroy: (resource: CodexAppServerConnection) => {
+          resource.close();
+        },
+      };
+    },
+    (connection) => connection.isUsable(),
+  );
+
+  return {
+    connection: lease.resource,
+    reused: lease.reused,
+    release: lease.release,
+  };
 }
 
 export async function isCodexInstalled() {
@@ -890,11 +972,13 @@ export async function streamChat(
     }
   };
 
-  const connection = new CodexAppServerConnection(input.workspacePath, {
+  const lease = await acquireStreamingConnection({
+    workspacePath: input.workspacePath,
     model: input.model,
     reasoningEffort: input.reasoningEffort,
     extraEnv: input.extraEnv,
   });
+  const connection = lease.connection;
   onRuntimeUpdate?.({
     runtimePid: connection.getRuntimePid(),
   });
@@ -903,17 +987,20 @@ export async function streamChat(
   let rawEventSequence = 0;
   let waitingForTurnStart = false;
   let turnStartReceived = false;
+  let shouldReuseConnection = false;
 
   const close = () => {
-    connection.close();
+    lease.release({ destroy: true });
     turnDone.reject(new Error("Chat stream aborted."));
   };
   signal?.addEventListener("abort", close, { once: true });
 
   try {
-    await runDiagnosticStep("launch_runtime", "Launch Codex runtime", async () => {
-      await connection.initialize();
-    });
+    if (!lease.reused) {
+      await runDiagnosticStep("launch_runtime", "Launch Codex runtime", async () => {
+        await connection.initialize();
+      });
+    }
     connection.onNotification((message) => {
       if (!message.method || !message.params) {
         return;
@@ -1326,6 +1413,7 @@ export async function streamChat(
     });
 
     await turnDone.promise;
+    shouldReuseConnection = true;
     if (waitingForTurnStart && !turnStartReceived) {
       emitDiagnostic({
         key: "await_turn_started",
@@ -1343,6 +1431,8 @@ export async function streamChat(
     throw error;
   } finally {
     signal?.removeEventListener("abort", close);
-    connection.close();
+    lease.release({
+      destroy: !shouldReuseConnection || signal?.aborted === true || !connection.isUsable(),
+    });
   }
 }

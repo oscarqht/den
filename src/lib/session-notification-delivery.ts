@@ -7,7 +7,6 @@ type DeliverSessionNotificationInput = {
   sockets: Set<SocketLike> | null | undefined;
   openStateValue: number;
   payload: string;
-  onUndelivered: () => Promise<void>;
   onSocketStale?: (socket: SocketLike) => void;
 };
 
@@ -16,7 +15,6 @@ export async function deliverSessionNotificationToSubscribers(
 ): Promise<number> {
   const sockets = input.sockets;
   if (!sockets || sockets.size === 0) {
-    await input.onUndelivered();
     return 0;
   }
 
@@ -40,10 +38,6 @@ export async function deliverSessionNotificationToSubscribers(
   for (const socket of staleSockets) {
     sockets.delete(socket);
     input.onSocketStale?.(socket);
-  }
-
-  if (delivered === 0) {
-    await input.onUndelivered();
   }
 
   return delivered;

@@ -20,6 +20,7 @@ import {
   type OptimisticUserMessage,
 } from '@/lib/optimistic-user-history';
 import { normalizePlanStepStatus, parsePlanStepsFromText, parsePlanStepsFromToolInput } from '@/lib/agent/plan';
+import { AGENT_SESSION_CODE_BLOCK_CLASSNAME } from '@/lib/agent-session-pane-styles';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
@@ -268,7 +269,7 @@ function codeBlock(value: string | null | undefined) {
   const text = trimEmpty(value);
   if (!text) return null;
   return (
-    <pre className="max-w-full overflow-x-hidden whitespace-pre-wrap break-words rounded-lg px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-100 app-dark-code">
+    <pre className={AGENT_SESSION_CODE_BLOCK_CLASSNAME}>
       {text}
     </pre>
   );

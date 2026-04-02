@@ -27,7 +27,7 @@ It should feel less like “asking an assistant a question” and more like “a
 - Gives each session a proper workspace with agent and dev terminals side by side.
 - Shows Git status, diffs, history, branches, stashes, and merge/rebase actions in the app.
 - Remembers project settings, credentials, and session state so you can stop and resume without ceremony.
-- Can notify you when an agent finishes or needs attention.
+- Keeps session state in sync while agents run so the current session view stays up to date.
 
 ## Where It’s Going
 

@@ -3,8 +3,7 @@
 ## What This Feature Does
 
 User-facing behavior:
-- Receives in-browser notifications tied to a specific session.
-- Displays native browser notifications (when permission granted) for agent completion and attention-needed states.
+- Routes session notification events to connected session subscribers.
 - Keeps session lists synchronized across tabs/windows via local storage event signaling.
 
 System-facing behavior:
@@ -19,8 +18,8 @@ System-facing behavior:
 - [src/lib/agent/session-manager.ts](../../../src/lib/agent/session-manager.ts)
 - Notification APIs:
 - `GET /api/notifications/socket?sessionId=...` ([src/app/api/notifications/socket/route.ts](../../../src/app/api/notifications/socket/route.ts))
-- Session page socket client + browser notification display:
-- [src/app/session/[sessionId]/SessionPageClient.tsx](../../../src/app/session/%5BsessionId%5D/SessionPageClient.tsx)
+- Session page route:
+- [src/app/session/[sessionId]/page.tsx](../../../src/app/session/%5BsessionId%5D/page.tsx)
 - Tab synchronization helper:
 - [src/lib/session-updates.ts](../../../src/lib/session-updates.ts)
 
@@ -47,8 +46,7 @@ sequenceDiagram
   participant SessionMgr as session_manager
   participant API as api_notifications_socket
   participant Notify as sessionNotificationServer
-  participant SessionPage as SessionPageClient
-  participant Browser as Notification API
+  participant SessionPage as SessionPage
 
   SessionPage->>API: GET /api/notifications/socket?sessionId=...
   API->>Notify: ensure server + build ws url
@@ -56,20 +54,19 @@ sequenceDiagram
 
   SessionMgr->>Notify: publishSessionNotification
   Notify-->>SessionPage: WS message
-  SessionPage->>Browser: new Notification(title, description)
 ```
 
 ## Error Handling and Edge Cases
 
 - Socket route returns `400` when `sessionId` is missing ([src/app/api/notifications/socket/route.ts](../../../src/app/api/notifications/socket/route.ts)).
-- Session client uses reconnect with exponential backoff when socket initialization or connection fails ([src/app/session/[sessionId]/SessionPageClient.tsx](../../../src/app/session/%5BsessionId%5D/SessionPageClient.tsx)).
 - Derived notifications are emitted only for completed turns, auth-required states, and terminal errors.
+- When no session subscriber is connected, notification payloads are dropped silently.
 
 ## Observability
 
 - Notification delivery count is returned by `publishSessionNotification(...)` to internal callers.
-- Socket and browser-notification failures are silently retried or ignored in client to avoid breaking session load.
+- Undelivered notification payloads do not trigger any OS-level fallback.
 
 ## Tests
 
-No dedicated notification server/client tests are present in this branch.
+- Delivery and derivation are covered by unit tests in [src/lib/session-notification-delivery.test.ts](../../../src/lib/session-notification-delivery.test.ts) and [src/lib/session-agent-notifications.test.ts](../../../src/lib/session-agent-notifications.test.ts).

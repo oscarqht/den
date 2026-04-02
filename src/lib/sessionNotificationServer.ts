@@ -4,7 +4,6 @@ import { URL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ChatStreamEvent, SessionAgentRuntimeState } from '@/lib/types';
 import type { QuickCreateJobUpdatePayload } from '@/lib/quick-create';
-import { sendBackgroundSessionNotification } from '@/lib/background-notifications';
 import { deliverSessionNotificationToSubscribers } from '@/lib/session-notification-delivery';
 
 const NOTIFICATION_SERVER_HOST = '127.0.0.1';
@@ -314,12 +313,6 @@ export async function publishSessionNotification(input: {
     sockets,
     openStateValue: WebSocket.OPEN,
     payload: serializedPayload,
-    onUndelivered: () =>
-      sendBackgroundSessionNotification({
-        sessionId,
-        title,
-        description,
-      }).then(() => undefined),
   });
 
   if (sockets && sockets.size === 0) {

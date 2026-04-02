@@ -137,16 +137,6 @@
   box-shadow: var(--app-dark-shadow-lg) !important;
 }
 
-:root.dark .app-dark-panel[data-panel-selected='true'],
-[data-theme='dark'] .app-dark-panel[data-panel-selected='true'] {
-  border-color: var(--app-dark-accent-hover) !important;
-  background-color: var(--app-dark-panel) !important;
-  box-shadow:
-    0 0 0 1px var(--app-dark-accent-hover),
-    0 0 0 4px rgba(201, 143, 98, 0.22),
-    var(--app-dark-shadow-elevated) !important;
-}
-
 :root.dark .app-dark-toolbar,
 [data-theme='dark'] .app-dark-toolbar {
   border-color: color-mix(in srgb, var(--app-dark-border-subtle) 88%, transparent) !important;

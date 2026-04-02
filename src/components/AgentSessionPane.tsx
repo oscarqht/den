@@ -25,10 +25,13 @@ import {
   AGENT_SESSION_PANE_CLASSNAME,
   AGENT_SESSION_TIMELINE_CLASSNAME,
 } from '@/lib/agent-session-pane-styles';
+import { getCodexModelOptions } from '@/lib/agent/transports/codex-models';
 import { projectSessionHistoryEvent } from '@/lib/agent/session-history-events';
+import { normalizeProviderReasoningEffort } from '@/lib/agent/reasoning';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
+import { getModelReasoningEffortOptions, resolveReasoningEffortSelection } from '@/lib/session-reasoning';
 import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
 import {
   type ActiveMention,
@@ -39,6 +42,7 @@ import { uploadAttachments } from '@/lib/upload-attachments';
 import type {
   AgentProvider,
   ChatStreamEvent,
+  ReasoningEffort,
   PlanStep,
   SessionAgentHistoryItem,
   SessionAgentRunState,
@@ -69,6 +73,7 @@ type AgentSocketPayload = {
 export type AgentSessionPaneHandle = {
   focusComposer: () => void;
   insertText: (text: string) => boolean;
+  setReasoningEffort: (effort: string) => boolean;
   openAgentDetails: () => void;
   cancelActiveTurn: () => Promise<void>;
   refreshSnapshot: () => Promise<void>;
@@ -82,6 +87,9 @@ export type AgentSessionHeaderMeta = {
   socketConnected: boolean;
   threadId: string | null;
   reasoningEffort: string | null;
+  reasoningEffortOptions: ReasoningEffort[];
+  effectiveReasoningEffort: string | null;
+  hasPendingReasoningChange: boolean;
   workspacePath: string;
   canCancel: boolean;
   isCancelling: boolean;
@@ -824,6 +832,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const [socketConnected, setSocketConnected] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticUserMessage[]>([]);
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState('');
   const [steerTargetId, setSteerTargetId] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
@@ -911,6 +920,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     setError(null);
     setPendingMessages([]);
     setOptimisticMessages([]);
+    setSelectedReasoningEffort(initialSnapshot?.runtime?.reasoningEffort ?? '');
     autoStartRequestKeyRef.current = null;
   }, [autoStartMessage, initialSnapshot, sessionId]);
 
@@ -1097,6 +1107,38 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
   const activeRunState = runtime?.runState ?? 'idle';
   const isTurnActive = activeRunState === 'queued' || activeRunState === 'running';
+  const reasoningEffortOptions = useMemo<ReasoningEffort[]>(() => {
+    if (runtime?.agentProvider !== 'codex') {
+      return [];
+    }
+
+    return getModelReasoningEffortOptions(
+      getCodexModelOptions(runtime?.model || null),
+      runtime?.model,
+      runtime?.model,
+    );
+  }, [runtime?.agentProvider, runtime?.model]);
+  const effectiveReasoningEffort = useMemo(
+    () => resolveReasoningEffortSelection(
+      reasoningEffortOptions,
+      runtime?.reasoningEffort,
+      selectedReasoningEffort,
+    ),
+    [reasoningEffortOptions, runtime?.reasoningEffort, selectedReasoningEffort],
+  );
+  const currentReasoningEffort = runtime?.reasoningEffort || '';
+  const hasPendingReasoningChange = Boolean(
+    effectiveReasoningEffort
+    && effectiveReasoningEffort !== currentReasoningEffort,
+  );
+
+  useEffect(() => {
+    setSelectedReasoningEffort((current) => resolveReasoningEffortSelection(
+      reasoningEffortOptions,
+      runtime?.reasoningEffort,
+      current,
+    ));
+  }, [reasoningEffortOptions, runtime?.reasoningEffort]);
 
   useEffect(() => {
     if (!isTurnActive) {
@@ -1362,6 +1404,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
           message,
           displayMessage,
           attachmentPaths: normalizedAttachmentPaths,
+          reasoningEffort: normalizeProviderReasoningEffort(
+            runtime?.agentProvider ?? null,
+            effectiveReasoningEffort,
+          ) ?? null,
           ...(options?.markInitialized ? { markInitialized: true } : {}),
         }),
       });
@@ -1378,7 +1424,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       onFeedback?.(messageText);
       return { success: false as const, error: messageText };
     }
-  }, [onFeedback, scheduleRefresh, sessionId]);
+  }, [effectiveReasoningEffort, onFeedback, runtime?.agentProvider, scheduleRefresh, sessionId]);
 
   useEffect(() => {
     const normalizedAutoStartMessage = autoStartMessage?.trim();
@@ -1675,6 +1721,9 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     socketConnected,
     threadId: runtime?.threadId || null,
     reasoningEffort: runtime?.reasoningEffort || null,
+    reasoningEffortOptions,
+    effectiveReasoningEffort: effectiveReasoningEffort || null,
+    hasPendingReasoningChange,
     workspacePath,
     canCancel: Boolean(runtime) && (isTurnActive || isCancelling),
     isCancelling,
@@ -1682,9 +1731,12 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     lastError: runtime?.lastError || null,
   }), [
     activeRunState,
+    effectiveReasoningEffort,
+    hasPendingReasoningChange,
     isCancelling,
     isTurnActive,
     providerName,
+    reasoningEffortOptions,
     runtime,
     socketConnected,
     workspacePath,
@@ -1714,6 +1766,18 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       onFeedback?.('Inserted text into agent input');
       return true;
     },
+    setReasoningEffort(effort: string) {
+      const nextValue = resolveReasoningEffortSelection(
+        reasoningEffortOptions,
+        runtime?.reasoningEffort,
+        effort,
+      );
+      if (!nextValue) {
+        return false;
+      }
+      setSelectedReasoningEffort(nextValue);
+      return true;
+    },
     openAgentDetails() {
       setIsAgentDetailsDialogOpen(true);
     },
@@ -1723,7 +1787,7 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     async refreshSnapshot() {
       await loadSnapshot();
     },
-  }), [handleCancel, loadSnapshot, onFeedback]);
+  }), [effectiveReasoningEffort, handleCancel, loadSnapshot, onFeedback, reasoningEffortOptions, runtime?.reasoningEffort]);
 
   useEffect(() => {
     if (isTurnActive || isSending || pendingMessages.length === 0) return;
@@ -1789,7 +1853,14 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
                 </div>
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Reasoning</div>
-                  <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-200">{runtime?.reasoningEffort || 'n/a'}</div>
+                  <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-200">
+                    {effectiveReasoningEffort || runtime?.reasoningEffort || 'n/a'}
+                  </div>
+                  {hasPendingReasoningChange ? (
+                    <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      Current: {currentReasoningEffort || 'n/a'}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="sm:col-span-2">
                   <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">CWD</div>
@@ -2114,20 +2185,22 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             </div>
           ) : null}
           <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-              {isPastingAttachments ? (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Saving pasted image...
-                </span>
-              ) : isTurnActive ? (
-                <span className="inline-flex items-center gap-1">
-                  <PlayCircle className="h-3.5 w-3.5" />
-                  Turn in progress
-                </span>
-              ) : (
-                <span>Paste images with Cmd/Ctrl+V · Press Enter to send, Shift+Enter for new line</span>
-              )}
+            <div className="flex min-w-0 flex-col gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                {isPastingAttachments ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Saving pasted image...
+                  </span>
+                ) : isTurnActive ? (
+                  <span className="inline-flex items-center gap-1">
+                    <PlayCircle className="h-3.5 w-3.5" />
+                    Turn in progress
+                  </span>
+                ) : (
+                  <span>Paste images with Cmd/Ctrl+V · Press Enter to send, Shift+Enter for new line</span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {onRequestAddFiles ? (

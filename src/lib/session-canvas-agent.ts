@@ -2,6 +2,7 @@ import type { SessionAgentRunState } from '@/lib/types';
 
 export type SessionCanvasAgentInputHandle = {
   insertText: (text: string) => boolean;
+  setReasoningEffort?: (effort: string) => boolean;
 };
 
 export function formatPathsForAgentInput(paths: string[]): string {

@@ -2286,7 +2286,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     setIsPushOpen(true);
 
     setPushLoadingRemotes(true);
-    setPushLoadingBranches(Boolean(cachedDefaultRemote));
+    setPushLoadingBranches(true);
     try {
       const [remotes, trackingBranch] = await Promise.all([
         queryClient.fetchQuery({

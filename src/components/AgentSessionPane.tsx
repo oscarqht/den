@@ -897,13 +897,6 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   }, [composerValue]);
 
   useEffect(() => {
-    if (!timelineRef.current) return;
-    if (!shouldStickToBottomRef.current) return;
-
-    timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-  }, [displayHistory, loading]);
-
-  useEffect(() => {
     latestComposerValueRef.current = composerValue;
   }, [composerValue]);
 
@@ -1185,6 +1178,13 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
     return fallbackById;
   }, [displayHistory]);
+
+  useEffect(() => {
+    if (!timelineRef.current) return;
+    if (!shouldStickToBottomRef.current) return;
+
+    timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
+  }, [displayHistory, loading]);
 
   useEffect(() => {
     const element = timelineRef.current;

@@ -47,6 +47,48 @@ export type QuickCreateExplicitProjectMentions = {
   newProjectNames: string[];
 };
 
+export function countExplicitProjectMentions(mentions: QuickCreateExplicitProjectMentions): number {
+  return mentions.existingTargets.length + mentions.newProjectNames.length;
+}
+
+export function shouldUseDirectQuickCreatePrompt(input: {
+  explicitMentionCount: number;
+  targetCount: number;
+}): boolean {
+  return input.explicitMentionCount === 1 && input.targetCount === 1;
+}
+
+export function buildQuickCreateSessionPrompt(input: {
+  originalMessage: string;
+  targetProjectName: string;
+  explicitMentionCount: number;
+  targetCount: number;
+}): string {
+  const originalMessage = input.originalMessage.trim();
+  if (!originalMessage) {
+    return '';
+  }
+
+  if (shouldUseDirectQuickCreatePrompt(input)) {
+    return originalMessage;
+  }
+
+  let routingContext = `This session was routed to project "${input.targetProjectName}". Focus only on the work that belongs to "${input.targetProjectName}" in this workspace.`;
+  if (input.targetCount > 1) {
+    routingContext = `The original request was split into ${input.targetCount} project-specific sessions. This session is only for project "${input.targetProjectName}", so handle only that project's portion of the work in this workspace.`;
+  } else if (input.explicitMentionCount > 1) {
+    routingContext = `The original request mentioned multiple projects. This session is only for project "${input.targetProjectName}", so scope the work to that project in this workspace.`;
+  }
+
+  return [
+    routingContext,
+    'If the original request mentions other projects, treat them as context only and do not assume they are visible in this session.',
+    '',
+    'Original user request:',
+    originalMessage,
+  ].join('\n');
+}
+
 export function deriveQuickCreateTitle(message: string): string {
   const firstNonEmptyLine = message
     .split(/\r?\n/)

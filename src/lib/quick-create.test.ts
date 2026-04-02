@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildQuickCreateSessionPrompt,
+  countExplicitProjectMentions,
   deriveQuickCreateTitle,
   extractExplicitProjectMentions,
   parseQuickCreateRoutingSelection,
+  shouldUseDirectQuickCreatePrompt,
 } from './quick-create.ts';
 
 describe('parseQuickCreateRoutingSelection', () => {
@@ -87,6 +90,65 @@ describe('extractExplicitProjectMentions', () => {
       ],
       newProjectNames: ['ak'],
     });
+  });
+
+  it('counts explicit project mentions across existing and unresolved names', () => {
+    const mentions = extractExplicitProjectMentions(
+      'Fix @AI Platform and @ak today.',
+      [
+        {
+          projectId: 'ai',
+          projectPath: '/workspace/ai',
+          labels: ['AI Platform', 'ai'],
+        },
+      ],
+    );
+
+    assert.equal(countExplicitProjectMentions(mentions), 2);
+  });
+});
+
+describe('buildQuickCreateSessionPrompt', () => {
+  it('passes the original prompt through for a single explicit project mention', () => {
+    assert.equal(
+      buildQuickCreateSessionPrompt({
+        originalMessage: 'Fix @AI Platform checkout bugs.',
+        targetProjectName: 'AI Platform',
+        explicitMentionCount: 1,
+        targetCount: 1,
+      }),
+      'Fix @AI Platform checkout bugs.',
+    );
+    assert.equal(
+      shouldUseDirectQuickCreatePrompt({ explicitMentionCount: 1, targetCount: 1 }),
+      true,
+    );
+  });
+
+  it('rewrites the prompt when the task is split across multiple projects', () => {
+    const prompt = buildQuickCreateSessionPrompt({
+      originalMessage: 'Fix @AI Platform and @ak checkout bugs.',
+      targetProjectName: 'AI Platform',
+      explicitMentionCount: 2,
+      targetCount: 2,
+    });
+
+    assert.match(prompt, /split into 2 project-specific sessions/i);
+    assert.match(prompt, /only for project "AI Platform"/i);
+    assert.match(prompt, /Original user request:/);
+    assert.match(prompt, /Fix @AI Platform and @ak checkout bugs\./);
+  });
+
+  it('rewrites the prompt when routing inferred the target project', () => {
+    const prompt = buildQuickCreateSessionPrompt({
+      originalMessage: 'Fix the checkout bugs.',
+      targetProjectName: 'AI Platform',
+      explicitMentionCount: 0,
+      targetCount: 1,
+    });
+
+    assert.match(prompt, /routed to project "AI Platform"/i);
+    assert.match(prompt, /do not assume they are visible in this session/i);
   });
 });
 

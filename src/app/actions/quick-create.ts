@@ -12,12 +12,15 @@ import { normalizeProviderReasoningEffort } from '../../lib/agent/reasoning.ts';
 import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
 import { addProject, findProjectByFolderPath } from '../../lib/store.ts';
 import {
+  buildQuickCreateSessionPrompt,
+  countExplicitProjectMentions,
   deriveQuickCreateTitle,
   extractExplicitProjectMentions,
   KNOWN_QUICK_CREATE_REASONING_EFFORTS,
   parseQuickCreateRoutingSelection,
   sortQuickCreateDrafts,
   type QuickCreateDraft,
+  type QuickCreateExplicitProjectMentions,
   type QuickCreateProjectMentionCandidate,
   type QuickCreateRoutingTarget,
 } from '../../lib/quick-create.ts';
@@ -484,12 +487,11 @@ async function createProjectFromDefaultRoot(
 }
 
 function resolveExplicitQuickCreateRouting(input: {
-  message: string;
-  mentionCandidates: QuickCreateProjectMentionCandidate[];
+  explicitMentions: QuickCreateExplicitProjectMentions;
   provider: AgentProvider;
   defaultReasoningEffort?: ReasoningEffort;
 }): QuickCreateRoutingResult | null {
-  const explicitMentions = extractExplicitProjectMentions(input.message, input.mentionCandidates);
+  const explicitMentions = input.explicitMentions;
   if (explicitMentions.existingTargets.length === 0 && explicitMentions.newProjectNames.length === 0) {
     return null;
   }
@@ -758,14 +760,15 @@ export async function executeQuickCreateTaskJob(
     const projects = resolvedDeps.getProjects();
     const candidates = resolveQuickCreateProjectCandidates(projects, config);
     const mentionCandidates = buildProjectMentionCandidates(projects, config);
+    const explicitMentions = extractExplicitProjectMentions(normalizedInput.message, mentionCandidates);
+    const explicitMentionCount = countExplicitProjectMentions(explicitMentions);
 
     const routingSettings = await resolveRoutingSettings(config, resolvedDeps);
     const attachmentMetadata = buildAttachmentMetadata(normalizedInput.attachmentPaths);
     const title = deriveQuickCreateTitle(normalizedInput.message);
 
     const explicitRoutingResult = resolveExplicitQuickCreateRouting({
-      message: normalizedInput.message,
-      mentionCandidates,
+      explicitMentions,
       provider: routingSettings.provider,
       defaultReasoningEffort: config.defaultAgentReasoningEffort,
     });
@@ -774,15 +777,12 @@ export async function executeQuickCreateTaskJob(
       throw new Error('No registered projects are available and default root is not configured for creating new projects.');
     }
 
-    const explicitMentions = explicitRoutingResult
-      ? null
-      : extractExplicitProjectMentions(normalizedInput.message, mentionCandidates);
     const routingResult = explicitRoutingResult ?? await runRoutingAgent({
       message: normalizedInput.message,
       attachmentPaths: normalizedInput.attachmentPaths,
       candidates,
-      existingMentionLabels: explicitMentions?.existingTargets.map((target) => target.matchedLabel) ?? [],
-      unresolvedMentionLabels: explicitMentions?.newProjectNames ?? [],
+      existingMentionLabels: explicitMentions.existingTargets.map((target) => target.matchedLabel),
+      unresolvedMentionLabels: explicitMentions.newProjectNames,
       allowNewProjects,
       workspacePath: config.defaultRoot?.trim() || os.homedir(),
       settings: routingSettings,
@@ -794,9 +794,16 @@ export async function executeQuickCreateTaskJob(
       candidates,
       deps: resolvedDeps,
     });
+    const targetCount = materializedTargets.length;
     const sessionIds: string[] = [];
 
     for (const target of materializedTargets) {
+      const sessionPrompt = buildQuickCreateSessionPrompt({
+        originalMessage: normalizedInput.message,
+        targetProjectName: target.projectName,
+        explicitMentionCount,
+        targetCount,
+      });
       const sessionGitContext = await resolveSessionGitContexts(target.projectPath, resolvedDeps);
       const sessionResult = await resolvedDeps.createSession(
         target.projectPath,
@@ -819,7 +826,7 @@ export async function executeQuickCreateTaskJob(
 
       const launchContextResult = await resolvedDeps.saveSessionLaunchContext(sessionResult.sessionName, {
         title,
-        initialMessage: normalizedInput.message,
+        initialMessage: sessionPrompt,
         rawInitialMessage: normalizedInput.message,
         attachmentPaths: attachmentMetadata.attachmentPaths,
         attachmentNames: attachmentMetadata.attachmentNames,
@@ -836,7 +843,7 @@ export async function executeQuickCreateTaskJob(
       }
 
       const startupPrompt = buildAgentStartupPrompt({
-        taskDescription: normalizedInput.message,
+        taskDescription: sessionPrompt,
         attachmentPaths: attachmentMetadata.attachmentPaths,
         sessionMode: 'plan',
         workspaceMode: sessionResult.workspaceMode || 'folder',

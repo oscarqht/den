@@ -176,6 +176,10 @@ describe('executeQuickCreateTaskJob', () => {
     assert.equal(createSessionArgs[2]?.reasoningEffort, 'low');
 
     assert.equal(dependencies.startSessionTurn.mock.callCount(), 1);
+    const saveLaunchCall = dependencies.saveSessionLaunchContext.mock.calls[0];
+    const saveLaunchArgs = (saveLaunchCall?.arguments ?? []) as unknown as [string, { initialMessage: string; rawInitialMessage: string }];
+    assert.match(saveLaunchArgs[1].initialMessage, /routed to project "project-a"/i);
+    assert.equal(saveLaunchArgs[1].rawInitialMessage, 'Fix the checkout total on mobile.');
     assert.equal(dependencies.deleteSession.mock.callCount(), 0);
 
     const state = await quickCreateModule.getHomeQuickCreateState();
@@ -283,6 +287,18 @@ describe('executeQuickCreateTaskJob', () => {
     });
 
     assert.equal(dependencies.createSession.mock.callCount(), 2);
+
+    const firstLaunchArgs = (dependencies.saveSessionLaunchContext.mock.calls[0]?.arguments ?? []) as unknown as [string, { initialMessage: string; rawInitialMessage: string }];
+    const secondLaunchArgs = (dependencies.saveSessionLaunchContext.mock.calls[1]?.arguments ?? []) as unknown as [string, { initialMessage: string; rawInitialMessage: string }];
+    assert.match(firstLaunchArgs[1].initialMessage, /only for project "project-a"/i);
+    assert.match(secondLaunchArgs[1].initialMessage, /only for project "project-b"/i);
+    assert.equal(firstLaunchArgs[1].rawInitialMessage, 'Fix bug in ai and ak project.');
+    assert.equal(secondLaunchArgs[1].rawInitialMessage, 'Fix bug in ai and ak project.');
+
+    const firstTurnArgs = (dependencies.startSessionTurn.mock.calls[0]?.arguments ?? []) as unknown as [{ message: string }];
+    const secondTurnArgs = (dependencies.startSessionTurn.mock.calls[1]?.arguments ?? []) as unknown as [{ message: string }];
+    assert.match(firstTurnArgs[0].message, /only for project "project-a"/i);
+    assert.match(secondTurnArgs[0].message, /only for project "project-b"/i);
   });
 
   it('creates a new project under the default root when routing returns a new target', async () => {
@@ -315,5 +331,33 @@ describe('executeQuickCreateTaskJob', () => {
     assert.deepStrictEqual(result.projectNames, ['ak']);
     assert.equal(dependencies.createProjectFromDefaultRoot.mock.callCount(), 1);
     assert.equal(dependencies.createProjectFromDefaultRoot.mock.calls[0]?.arguments[0], 'ak');
+  });
+
+  it('rewrites a routed single-target prompt when no project was explicitly mentioned', async () => {
+    const dependencies = createWorkflowDependencies();
+
+    const result = await quickCreateModule.executeQuickCreateTaskJob({
+      message: 'Fix the checkout total on mobile.',
+    }, dependencies as never);
+
+    assert.equal(result.status, 'succeeded');
+
+    const saveLaunchArgs = (dependencies.saveSessionLaunchContext.mock.calls[0]?.arguments ?? []) as unknown as [string, { initialMessage: string; rawInitialMessage: string }];
+    assert.match(saveLaunchArgs[1].initialMessage, /routed to project "project-a"/i);
+    assert.equal(saveLaunchArgs[1].rawInitialMessage, 'Fix the checkout total on mobile.');
+  });
+
+  it('passes through the original prompt for a single explicit project mention', async () => {
+    const dependencies = createWorkflowDependencies();
+
+    const result = await quickCreateModule.executeQuickCreateTaskJob({
+      message: 'Fix @project-a checkout total on mobile.',
+    }, dependencies as never);
+
+    assert.equal(result.status, 'succeeded');
+
+    const saveLaunchArgs = (dependencies.saveSessionLaunchContext.mock.calls[0]?.arguments ?? []) as unknown as [string, { initialMessage: string; rawInitialMessage: string }];
+    assert.equal(saveLaunchArgs[1].initialMessage, 'Fix @project-a checkout total on mobile.');
+    assert.equal(saveLaunchArgs[1].rawInitialMessage, 'Fix @project-a checkout total on mobile.');
   });
 });

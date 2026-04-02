@@ -351,7 +351,6 @@ export default function HomeDashboardContainer({
     const unsubscribe = subscribeToSessionsUpdated(() => {
       void refreshActivity();
     });
-    void refreshActivity();
     return () => {
       unsubscribe();
     };

@@ -6,13 +6,21 @@ const QUICK_CREATE_TAB_ID_KEY = '__palxQuickCreateTabId';
 const listeners = new Set<(payload: QuickCreateJobUpdatePayload) => void>();
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
+let closeTimer: number | null = null;
 let reconnectAttempt = 0;
-let isConnecting = false;
+let connectPromise: Promise<void> | null = null;
+let connectionGeneration = 0;
 
 function clearReconnectTimer(): void {
   if (reconnectTimer === null) return;
   window.clearTimeout(reconnectTimer);
   reconnectTimer = null;
+}
+
+function clearCloseTimer(): void {
+  if (closeTimer === null) return;
+  window.clearTimeout(closeTimer);
+  closeTimer = null;
 }
 
 function dispatchListeners(payload: QuickCreateJobUpdatePayload): void {
@@ -35,63 +43,90 @@ function scheduleReconnect(): void {
 
 async function ensureQuickCreateSocketConnected(): Promise<void> {
   if (typeof window === 'undefined') return;
+  clearCloseTimer();
   if (listeners.size === 0) return;
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
-  if (isConnecting) return;
+  if (connectPromise) {
+    await connectPromise;
+    return;
+  }
 
-  isConnecting = true;
+  const attemptGeneration = ++connectionGeneration;
+  const nextPromise = (async () => {
+    try {
+      const response = await fetch(QUICK_CREATE_SOCKET_ENDPOINT, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Failed to initialize quick create socket');
+      }
+
+      const data = await response.json() as { wsUrl?: string };
+      const wsUrl = data.wsUrl?.trim();
+      if (!wsUrl) {
+        throw new Error('Quick create websocket URL is missing');
+      }
+      if (listeners.size === 0 || attemptGeneration !== connectionGeneration) {
+        return;
+      }
+
+      const nextSocket = new WebSocket(wsUrl);
+      socket = nextSocket;
+      nextSocket.onopen = () => {
+        if (socket !== nextSocket) return;
+        reconnectAttempt = 0;
+        clearReconnectTimer();
+      };
+      nextSocket.onerror = () => {
+        nextSocket.close();
+      };
+      nextSocket.onclose = () => {
+        if (socket === nextSocket) {
+          socket = null;
+        }
+        if (attemptGeneration === connectionGeneration) {
+          scheduleReconnect();
+        }
+      };
+      nextSocket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data as string) as QuickCreateJobUpdatePayload;
+          if (payload.type !== 'quick-create-job-update') return;
+          dispatchListeners(payload);
+        } catch {
+          // Ignore malformed update payloads.
+        }
+      };
+    } catch {
+      if (attemptGeneration === connectionGeneration) {
+        scheduleReconnect();
+      }
+    }
+  })();
+
+  connectPromise = nextPromise;
   try {
-    const response = await fetch(QUICK_CREATE_SOCKET_ENDPOINT, { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error('Failed to initialize quick create socket');
-    }
-
-    const data = await response.json() as { wsUrl?: string };
-    const wsUrl = data.wsUrl?.trim();
-    if (!wsUrl) {
-      throw new Error('Quick create websocket URL is missing');
-    }
-
-    const nextSocket = new WebSocket(wsUrl);
-    socket = nextSocket;
-    nextSocket.onopen = () => {
-      reconnectAttempt = 0;
-      clearReconnectTimer();
-    };
-    nextSocket.onerror = () => {
-      nextSocket.close();
-    };
-    nextSocket.onclose = () => {
-      if (socket === nextSocket) {
-        socket = null;
-      }
-      scheduleReconnect();
-    };
-    nextSocket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data as string) as QuickCreateJobUpdatePayload;
-        if (payload.type !== 'quick-create-job-update') return;
-        dispatchListeners(payload);
-      } catch {
-        // Ignore malformed update payloads.
-      }
-    };
-  } catch {
-    scheduleReconnect();
+    await nextPromise;
   } finally {
-    isConnecting = false;
+    if (connectPromise === nextPromise) {
+      connectPromise = null;
+    }
   }
 }
 
 function maybeCloseQuickCreateSocket(): void {
   if (listeners.size > 0) return;
+  clearCloseTimer();
   clearReconnectTimer();
-  reconnectAttempt = 0;
-  isConnecting = false;
-  socket?.close();
-  socket = null;
+  closeTimer = window.setTimeout(() => {
+    closeTimer = null;
+    if (listeners.size > 0) return;
+    reconnectAttempt = 0;
+    connectionGeneration += 1;
+    const activeSocket = socket;
+    socket = null;
+    activeSocket?.close();
+  }, 0);
 }
 
 export function getQuickCreateTabId(): string {

@@ -50,6 +50,20 @@ describe('config global agent defaults', () => {
     assert.equal(loaded.homeProjectSort, 'name');
   });
 
+  it('resolves the default root from app config before legacy settings', async () => {
+    const configuredRoot = path.join(tempHome, 'Downloads', 'projects');
+    const legacyRoot = path.join(tempHome, 'legacy-root');
+
+    await configModule.updateConfig({
+      defaultRoot: configuredRoot,
+    });
+    storeModule.updateSettings({
+      defaultRootFolder: legacyRoot,
+    });
+
+    assert.equal(storeModule.getDefaultRootFolder(), configuredRoot);
+  });
+
   it('round-trips global default agent settings', async () => {
     const updated = await configModule.updateConfig({
       defaultAgentProvider: 'codex',

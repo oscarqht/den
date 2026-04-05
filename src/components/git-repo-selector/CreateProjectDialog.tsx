@@ -156,8 +156,9 @@ export function CreateProjectDialog({
   const folderCountLabel = useMemo(() => (
     selectedFolderPaths.length === 1 ? '1 associated folder' : `${selectedFolderPaths.length} associated folders`
   ), [selectedFolderPaths.length]);
-  const mobileActionButtonClass = 'w-10 min-w-10 justify-center gap-0 px-0 sm:w-auto sm:min-w-0 sm:gap-2 sm:px-4';
-  const mobilePrimaryActionButtonClass = 'w-10 min-w-10 justify-center gap-0 px-0 sm:w-auto sm:min-w-0 sm:gap-2 sm:px-4';
+  const mobileActionButtonClass = 'app-ui-icon-button w-10 min-w-10 sm:min-h-[2.625rem] sm:w-auto sm:min-w-0 sm:gap-2 sm:rounded-xl sm:px-[0.95rem] sm:text-sm sm:font-semibold';
+  const mobilePrimaryActionButtonClass = 'h-10 min-h-10 w-10 min-w-10 justify-center gap-0 px-0 [&_svg]:h-[18px] [&_svg]:w-[18px] sm:w-auto sm:min-w-0 sm:gap-2 sm:px-4 sm:[&_svg]:h-4 sm:[&_svg]:w-4';
+  const mobileActionIconClass = 'h-[18px] w-[18px] sm:h-4 sm:w-4';
 
   if (!isOpen) return null;
 
@@ -206,7 +207,7 @@ export function CreateProjectDialog({
                 <div className="flex flex-wrap justify-end gap-2">
                   <button
                     type="button"
-                    className={`app-ui-button ${mobileActionButtonClass}`}
+                    className={mobileActionButtonClass}
                     onClick={() => setIsDefaultRootBrowserOpen(true)}
                     disabled={isSubmitting || isSettingDefaultRoot}
                     aria-label="Set default root"
@@ -215,19 +216,19 @@ export function CreateProjectDialog({
                     {isSettingDefaultRoot ? (
                       <span className="loading loading-spinner loading-xs"></span>
                     ) : (
-                      <FolderCog className="h-4 w-4" />
+                      <FolderCog className={mobileActionIconClass} />
                     )}
                     <span className="sr-only sm:not-sr-only">Set Default Root</span>
                   </button>
                   <button
                     type="button"
-                    className={`app-ui-button ${mobileActionButtonClass}`}
+                    className={mobileActionButtonClass}
                     onClick={() => setIsFolderBrowserOpen(true)}
                     disabled={isSubmitting || isSettingDefaultRoot}
                     aria-label="Add folder"
                     title="Add Folder"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className={mobileActionIconClass} />
                     <span className="sr-only sm:not-sr-only">Add Folder</span>
                   </button>
                 </div>
@@ -339,25 +340,25 @@ export function CreateProjectDialog({
               {onCloneRemote ? (
                 <button
                   type="button"
-                  className={`app-ui-button mr-auto ${mobileActionButtonClass}`}
+                  className={`${mobileActionButtonClass} mr-auto`}
                   onClick={onCloneRemote}
                   disabled={isSubmitting}
                   aria-label="Clone remote repo"
                   title="Clone Remote Repo"
                 >
-                  <CloudDownload className="h-4 w-4" />
+                  <CloudDownload className={mobileActionIconClass} />
                   <span className="sr-only sm:not-sr-only">Clone Remote Repo</span>
                 </button>
               ) : null}
               <button
                 type="button"
-                className={`app-ui-button ${mobileActionButtonClass}`}
+                className={mobileActionButtonClass}
                 onClick={onClose}
                 disabled={isSubmitting}
                 aria-label="Cancel"
                 title="Cancel"
               >
-                <X className="h-4 w-4" />
+                <X className={mobileActionIconClass} />
                 <span className="sr-only sm:not-sr-only">Cancel</span>
               </button>
               <button
@@ -368,7 +369,7 @@ export function CreateProjectDialog({
                 aria-label="Create project"
                 title="Create Project"
               >
-                <Check className="h-4 w-4" />
+                <Check className={mobileActionIconClass} />
                 <span className="sr-only sm:not-sr-only">Create Project</span>
               </button>
             </div>

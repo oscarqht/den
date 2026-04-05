@@ -1183,6 +1183,7 @@ export default function GitRepoSelector({
       const result = await cloneRemoteProject(
         trimmedRemoteUrl,
         cloneCredentialSelection === 'auto' ? null : cloneCredentialSelection,
+        config?.defaultRoot ?? null,
       );
 
       if (!result.success || !result.projectPath) {
@@ -3417,14 +3418,7 @@ export default function GitRepoSelector({
           onClose={dismissCloneRemoteDialog}
           onRemoteRepoUrlChange={setRemoteRepoUrl}
           onCloneCredentialSelectionChange={setCloneCredentialSelection}
-          onBrowseLocalFolder={() => {
-            dismissCloneRemoteDialog();
-            setIsBrowsing(true);
-          }}
-          onSetDefaultFolder={() => {
-            dismissCloneRemoteDialog();
-            setIsSelectingRoot(true);
-          }}
+          onSetDefaultFolder={handleSetDefaultRoot}
           onCloneProject={() => {
             void handleCloneRemoteRepo();
           }}

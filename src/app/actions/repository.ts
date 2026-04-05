@@ -23,12 +23,13 @@ export async function resolveRepositoryByName(repoName: string): Promise<{
 export async function cloneRemoteRepository(
   remoteUrl: string,
   credentialId: string | null,
+  destinationParent: string | null,
 ): Promise<{
   success: boolean;
   repoPath: string | null;
   error?: string;
 }> {
-  const result: CloneRemoteProjectResult = await cloneRemoteProject(remoteUrl, credentialId);
+  const result: CloneRemoteProjectResult = await cloneRemoteProject(remoteUrl, credentialId, destinationParent);
   return {
     success: result.success,
     repoPath: result.projectPath,

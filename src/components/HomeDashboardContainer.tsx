@@ -828,6 +828,7 @@ export default function HomeDashboardContainer({
       const result = await cloneRemoteProject(
         trimmedRemoteUrl,
         cloneCredentialSelection === 'auto' ? null : cloneCredentialSelection,
+        config?.defaultRoot ?? null,
       );
 
       if (!result.success || !result.projectId || !result.projectPath) {
@@ -856,6 +857,7 @@ export default function HomeDashboardContainer({
     }
   }, [
     cloneCredentialSelection,
+    config?.defaultRoot,
     dismissCloneRemoteDialog,
     handleSelectProject,
     isCloningRemote,
@@ -1640,14 +1642,7 @@ export default function HomeDashboardContainer({
         onClose={dismissCloneRemoteDialog}
         onRemoteRepoUrlChange={setRemoteRepoUrl}
         onCloneCredentialSelectionChange={setCloneCredentialSelection}
-        onBrowseLocalFolder={() => {
-          dismissCloneRemoteDialog();
-          openCreateProjectDialog();
-        }}
-        onSetDefaultFolder={() => {
-          dismissCloneRemoteDialog();
-          setIsSelectingRoot(true);
-        }}
+        onSetDefaultFolder={handleSetDefaultRoot}
         onCloneProject={() => {
           void handleCloneRemoteRepo();
         }}

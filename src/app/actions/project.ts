@@ -1,7 +1,6 @@
 'use server';
 
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import simpleGit from 'simple-git';
 import { resolveRepositoryPathByName } from '../../lib/repo-resolver.ts';
@@ -521,10 +520,21 @@ async function resolveCloneCredential(
 export async function cloneRemoteProject(
   remoteUrl: string,
   credentialId: string | null,
+  destinationParent: string | null,
 ): Promise<CloneRemoteProjectResult> {
   const trimmedRemoteUrl = remoteUrl.trim();
   if (!trimmedRemoteUrl) {
     return { success: false, projectId: null, projectPath: null, error: 'Please enter a remote project URL.' };
+  }
+
+  const trimmedDestinationParent = destinationParent?.trim();
+  if (!trimmedDestinationParent) {
+    return {
+      success: false,
+      projectId: null,
+      projectPath: null,
+      error: 'Select a default root folder before cloning a repository.',
+    };
   }
 
   const projectName = getProjectNameFromRemoteUrl(trimmedRemoteUrl);
@@ -532,8 +542,16 @@ export async function cloneRemoteProject(
     return { success: false, projectId: null, projectPath: null, error: 'Could not determine project name from URL.' };
   }
 
-  const cloneRoot = path.join(os.homedir(), '.viba', 'projects');
-  await fs.mkdir(cloneRoot, { recursive: true });
+  const cloneRoot = normalizeProjectFolderPath(trimmedDestinationParent);
+  const cloneRootStats = await fs.stat(cloneRoot).catch(() => null);
+  if (!cloneRootStats?.isDirectory()) {
+    return {
+      success: false,
+      projectId: null,
+      projectPath: null,
+      error: `Default root folder not found: ${cloneRoot}.`,
+    };
+  }
 
   const targetPath = path.join(cloneRoot, projectName);
   try {

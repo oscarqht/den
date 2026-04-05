@@ -13,9 +13,66 @@ interface GitHubRepoApiItem {
   ssh_url: string;
 }
 
+class GitHubApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 const querySchema = z.object({
   credentialId: z.string().min(1, 'Credential ID is required'),
 });
+
+const GITHUB_REPOS_PER_PAGE = 100;
+
+function createGitHubRequestHeaders(token: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+
+function hasGitHubNextPage(linkHeader: string | null): boolean {
+  if (!linkHeader) return false;
+  return linkHeader
+    .split(',')
+    .some((entry) => entry.includes('rel="next"'));
+}
+
+async function fetchAllGitHubRepositories(token: string): Promise<GitHubRepoApiItem[]> {
+  const repositories: GitHubRepoApiItem[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await fetch(
+      `https://api.github.com/user/repos?sort=updated&direction=desc&per_page=${GITHUB_REPOS_PER_PAGE}&type=all&page=${page}`,
+      {
+        headers: createGitHubRequestHeaders(token),
+        cache: 'no-store',
+      },
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new GitHubApiError('Invalid or expired GitHub token', 401);
+      }
+      throw new GitHubApiError(`GitHub API error: ${response.status}`, 502);
+    }
+
+    const pageRepositories = (await response.json()) as GitHubRepoApiItem[];
+    repositories.push(...pageRepositories);
+
+    if (!hasGitHubNextPage(response.headers.get('link'))) {
+      break;
+    }
+  }
+
+  repositories.sort((left, right) => (
+    new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+  ));
+
+  return repositories;
+}
 
 export async function GET(request: Request) {
   try {
@@ -37,22 +94,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Token not found for selected credential' }, { status: 400 });
     }
 
-    const response = await fetch('https://api.github.com/user/repos?sort=updated&direction=desc&per_page=100&type=all', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return NextResponse.json({ error: 'Invalid or expired GitHub token' }, { status: 401 });
-      }
-      return NextResponse.json({ error: `GitHub API error: ${response.status}` }, { status: 502 });
-    }
-
-    const repositories = (await response.json()) as GitHubRepoApiItem[];
+    const repositories = await fetchAllGitHubRepositories(token);
     const payload = repositories.map((repo) => ({
       id: repo.id,
       name: repo.name,
@@ -68,6 +110,9 @@ export async function GET(request: Request) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+    }
+    if (error instanceof GitHubApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('Failed to list GitHub repositories:', error);
     return NextResponse.json({ error: 'Failed to list GitHub repositories' }, { status: 500 });

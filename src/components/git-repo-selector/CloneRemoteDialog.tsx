@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CloudDownload, FolderCog, X } from 'lucide-react';
 import FileBrowser from '@/components/FileBrowser';
+import { useGitHubRepositories } from '@/hooks/use-credentials';
 import type { Credential } from '@/lib/credentials';
 import { getCredentialOptionLabel, type RepoCredentialSelection } from './types';
+import { resolveGitHubCredentialForRepoSuggestions } from './clone-remote-dialog-utils';
 
 export type CloneRemoteDialogProps = {
   isOpen: boolean;
@@ -39,6 +41,20 @@ export function CloneRemoteDialog({
 }: CloneRemoteDialogProps) {
   const [isDefaultRootBrowserOpen, setIsDefaultRootBrowserOpen] = useState(false);
   const [isSettingDefaultRoot, setIsSettingDefaultRoot] = useState(false);
+  const githubCredentialForSuggestions = useMemo(
+    () => resolveGitHubCredentialForRepoSuggestions(credentialOptions, cloneCredentialSelection),
+    [cloneCredentialSelection, credentialOptions],
+  );
+  const {
+    data: githubRepositories,
+    isLoading: isGitHubRepositoriesLoading,
+    error: githubRepositoriesError,
+  } = useGitHubRepositories(githubCredentialForSuggestions?.id ?? null);
+  const sortedGitHubRepositories = useMemo(() => (
+    [...(githubRepositories ?? [])].sort((left, right) => (
+      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    ))
+  ), [githubRepositories]);
 
   if (!isOpen) return null;
 
@@ -145,6 +161,86 @@ export function CloneRemoteDialog({
               {cloneRemoteError ? (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {cloneRemoteError}
+                </div>
+              ) : null}
+
+              {githubCredentialForSuggestions ? (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 app-dark-surface-raised">
+                  <div className="space-y-1">
+                    <h5 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      GitHub Repositories
+                    </h5>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Showing repositories for <span className="font-semibold">{githubCredentialForSuggestions.username}</span>. Click one to fill the repository URL.
+                    </p>
+                  </div>
+
+                  {isGitHubRepositoriesLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                      <span className="loading loading-spinner loading-xs"></span>
+                      Loading GitHub repositories...
+                    </div>
+                  ) : null}
+
+                  {!isGitHubRepositoriesLoading && githubRepositoriesError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {githubRepositoriesError instanceof Error
+                        ? githubRepositoriesError.message
+                        : 'Failed to load GitHub repositories.'}
+                    </div>
+                  ) : null}
+
+                  {!isGitHubRepositoriesLoading && !githubRepositoriesError && sortedGitHubRepositories.length === 0 ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+                      No accessible repositories were found for this GitHub account.
+                    </div>
+                  ) : null}
+
+                  {!isGitHubRepositoriesLoading && !githubRepositoriesError && sortedGitHubRepositories.length > 0 ? (
+                    <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                      {sortedGitHubRepositories.map((repo) => {
+                        const isSelected = remoteRepoUrl.trim() === repo.cloneUrl;
+                        return (
+                          <button
+                            key={repo.id}
+                            type="button"
+                            className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                              isSelected
+                                ? 'border-primary bg-primary/5'
+                                : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:bg-slate-900/70'
+                            }`}
+                            onClick={() => {
+                              onRemoteRepoUrlChange(repo.cloneUrl);
+                              if (cloneCredentialSelection !== githubCredentialForSuggestions.id) {
+                                onCloneCredentialSelectionChange(githubCredentialForSuggestions.id);
+                              }
+                            }}
+                            title={repo.cloneUrl}
+                            disabled={isCloningRemote}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {repo.fullName}
+                              </span>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                repo.private
+                                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                                  : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                              }`}>
+                                {repo.private ? 'Private' : 'Public'}
+                              </span>
+                            </div>
+                            <div className="mt-1 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                              {repo.cloneUrl}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                              Updated {new Date(repo.updatedAt).toLocaleString()}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

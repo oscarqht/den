@@ -297,6 +297,17 @@ export function updateSettings(updates: Partial<AppSettings>): AppSettings {
 }
 
 export function getDefaultRootFolder(): string {
+  const state = readLocalState();
+  const configuredDefaultRoot = state.appConfig.defaultRoot?.trim();
+
+  if (configuredDefaultRoot) {
+    try {
+      return path.resolve(configuredDefaultRoot);
+    } catch {
+      // Fall back to legacy settings or home directory if path is malformed.
+    }
+  }
+
   const settings = getSettings();
 
   if (settings.defaultRootFolder) {

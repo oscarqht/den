@@ -32,7 +32,12 @@ import { buildPendingAssistantItem } from '@/lib/agent/pending-assistant';
 import { normalizeMarkdownLists } from '@/lib/markdown';
 import { getBaseName } from '@/lib/path';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
-import { shouldReleaseSessionCanvasAgentSendLock } from '@/lib/session-canvas-agent';
+import {
+  buildSessionCanvasAutoStartKey,
+  claimSessionCanvasAutoStart,
+  releaseSessionCanvasAutoStart,
+  shouldReleaseSessionCanvasAgentSendLock,
+} from '@/lib/session-canvas-agent';
 import { getModelReasoningEffortOptions, resolveReasoningEffortSelection } from '@/lib/session-reasoning';
 import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
 import {
@@ -77,6 +82,8 @@ type SendMessageResponse = {
   runtime?: SessionAgentRuntimeState | null;
   error?: string;
 };
+
+const DUPLICATE_TURN_ERROR = 'A turn is already running for this session.';
 
 export type AgentSessionPaneHandle = {
   focusComposer: () => void;
@@ -1303,12 +1310,22 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       return;
     }
 
-    const requestKey = `${sessionId}:${normalizedAutoStartMessage}`;
+    const requestKey = buildSessionCanvasAutoStartKey(sessionId, normalizedAutoStartMessage);
+    if (!requestKey) {
+      return;
+    }
+
     if (autoStartRequestKeyRef.current === requestKey) {
       return;
     }
 
     if (history.some((item) => item.kind === 'user' && item.text === normalizedAutoStartMessage)) {
+      autoStartRequestKeyRef.current = requestKey;
+      releaseSessionCanvasAutoStart(requestKey);
+      return;
+    }
+
+    if (!claimSessionCanvasAutoStart(requestKey)) {
       autoStartRequestKeyRef.current = requestKey;
       return;
     }
@@ -1326,8 +1343,17 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
       }
 
       if (!result.success) {
+        if (result.error === DUPLICATE_TURN_ERROR) {
+          setOptimisticMessages((current) => current.filter((item) => item.id !== optimisticMessage.id));
+          setError(null);
+          scheduleRefresh(0);
+          setIsSending(false);
+          return;
+        }
+
         setOptimisticMessages((current) => current.filter((item) => item.id !== optimisticMessage.id));
         autoStartRequestKeyRef.current = null;
+        releaseSessionCanvasAutoStart(requestKey);
       }
       setIsSending(false);
     })();

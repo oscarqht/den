@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildSessionCanvasAutoStartKey,
+  claimSessionCanvasAutoStart,
   formatPathsForAgentInput,
   insertPathsIntoAgentInput,
+  releaseSessionCanvasAutoStart,
   shouldAutoStartSessionCanvasAgentTurn,
   shouldReleaseSessionCanvasAgentSendLock,
 } from './session-canvas-agent.ts';
@@ -98,5 +101,18 @@ describe('session canvas agent helpers', () => {
       optimisticMessageCount: 0,
       runState: 'completed',
     }), true);
+  });
+
+  it('claims auto-start requests once per session and prompt until released', () => {
+    const key = buildSessionCanvasAutoStartKey('session-1', '  Start the task  ');
+    assert.equal(key, 'session-1:Start the task');
+
+    releaseSessionCanvasAutoStart(key);
+    assert.equal(claimSessionCanvasAutoStart(key), true);
+    assert.equal(claimSessionCanvasAutoStart(key), false);
+
+    releaseSessionCanvasAutoStart(key);
+    assert.equal(claimSessionCanvasAutoStart(key), true);
+    releaseSessionCanvasAutoStart(key);
   });
 });

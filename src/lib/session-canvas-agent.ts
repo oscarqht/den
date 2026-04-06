@@ -1,5 +1,7 @@
 import type { SessionAgentRunState } from '@/lib/types';
 
+const sessionCanvasAutoStartClaims = new Set<string>();
+
 export type SessionCanvasAgentInputHandle = {
   insertText: (text: string) => boolean;
   setReasoningEffort?: (effort: string) => boolean;
@@ -53,4 +55,35 @@ export function shouldReleaseSessionCanvasAgentSendLock(args: {
   }
 
   return Boolean(args.runState && args.runState !== 'idle');
+}
+
+export function buildSessionCanvasAutoStartKey(sessionId: string, prompt: string): string {
+  const normalizedSessionId = sessionId.trim();
+  const normalizedPrompt = prompt.trim();
+  return normalizedSessionId && normalizedPrompt
+    ? `${normalizedSessionId}:${normalizedPrompt}`
+    : '';
+}
+
+export function claimSessionCanvasAutoStart(key: string): boolean {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return false;
+  }
+
+  if (sessionCanvasAutoStartClaims.has(normalizedKey)) {
+    return false;
+  }
+
+  sessionCanvasAutoStartClaims.add(normalizedKey);
+  return true;
+}
+
+export function releaseSessionCanvasAutoStart(key: string): void {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  sessionCanvasAutoStartClaims.delete(normalizedKey);
 }

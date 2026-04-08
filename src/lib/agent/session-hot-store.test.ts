@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { LocalSessionRecord } from '../local-db.ts';
@@ -202,5 +202,27 @@ describe('session hot store', () => {
     const paths = hotStoreModule.getSessionHotStorePathsForTests('session-1');
     const snapshot = JSON.parse(await readFile(paths.snapshotPath, 'utf8')) as Array<{ itemId: string }>;
     assert.equal(snapshot.length, 2);
+  });
+
+  it('reloads runtime snapshots written by another process', async () => {
+    localDbModule.updateLocalState((state) => {
+      state.sessions['session-1'] = createSessionRecord();
+    });
+
+    const initialRuntime = hotStoreModule.readRuntime('session-1');
+    assert.equal(initialRuntime?.runState, 'running');
+
+    hotStoreModule.flush('session-1');
+    const paths = hotStoreModule.getSessionHotStorePathsForTests('session-1');
+    const nextRuntime = {
+      ...initialRuntime,
+      runState: 'completed',
+      lastActivityAt: '2026-04-06T10:05:00.000Z',
+    };
+    await writeFile(paths.runtimePath, JSON.stringify(nextRuntime), 'utf8');
+
+    const refreshedRuntime = hotStoreModule.readRuntime('session-1');
+    assert.equal(refreshedRuntime?.runState, 'completed');
+    assert.equal(refreshedRuntime?.lastActivityAt, '2026-04-06T10:05:00.000Z');
   });
 });

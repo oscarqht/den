@@ -465,6 +465,17 @@ function parseRuntimeFile(value: string): SessionAgentRuntimeState | null {
   }
 }
 
+function loadRuntimeFromDisk(paths: SessionHotStorePaths): SessionAgentRuntimeState | null {
+  try {
+    return parseRuntimeFile(fs.readFileSync(paths.runtimePath, 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[session-hot-store] Failed to parse runtime snapshot, ignoring file.', error);
+    }
+    return null;
+  }
+}
+
 function parseSnapshotFile(value: string): PersistedHistoryRecord[] {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -608,14 +619,7 @@ function getOrLoadCache(sessionName: string): SessionHotStoreCache {
   sessionCaches.set(normalizedSessionName, cache);
 
   const paths = getSessionHotStorePaths(normalizedSessionName);
-  let runtime: SessionAgentRuntimeState | null = null;
-  try {
-    runtime = parseRuntimeFile(fs.readFileSync(paths.runtimePath, 'utf8'));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn('[session-hot-store] Failed to parse runtime snapshot, ignoring file.', error);
-    }
-  }
+  const runtime = loadRuntimeFromDisk(paths);
 
   const { historyById, walRecordCount, walBytes } = loadHistoryFromDisk(paths);
 
@@ -775,7 +779,13 @@ export function compact(sessionName: string): void {
 }
 
 export function readRuntime(sessionName: string): SessionAgentRuntimeState | null {
-  return getOrLoadCache(sessionName).runtime;
+  const cache = getOrLoadCache(sessionName);
+  if (cache.dirtyRuntime) {
+    return cache.runtime;
+  }
+
+  cache.runtime = loadRuntimeFromDisk(getSessionHotStorePaths(cache.sessionName));
+  return cache.runtime;
 }
 
 export function readHistory(

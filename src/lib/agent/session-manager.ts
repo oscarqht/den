@@ -821,6 +821,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
   });
   const diagnostics = createTurnDiagnostics(provider as AgentProvider, startedAt);
   state.lastDiagnostics.set(sessionId, cloneTurnDiagnostics(diagnostics));
+  flushSessionState(sessionId);
   await publishSessionListUpdated();
 
   const abortController = new AbortController();

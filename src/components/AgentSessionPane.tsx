@@ -19,6 +19,7 @@ import {
   reconcileOptimisticUserMessages,
   type OptimisticUserMessage,
 } from '@/lib/optimistic-user-history';
+import { parseAgentStartupHistoryEntry } from '@/lib/agent-startup-history';
 import { normalizePlanStepStatus, parsePlanStepsFromText, parsePlanStepsFromToolInput } from '@/lib/agent/plan';
 import {
   AGENT_SESSION_CODE_BLOCK_CLASSNAME,
@@ -483,7 +484,8 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
   const handleToggleExpanded = options.onToggleExpanded ?? (() => {});
 
   switch (item.kind) {
-    case 'user':
+    case 'user': {
+      const startupPrompt = parseAgentStartupHistoryEntry(item.text);
       return (
         <div className="flex min-w-0 justify-end">
           <div className={`min-w-0 max-w-[85%] overflow-hidden rounded-2xl rounded-br-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-sm dark:bg-amber-500/14 dark:text-amber-50 ${options.pulse ? 'animate-pulse' : ''}`}>
@@ -494,11 +496,37 @@ function renderHistoryItem(item: SessionAgentHistoryItem, options: RenderHistory
                 </span>
               </div>
             ) : null}
-            <div className="whitespace-pre-wrap break-words">{item.text}</div>
+            {startupPrompt ? (
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700/80 dark:text-amber-100/80">
+                    Task
+                  </div>
+                  <div className="whitespace-pre-wrap break-words">{startupPrompt.task}</div>
+                </div>
+                <details
+                  open={isExpanded}
+                  className="rounded-xl border border-amber-300/70 bg-white/55 px-3 py-2 dark:border-amber-300/20 dark:bg-amber-950/30"
+                  onToggle={(event) => {
+                    handleToggleExpanded(item.id, event.currentTarget.open);
+                  }}
+                >
+                  <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-100/85">
+                    System instructions
+                  </summary>
+                  <div className="mt-2 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-amber-900/90 dark:text-amber-50/90">
+                    {startupPrompt.instructions}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap break-words">{item.text}</div>
+            )}
             {timestamp ? <div className="mt-2 text-[10px] text-amber-700/80 dark:text-amber-100/70">{timestamp}</div> : null}
           </div>
         </div>
       );
+    }
     case 'assistant':
       const assistantStatus = options.status ?? item.itemStatus ?? null;
       const assistantPulse = options.pulse || assistantStatus === 'pending';

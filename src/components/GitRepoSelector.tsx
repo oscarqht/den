@@ -3674,8 +3674,8 @@ export default function GitRepoSelector({
                             }`}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-white">
+                          <div className="flex items-start gap-2">
+                            <p className="min-w-0 flex-1 line-clamp-3 text-sm font-medium leading-5 text-slate-900 dark:text-white">
                               {session.title || session.sessionName}
                             </p>
                             <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getSessionStatusBadgeTone(sessionStatus)}`}>

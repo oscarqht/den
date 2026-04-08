@@ -70,8 +70,8 @@ export class GitService {
   }
 
   private resolveFilePathWithinRepo(filePath: string): string {
-    const resolvedRepoPath = resolve(this.repoPath);
-    const resolvedFilePath = resolve(resolvedRepoPath, filePath);
+    const resolvedRepoPath = resolve(/* turbopackIgnore: true */ this.repoPath);
+    const resolvedFilePath = resolve(/* turbopackIgnore: true */ resolvedRepoPath, filePath);
     const rel = relative(resolvedRepoPath, resolvedFilePath);
     if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
       throw new Error(`File path is outside repository: ${filePath}`);
@@ -502,10 +502,10 @@ export class GitService {
       worktrees.push(currentEntry);
     }
 
-    const normalizedRepoPath = resolve(this.repoPath);
+    const normalizedRepoPath = resolve(/* turbopackIgnore: true */ this.repoPath);
     const uniqueByPath = new Map<string, GitWorktree>();
     for (const entry of worktrees) {
-      const normalizedPath = resolve(entry.path);
+      const normalizedPath = resolve(/* turbopackIgnore: true */ entry.path);
       if (uniqueByPath.has(normalizedPath)) continue;
       uniqueByPath.set(normalizedPath, {
         path: entry.path,
@@ -770,9 +770,9 @@ export class GitService {
   }
 
   private async findWorktreeByPath(worktreePath: string): Promise<GitWorktree | null> {
-    const resolvedTargetPath = resolve(worktreePath);
+    const resolvedTargetPath = resolve(/* turbopackIgnore: true */ worktreePath);
     const worktrees = await this.getWorktrees('');
-    return worktrees.find((worktree) => resolve(worktree.path) === resolvedTargetPath) ?? null;
+    return worktrees.find((worktree) => resolve(/* turbopackIgnore: true */ worktree.path) === resolvedTargetPath) ?? null;
   }
 
   async deleteBranch(branch: string, options: { deleteAssociatedWorktree?: boolean } = {}): Promise<void> {
@@ -805,8 +805,8 @@ export class GitService {
       throw new Error('Worktree path is required');
     }
 
-    const resolvedTargetPath = resolve(targetPath);
-    const resolvedCurrentRepoPath = resolve(this.repoPath);
+    const resolvedTargetPath = resolve(/* turbopackIgnore: true */ targetPath);
+    const resolvedCurrentRepoPath = resolve(/* turbopackIgnore: true */ this.repoPath);
     if (resolvedTargetPath === resolvedCurrentRepoPath) {
       throw new Error('Cannot delete the current worktree');
     }

@@ -7,6 +7,19 @@ const TAILSCALE_DEV_HOST = "office-mac.tail3158df.ts.net";
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: __dirname,
+  outputFileTracingExcludes: {
+    '/*': [
+      './README.md',
+      './docs/**/*',
+      './test/**/*',
+      './src/**/*.test.ts',
+      './eslint.config.mjs',
+      './next.config.mjs',
+      './package-lock.json',
+      './tsconfig.json',
+      './tsconfig.tsbuildinfo',
+    ],
+  },
   allowedDevOrigins: ["localhost", "*.localhost", "127.0.0.1", "*.nport.link", "*.ngrok-free.app", "*.ngrok.app", "*.ngrok.io", "*.ts.net", TAILSCALE_DEV_HOST, "100.*"],
   serverExternalPackages: ["keytar"],
   devIndicators: {

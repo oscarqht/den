@@ -70,7 +70,7 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
 }
 
 function normalizePath(value: string): string {
-  return path.resolve(value.trim());
+  return path.resolve(/* turbopackIgnore: true */ value.trim());
 }
 
 function slugifyProjectPath(projectPath: string): string {

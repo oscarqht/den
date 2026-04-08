@@ -605,7 +605,7 @@ function resolveSessionPath(workspacePath: string, rawPath: string) {
     return rawPath;
   }
 
-  return path.resolve(workspacePath, rawPath);
+  return path.resolve(/* turbopackIgnore: true */ workspacePath, rawPath);
 }
 
 async function createAcpConnection(

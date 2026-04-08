@@ -68,7 +68,7 @@ export function resolveExistingDirectory(targetPath: string): string {
     throw new FsLaunchError('path is required', 400);
   }
 
-  const normalized = path.resolve(trimmed);
+  const normalized = path.resolve(/* turbopackIgnore: true */ trimmed);
   if (!fs.existsSync(normalized)) {
     throw new FsLaunchError(`Path not found: ${normalized}`, 404);
   }

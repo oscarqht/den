@@ -536,7 +536,7 @@ function mergeSessionMetadataWithRuntime(
 }
 
 function normalizePath(value: string): string {
-  return path.resolve(value.trim());
+  return path.resolve(/* turbopackIgnore: true */ value.trim());
 }
 
 function normalizeRelativeWorkspacePath(value: string): string {
@@ -737,7 +737,7 @@ function resolveCommandPath(command: string): string | null {
     }
 
     for (const directory of pathEntries) {
-      const candidatePath = path.join(directory, candidateName);
+      const candidatePath = path.join(/* turbopackIgnore: true */ directory, candidateName);
       if (fsSync.existsSync(candidatePath)) {
         return candidatePath;
       }
@@ -1023,7 +1023,7 @@ async function createSingleRepoSession(
   activeRepoPath: string;
 }> {
   const sessionRootPath = getSessionRootPath(projectKey, sessionName);
-  const workspacePath = path.join(sessionRootPath, 'workspace');
+  const workspacePath = path.join(/* turbopackIgnore: true */ sessionRootPath, 'workspace');
   await ensureWorkspaceParent(workspacePath);
 
   const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
@@ -1070,7 +1070,7 @@ async function createWorkspaceModeSession(
   activeRepoPath?: string;
 }> {
   const sessionRootPath = getSessionRootPath(projectKey, sessionName);
-  const workspacePath = path.join(sessionRootPath, 'workspace');
+  const workspacePath = path.join(/* turbopackIgnore: true */ sessionRootPath, 'workspace');
   await fs.mkdir(workspacePath, { recursive: true });
 
   const folderEntries = buildProjectFolderEntries(folderPaths);
@@ -1082,7 +1082,7 @@ async function createWorkspaceModeSession(
   for (const folderEntry of folderEntries) {
     const folderWorkspaceRelativePath = hasMultipleFolders ? folderEntry.entryName : '.';
     const folderWorkspacePath = hasMultipleFolders
-      ? path.join(workspacePath, folderEntry.entryName)
+      ? path.join(/* turbopackIgnore: true */ workspacePath, folderEntry.entryName)
       : workspacePath;
     const nestedRepoPaths = sourceRepoPaths.filter((repoPath) => (
       isPathInside(folderEntry.sourcePath, repoPath)
@@ -1106,7 +1106,7 @@ async function createWorkspaceModeSession(
     const normalizedRelativeRepoPath = normalizeRelativeWorkspacePath(relativeRepoPath === '' ? '.' : relativeRepoPath);
     const targetWorktreePath = normalizedRelativeRepoPath === '.'
       ? workspacePath
-      : path.join(workspacePath, normalizedRelativeRepoPath);
+      : path.join(/* turbopackIgnore: true */ workspacePath, normalizedRelativeRepoPath);
 
     await fs.rm(targetWorktreePath, { recursive: true, force: true }).catch(() => {
       // Ignore cleanup before worktree creation.
@@ -1170,11 +1170,11 @@ async function createLocalSourceSession(
 
   if (hasMultipleFolders) {
     const sessionRootPath = getSessionRootPath(projectKey, sessionName);
-    workspacePath = path.join(sessionRootPath, 'workspace');
+    workspacePath = path.join(/* turbopackIgnore: true */ sessionRootPath, 'workspace');
     await fs.mkdir(workspacePath, { recursive: true });
 
     for (const folderEntry of folderEntries) {
-      const targetPath = path.join(workspacePath, folderEntry.entryName);
+      const targetPath = path.join(/* turbopackIgnore: true */ workspacePath, folderEntry.entryName);
       await linkWorkspaceFolder(folderEntry.sourcePath, targetPath);
       workspaceFolders.push(buildLocalWorkspaceFolderMapping(
         folderEntry.sourcePath,
@@ -1197,7 +1197,7 @@ async function createLocalSourceSession(
     const branchName = await resolveRepoHeadBranch(context.repoPath);
     const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
     const worktreePath = hasMultipleFolders
-      ? path.join(workspacePath, normalizeRelativeWorkspacePath(normalizedRelativeRepoPath || '.'))
+      ? path.join(/* turbopackIgnore: true */ workspacePath, normalizeRelativeWorkspacePath(normalizedRelativeRepoPath || '.'))
       : context.repoPath;
 
     return {
@@ -1820,7 +1820,7 @@ export async function getSessionPrefillContext(
         (launchContext?.attachmentNames || [])
           .map((name) => name.trim())
           .filter(Boolean)
-          .map((name) => path.join(`${metadata.workspacePath}-attachments`, name))
+          .map((name) => path.join(/* turbopackIgnore: true */ `${metadata.workspacePath}-attachments`, name))
       )
     );
 
@@ -1868,8 +1868,8 @@ export async function copySessionAttachments(
 
     for (const name of dedupedRequestedNames) {
       const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const sourcePath = path.join(sourceAttachmentsDir, safeName);
-      const targetPath = path.join(targetAttachmentsDir, safeName);
+      const sourcePath = path.join(/* turbopackIgnore: true */ sourceAttachmentsDir, safeName);
+      const targetPath = path.join(/* turbopackIgnore: true */ targetAttachmentsDir, safeName);
 
       try {
         await fs.copyFile(sourcePath, targetPath);
@@ -2667,7 +2667,7 @@ export async function deleteSessionWithDependencies(
     deps.deleteSessionState(sessionName);
 
     const promptsDir = await deps.getSessionPromptsDir();
-    const promptFilePath = path.join(promptsDir, `${sessionName}.txt`);
+    const promptFilePath = path.join(/* turbopackIgnore: true */ promptsDir, `${sessionName}.txt`);
     await fs.rm(promptFilePath, { force: true });
 
     try {

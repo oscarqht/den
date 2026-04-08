@@ -1,8 +1,8 @@
 import path from 'node:path';
 
 export function isPathWithinDirectory(rootPath: string, candidatePath: string): boolean {
-  const normalizedRoot = path.resolve(rootPath);
-  const normalizedCandidate = path.resolve(candidatePath);
+  const normalizedRoot = path.resolve(/* turbopackIgnore: true */ rootPath);
+  const normalizedCandidate = path.resolve(/* turbopackIgnore: true */ candidatePath);
 
   if (normalizedRoot === normalizedCandidate) {
     return true;

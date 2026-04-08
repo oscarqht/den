@@ -24,7 +24,7 @@ function normalizeFolderPath(folderPath: string): string {
   if (!normalized) {
     throw new Error('Folder path is required');
   }
-  return path.resolve(normalized);
+  return path.resolve(/* turbopackIgnore: true */ normalized);
 }
 
 function normalizeFolderPaths(folderPaths: string[] | undefined): string[] {
@@ -302,7 +302,7 @@ export function getDefaultRootFolder(): string {
 
   if (configuredDefaultRoot) {
     try {
-      return path.resolve(configuredDefaultRoot);
+      return path.resolve(/* turbopackIgnore: true */ configuredDefaultRoot);
     } catch {
       // Fall back to legacy settings or home directory if path is malformed.
     }
@@ -312,7 +312,7 @@ export function getDefaultRootFolder(): string {
 
   if (settings.defaultRootFolder) {
     try {
-      const resolvedDefaultRoot = path.resolve(settings.defaultRootFolder);
+      const resolvedDefaultRoot = path.resolve(/* turbopackIgnore: true */ settings.defaultRootFolder);
       return resolvedDefaultRoot;
     } catch {
       // Fall back to home directory if path is malformed.

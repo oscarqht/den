@@ -12,7 +12,7 @@ export function normalizeProjectFolderPath(folderPath: string): string {
   if (!trimmed) {
     throw new Error('Folder path is required.');
   }
-  return path.resolve(trimmed);
+  return path.resolve(/* turbopackIgnore: true */ trimmed);
 }
 
 export function normalizeProjectFolderPaths(folderPaths: string[] | undefined): string[] {
@@ -86,8 +86,8 @@ export function findProjectByIdOrFolderPath(projects: Project[], projectIdOrFold
   const byId = projects.find((project) => project.id === trimmedValue);
   if (byId) return byId;
 
-  const normalizedFolderPath = path.resolve(trimmedValue);
+  const normalizedFolderPath = path.resolve(/* turbopackIgnore: true */ trimmedValue);
   return pickPreferredProject(projects.filter((project) => (
-    project.folderPaths.some((folderPath) => path.resolve(folderPath) === normalizedFolderPath)
+    project.folderPaths.some((folderPath) => path.resolve(/* turbopackIgnore: true */ folderPath) === normalizedFolderPath)
   )));
 }

@@ -26,8 +26,8 @@ function sanitizeExtension(fileName: string): string | null {
 
 function isManagedIconPath(iconPath: string | null | undefined): boolean {
   if (!iconPath) return false;
-  const normalized = path.resolve(iconPath);
-  const normalizedIconDir = path.resolve(ICON_DIR);
+  const normalized = path.resolve(/* turbopackIgnore: true */ iconPath);
+  const normalizedIconDir = path.resolve(/* turbopackIgnore: true */ ICON_DIR);
   return normalized === normalizedIconDir || normalized.startsWith(`${normalizedIconDir}${path.sep}`);
 }
 
@@ -124,7 +124,7 @@ async function parseIconUpload(request: Request): Promise<ParsedIconUpload> {
     throw new Error('iconPath or iconEmoji is required.');
   }
 
-  const resolvedIconPath = path.resolve(iconPathValue);
+  const resolvedIconPath = path.resolve(/* turbopackIgnore: true */ iconPathValue);
   const extension = sanitizeExtension(path.basename(resolvedIconPath));
   if (!extension) {
     throw new Error('Unsupported icon type. Use png, jpg, jpeg, webp, svg, or ico.');

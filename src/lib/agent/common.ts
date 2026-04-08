@@ -139,21 +139,21 @@ export function resolveExecutable(binaryNames: string[], env: NodeJS.ProcessEnv)
   for (const binaryName of binaryNames) {
     const resolveCandidate = (candidate: string) => {
       if (process.platform !== "win32") {
-        return existsSync(candidate) ? candidate : null;
+        return existsSync(/* turbopackIgnore: true */ candidate) ? candidate : null;
       }
 
       if (path.extname(candidate)) {
-        return existsSync(candidate) ? candidate : null;
+        return existsSync(/* turbopackIgnore: true */ candidate) ? candidate : null;
       }
 
       for (const extension of windowsPathExts) {
         const windowsCandidate = `${candidate}${extension}`;
-        if (existsSync(windowsCandidate)) {
+        if (existsSync(/* turbopackIgnore: true */ windowsCandidate)) {
           return windowsCandidate;
         }
       }
 
-      return existsSync(candidate) ? candidate : null;
+      return existsSync(/* turbopackIgnore: true */ candidate) ? candidate : null;
     };
 
     if (binaryName.includes(path.sep)) {
@@ -164,7 +164,7 @@ export function resolveExecutable(binaryNames: string[], env: NodeJS.ProcessEnv)
     }
 
     for (const directory of directories) {
-      const candidate = path.join(directory, binaryName);
+      const candidate = path.join(/* turbopackIgnore: true */ directory, binaryName);
       const resolvedCandidate = resolveCandidate(candidate);
       if (resolvedCandidate) {
         return resolvedCandidate;

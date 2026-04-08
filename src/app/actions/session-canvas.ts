@@ -459,7 +459,7 @@ export async function listSessionCanvasPathEntries(
       return { success: false, error: 'Session not found' };
     }
 
-    const normalizedPath = path.resolve(dirPath);
+    const normalizedPath = path.resolve(/* turbopackIgnore: true */ dirPath);
     if (!isPathWithinDirectory(metadata.workspacePath, normalizedPath)) {
       return { success: false, error: 'Path is outside the session workspace' };
     }
@@ -486,7 +486,7 @@ export async function readSessionCanvasFile(
       return { success: false, error: 'Session not found', code: 'not-found' };
     }
 
-    const normalizedPath = path.resolve(filePath);
+    const normalizedPath = path.resolve(/* turbopackIgnore: true */ filePath);
     if (!isPathWithinDirectory(metadata.workspacePath, normalizedPath)) {
       return { success: false, error: 'File is outside the session workspace', code: 'forbidden' };
     }

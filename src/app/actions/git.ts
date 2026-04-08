@@ -205,7 +205,7 @@ async function fileExistsAsRepoCardIcon(filePath: string): Promise<boolean> {
   if (!isSupportedRepoCardIconPath(filePath)) return false;
 
   try {
-    const stats = await fs.stat(filePath);
+    const stats = await fs.stat(/* turbopackIgnore: true */ filePath);
     return stats.isFile();
   } catch {
     return false;
@@ -214,7 +214,7 @@ async function fileExistsAsRepoCardIcon(filePath: string): Promise<boolean> {
 
 async function pickFirstExistingRepoCardIcon(repoPath: string, relativePaths: readonly string[]): Promise<string | null> {
   for (const relativePath of relativePaths) {
-    const absolutePath = path.join(repoPath, relativePath);
+    const absolutePath = path.join(/* turbopackIgnore: true */ repoPath, relativePath);
     if (await fileExistsAsRepoCardIcon(absolutePath)) {
       return absolutePath;
     }
@@ -327,12 +327,12 @@ function toManifestIconCandidatePaths(repoPath: string, manifestPath: string, so
   const candidates: string[] = [];
   if (normalizedSourcePath.startsWith('/')) {
     const withoutLeadingSlash = normalizedSourcePath.replace(/^\/+/, '');
-    candidates.push(path.join(repoPath, 'public', withoutLeadingSlash));
-    candidates.push(path.join(repoPath, withoutLeadingSlash));
+    candidates.push(path.join(/* turbopackIgnore: true */ repoPath, 'public', withoutLeadingSlash));
+    candidates.push(path.join(/* turbopackIgnore: true */ repoPath, withoutLeadingSlash));
   } else {
-    candidates.push(path.resolve(path.dirname(manifestPath), normalizedSourcePath));
-    candidates.push(path.resolve(repoPath, normalizedSourcePath));
-    candidates.push(path.resolve(repoPath, 'public', normalizedSourcePath));
+    candidates.push(path.resolve(path.dirname(manifestPath), /* turbopackIgnore: true */ normalizedSourcePath));
+    candidates.push(path.resolve(/* turbopackIgnore: true */ repoPath, normalizedSourcePath));
+    candidates.push(path.resolve(/* turbopackIgnore: true */ repoPath, 'public', normalizedSourcePath));
   }
 
   return Array.from(new Set(candidates));
@@ -340,11 +340,11 @@ function toManifestIconCandidatePaths(repoPath: string, manifestPath: string, so
 
 async function resolveManifestRepoCardIcon(repoPath: string): Promise<string | null> {
   for (const manifestRelativePath of REPO_CARD_MANIFEST_CANDIDATE_RELATIVE_PATHS) {
-    const manifestPath = path.join(repoPath, manifestRelativePath);
+    const manifestPath = path.join(/* turbopackIgnore: true */ repoPath, manifestRelativePath);
 
     let parsed: unknown;
     try {
-      const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+      const manifestContent = await fs.readFile(/* turbopackIgnore: true */ manifestPath, 'utf-8');
       parsed = JSON.parse(manifestContent);
     } catch {
       continue;
@@ -371,10 +371,10 @@ async function resolveManifestRepoCardIcon(repoPath: string): Promise<string | n
 
 async function resolveFallbackRepoCardIcon(repoPath: string): Promise<string | null> {
   for (const relativeDir of REPO_CARD_ICON_FALLBACK_DIRS) {
-    const dirPath = path.resolve(repoPath, relativeDir);
+    const dirPath = path.resolve(/* turbopackIgnore: true */ repoPath, relativeDir);
     let entries: Array<import('fs').Dirent>;
     try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true });
+      entries = await fs.readdir(/* turbopackIgnore: true */ dirPath, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -383,7 +383,7 @@ async function resolveFallbackRepoCardIcon(repoPath: string): Promise<string | n
       if (!entry.isFile()) continue;
       if (!REPO_CARD_ICON_FILENAME_PATTERNS.some((pattern) => pattern.test(entry.name))) continue;
 
-      const candidatePath = path.join(dirPath, entry.name);
+      const candidatePath = path.join(/* turbopackIgnore: true */ dirPath, entry.name);
       if (await fileExistsAsRepoCardIcon(candidatePath)) {
         return candidatePath;
       }
@@ -425,7 +425,7 @@ function resolveCommandPath(command: string): string | null {
     }
 
     for (const directory of pathEntries) {
-      const candidatePath = path.join(directory, candidateName);
+      const candidatePath = path.join(/* turbopackIgnore: true */ directory, candidateName);
       if (fsSync.existsSync(candidatePath)) {
         return candidatePath;
       }
@@ -557,7 +557,7 @@ export async function getHomeDirectory() {
 
 export async function listPathEntries(dirPath: string): Promise<FileSystemItem[]> {
   try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const entries = await fs.readdir(/* turbopackIgnore: true */ dirPath, { withFileTypes: true });
 
     const sortedEntries = entries.sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -569,13 +569,13 @@ export async function listPathEntries(dirPath: string): Promise<FileSystemItem[]
       sortedEntries.map(async (entry) => {
         if (!entry.isDirectory() && !entry.isFile()) return null;
 
-        const fullPath = path.join(dirPath, entry.name);
+        const fullPath = path.join(/* turbopackIgnore: true */ dirPath, entry.name);
         let isGitRepo = false;
 
         if (entry.isDirectory()) {
           try {
-            const gitDir = path.join(fullPath, '.git');
-            await fs.access(gitDir);
+            const gitDir = path.join(/* turbopackIgnore: true */ fullPath, '.git');
+            await fs.access(/* turbopackIgnore: true */ gitDir);
             isGitRepo = true;
           } catch {
             isGitRepo = false;
@@ -605,9 +605,9 @@ export async function listDirectories(dirPath: string): Promise<FileSystemItem[]
 
 export async function checkDirectoryAccessible(dirPath: string): Promise<boolean> {
   try {
-    const stats = await fs.stat(dirPath);
+    const stats = await fs.stat(/* turbopackIgnore: true */ dirPath);
     if (!stats.isDirectory()) return false;
-    await fs.readdir(dirPath);
+    await fs.readdir(/* turbopackIgnore: true */ dirPath);
     return true;
   } catch {
     return false;
@@ -635,7 +635,7 @@ export async function createDirectory(parentPath: string, folderName: string): P
     throw new Error('Folder name cannot include path separators.');
   }
 
-  const targetPath = path.join(trimmedParentPath, trimmedFolderName);
+  const targetPath = path.join(/* turbopackIgnore: true */ trimmedParentPath, trimmedFolderName);
 
   try {
     await fs.mkdir(targetPath);
@@ -675,8 +675,8 @@ export async function checkoutBranch(repoPath: string, branchName: string): Prom
 
 export async function checkIsGitRepo(dirPath: string): Promise<boolean> {
   try {
-    const gitDir = path.join(dirPath, '.git');
-    await fs.access(gitDir);
+    const gitDir = path.join(/* turbopackIgnore: true */ dirPath, '.git');
+    await fs.access(/* turbopackIgnore: true */ gitDir);
     return true;
   } catch {
     return false;
@@ -1143,10 +1143,10 @@ export async function prepareSessionWorktree(
     const repoName = path.basename(repoPath);
     const parentDir = path.dirname(repoPath);
 
-    const vibaDir = path.join(parentDir, '.viba', repoName);
-    const worktreePath = path.join(vibaDir, sessionName);
+    const vibaDir = path.join(/* turbopackIgnore: true */ parentDir, '.viba', repoName);
+    const worktreePath = path.join(/* turbopackIgnore: true */ vibaDir, sessionName);
 
-    await fs.mkdir(vibaDir, { recursive: true });
+    await fs.mkdir(/* turbopackIgnore: true */ vibaDir, { recursive: true });
 
     const git = simpleGit(repoPath);
 
@@ -1240,7 +1240,7 @@ export async function resolveRepoCardIcon(repoPath: string): Promise<ResolveRepo
     const iconPath = project?.iconPath?.trim() || null;
     if (!iconPath) return { success: true, iconPath: null, iconEmoji: null };
 
-    const iconStats = await fs.stat(iconPath);
+    const iconStats = await fs.stat(/* turbopackIgnore: true */ iconPath);
     if (!iconStats.isFile()) return { success: true, iconPath: null, iconEmoji: null };
 
     return { success: true, iconPath, iconEmoji: null };

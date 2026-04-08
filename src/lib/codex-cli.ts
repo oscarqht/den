@@ -19,7 +19,7 @@ export type RunCodexCliNonInteractiveResult = {
 
 async function readTextIfExists(filePath: string): Promise<string> {
   try {
-    return await fs.readFile(filePath, 'utf8');
+    return await fs.readFile(/* turbopackIgnore: true */ filePath, 'utf8');
   } catch {
     return '';
   }
@@ -32,15 +32,15 @@ export async function runCodexCliNonInteractive({
   outputSchema,
 }: RunCodexCliNonInteractiveOptions): Promise<RunCodexCliNonInteractiveResult> {
   const { spawn } = await import('child_process');
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'viba-codex-exec-'));
-  const outputFilePath = path.join(tempDir, 'last-message.txt');
+  const tempDir = await fs.mkdtemp(path.join(/* turbopackIgnore: true */ os.tmpdir(), 'viba-codex-exec-'));
+  const outputFilePath = path.join(/* turbopackIgnore: true */ tempDir, 'last-message.txt');
   const outputChunks: string[] = [];
   const env = defaultSpawnEnv();
   const codexExecutable = resolveExecutable(['codex', 'codex.cmd'], env);
 
   let schemaPath: string | null = null;
   if (outputSchema) {
-    schemaPath = path.join(tempDir, 'output-schema.json');
+    schemaPath = path.join(/* turbopackIgnore: true */ tempDir, 'output-schema.json');
     await fs.writeFile(schemaPath, JSON.stringify(outputSchema), 'utf8');
   }
 
@@ -114,6 +114,6 @@ export async function runCodexCliNonInteractive({
       timedOut,
     };
   } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    await fs.rm(/* turbopackIgnore: true */ tempDir, { recursive: true, force: true });
   }
 }

@@ -68,7 +68,7 @@ const MAX_DISCOVERED_DIRS = 15000;
 const MAX_DISCOVERED_REPOS = 200;
 
 function normalizeAbsolutePath(targetPath: string): string {
-  return path.resolve(targetPath);
+  return path.resolve(/* turbopackIgnore: true */ targetPath);
 }
 
 function pathContainsPath(parentPath: string, candidatePath: string): boolean {

@@ -107,7 +107,7 @@ export async function GET(request: Request) {
 
     if (isImageFile(filePath)) {
       const mimeType = getImageMimeType(filePath);
-      const fullPath = pathLib.join(repoPath, filePath);
+      const fullPath = pathLib.join(/* turbopackIgnore: true */ repoPath, filePath);
       const [leftBuffer, rightBuffer] = await Promise.all([
         git.getFileContentBuffer(filePath, 'HEAD'),
         fs.existsSync(fullPath) ? fs.promises.readFile(fullPath) : Promise.resolve(null),
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
     // Get content for Diff Viewer
     const left = await git.getFileContent(filePath, 'HEAD');
     let right = '';
-    const fullPath = pathLib.join(repoPath, filePath);
+    const fullPath = pathLib.join(/* turbopackIgnore: true */ repoPath, filePath);
     if (fs.existsSync(fullPath)) {
       right = await fs.promises.readFile(fullPath, 'utf-8');
     }

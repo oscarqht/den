@@ -23,6 +23,11 @@ import { shouldShowHomeProjectGitAction } from '@/lib/home-project-card-actions'
 import { getBaseName } from '@/lib/path';
 import { getProjectIconUrl, type ProjectIconValue } from '@/lib/project-icons';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
+import {
+  deriveSessionStatus,
+  formatSessionStatus,
+  getSessionStatusBadgeTone,
+} from '@/lib/session-status';
 
 export type HomeRepoCardProps = {
   project: string;
@@ -379,27 +384,34 @@ export function HomeRepoCard({
                   </button>
                   {isSessionMenuOpen ? (
                     <div className="absolute right-0 top-11 z-30 max-h-64 w-64 overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-[#30363d] dark:bg-[#161b22]">
-                      {runningSessions.map((session) => (
-                        <button
-                          key={session.sessionName}
-                          type="button"
-                          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-slate-100 dark:hover:bg-[#30363d]/70"
-                          title={session.title || session.sessionName}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setIsSessionMenuOpen(false);
-                            void onOpenSession(session.sessionName);
-                          }}
-                        >
-                          <span className="w-full truncate text-xs font-medium text-slate-800 dark:text-slate-100">
-                            {session.title || session.sessionName}
-                          </span>
-                          <span className="w-full truncate text-[11px] text-slate-500 dark:text-slate-400">
-                            {session.model || session.agent}
-                            {session.runState ? ` - ${session.runState}` : ''}
-                          </span>
-                        </button>
-                      ))}
+                      {runningSessions.map((session) => {
+                        const sessionStatus = deriveSessionStatus(session.runState);
+                        return (
+                          <button
+                            key={session.sessionName}
+                            type="button"
+                            className="flex w-full flex-col items-start gap-1 rounded-md px-2 py-2 text-left hover:bg-slate-100 dark:hover:bg-[#30363d]/70"
+                            title={session.title || session.sessionName}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setIsSessionMenuOpen(false);
+                              void onOpenSession(session.sessionName);
+                            }}
+                          >
+                            <span className="w-full truncate text-xs font-medium text-slate-800 dark:text-slate-100">
+                              {session.title || session.sessionName}
+                            </span>
+                            <div className="flex w-full items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                                {session.model || session.agent}
+                              </span>
+                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getSessionStatusBadgeTone(sessionStatus)}`}>
+                                {formatSessionStatus(sessionStatus)}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>

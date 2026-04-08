@@ -278,6 +278,13 @@ export type SessionAgentRunState =
   | 'needs_auth'
   | (string & {});
 
+export type SessionStatus =
+  | 'in_progress'
+  | 'done'
+  | 'need_attention'
+  | 'cancelled'
+  | 'idle';
+
 export type ProviderCatalogEntry = {
   id: AgentProvider;
   label: string;

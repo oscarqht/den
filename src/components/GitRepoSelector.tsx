@@ -55,6 +55,12 @@ import {
 } from '@/lib/project-client';
 import { buildRepoMentionSuggestions } from '@/lib/repo-mention-suggestions';
 import { buildSkillMentionSuggestions } from '@/lib/skill-mention-suggestions';
+import {
+  deriveSessionStatus,
+  formatSessionStatus,
+  getSessionStatusBadgeTone,
+  getSessionStatusDotTone,
+} from '@/lib/session-status';
 import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
@@ -3656,56 +3662,65 @@ export default function GitRepoSelector({
                     </div>
                   )}
 
-                  {!isLoadingProjectActivity && existingSessions.map((session) => (
-                    <div
-                      key={session.sessionName}
-                      className="group relative flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
-                    >
+                  {!isLoadingProjectActivity && existingSessions.map((session) => {
+                    const sessionStatus = deriveSessionStatus(session.runState);
+                    return (
                       <div
-                        className={`h-2 w-2 flex-shrink-0 rounded-full ${deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'
-                          }`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{session.title || session.sessionName}</p>
-                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                          {getProjectDisplayName(session.projectPath || session.repoPath || '')}
-                          {' • '}
-                          {agentProviderLabel(session.agentProvider || session.agent, agentProviders)}
-                          {session.model ? ` • ${session.model}` : ''}
-                          {session.runState ? ` • ${session.runState}` : ''}
-                        </p>
+                        key={session.sessionName}
+                        className="group relative flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
+                      >
+                        <div
+                          className={`h-2 w-2 flex-shrink-0 rounded-full ${deletingSessionName === session.sessionName ? 'animate-pulse bg-amber-400' : getSessionStatusDotTone(sessionStatus)
+                            }`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-white">
+                              {session.title || session.sessionName}
+                            </p>
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getSessionStatusBadgeTone(sessionStatus)}`}>
+                              {formatSessionStatus(sessionStatus)}
+                            </span>
+                          </div>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {getProjectDisplayName(session.projectPath || session.repoPath || '')}
+                            {' • '}
+                            {agentProviderLabel(session.agentProvider || session.agent, agentProviders)}
+                            {session.model ? ` • ${session.model}` : ''}
+                          </p>
+                        </div>
+                        <div className="ml-2 flex w-[84px] items-center justify-end gap-1 overflow-hidden opacity-100 transition-[width,opacity] duration-200 sm:w-0 sm:opacity-0 sm:group-hover:w-[84px] sm:group-hover:opacity-100">
+                          <button
+                            type="button"
+                            className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+                            title="Open"
+                            onClick={() => handleResumeSession(session)}
+                            disabled={loading || deletingSessionName === session.sessionName}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded p-1 text-slate-400 transition-colors hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400"
+                            title="New Attempt"
+                            onClick={() => handleNewAttemptFromSession(session)}
+                            disabled={loading || deletingSessionName === session.sessionName}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
+                            title={deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
+                            onClick={() => handleDeleteSession(session)}
+                            disabled={loading || deletingSessionName === session.sessionName}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="ml-2 flex w-[84px] items-center justify-end gap-1 overflow-hidden opacity-100 transition-[width,opacity] duration-200 sm:w-0 sm:opacity-0 sm:group-hover:w-[84px] sm:group-hover:opacity-100">
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
-                          title="Open"
-                          onClick={() => handleResumeSession(session)}
-                          disabled={loading || deletingSessionName === session.sessionName}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400"
-                          title="New Attempt"
-                          onClick={() => handleNewAttemptFromSession(session)}
-                          disabled={loading || deletingSessionName === session.sessionName}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
-                          title={deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
-                          onClick={() => handleDeleteSession(session)}
-                          disabled={loading || deletingSessionName === session.sessionName}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

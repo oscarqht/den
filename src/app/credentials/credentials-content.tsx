@@ -2,6 +2,11 @@
 
 import { getConfig, updateConfig } from '@/app/actions/config';
 import {
+  getGlobalMemory,
+  resetGlobalMemory,
+  saveGlobalMemory,
+} from '@/app/actions/memory';
+import {
   listAgentApiCredentials,
   listCredentials,
   removeAgentApiCredential,
@@ -155,6 +160,10 @@ export default function SettingsContent() {
   const [selectedDefaultAgentReasoningEffort, setSelectedDefaultAgentReasoningEffort] =
     useState<ReasoningEffort | ''>('');
   const [flashMessage, setFlashMessage] = useState<FlashMessage>(null);
+  const [globalMemoryPath, setGlobalMemoryPath] = useState('');
+  const [globalMemoryValue, setGlobalMemoryValue] = useState('');
+  const [isSavingGlobalMemory, setIsSavingGlobalMemory] = useState(false);
+  const [isResettingGlobalMemory, setIsResettingGlobalMemory] = useState(false);
   const { confirm: confirmDialog, dialog } = useAppDialog();
 
   const agentStatusQuery = useAgentStatus(selectedDefaultAgentProvider, {
@@ -224,10 +233,11 @@ export default function SettingsContent() {
     let isActive = true;
 
     void (async () => {
-      const [gitResult, agentResult, config] = await Promise.all([
+      const [gitResult, agentResult, config, globalMemory] = await Promise.all([
         listCredentials(),
         listAgentApiCredentials(),
         getConfig(),
+        getGlobalMemory(),
       ]);
       if (!isActive) return;
 
@@ -266,6 +276,8 @@ export default function SettingsContent() {
           config.defaultAgentReasoningEffort,
         ) || '',
       );
+      setGlobalMemoryPath(globalMemory.path);
+      setGlobalMemoryValue(globalMemory.content);
       setLoading(false);
     })();
 
@@ -511,6 +523,44 @@ export default function SettingsContent() {
     setDeletingAgent(null);
   };
 
+  const handleSaveGlobalMemory = async () => {
+    setFlashMessage(null);
+    setIsSavingGlobalMemory(true);
+    try {
+      const result = await saveGlobalMemory(globalMemoryValue);
+      setGlobalMemoryPath(result.path);
+      setGlobalMemoryValue(result.content);
+      setFlashMessage({ tone: 'success', text: 'Global memory saved.' });
+    } catch (error) {
+      console.error('Failed to save global memory:', error);
+      setFlashMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Failed to save global memory.',
+      });
+    } finally {
+      setIsSavingGlobalMemory(false);
+    }
+  };
+
+  const handleResetGlobalMemory = async () => {
+    setFlashMessage(null);
+    setIsResettingGlobalMemory(true);
+    try {
+      const result = await resetGlobalMemory();
+      setGlobalMemoryPath(result.path);
+      setGlobalMemoryValue(result.content);
+      setFlashMessage({ tone: 'success', text: 'Global memory reset.' });
+    } catch (error) {
+      console.error('Failed to reset global memory:', error);
+      setFlashMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Failed to reset global memory.',
+      });
+    } finally {
+      setIsResettingGlobalMemory(false);
+    }
+  };
+
   const panelClass = `overflow-hidden ${APP_PAGE_PANEL_CLASS}`;
   const sectionHeaderClass =
     'flex flex-col gap-3 border-b border-slate-200/80 bg-white/35 px-5 py-4 md:flex-row md:items-center md:justify-between app-dark-modal-header';
@@ -728,6 +778,63 @@ export default function SettingsContent() {
                   </div>
                 ) : null}
               </div>
+            </div>
+          </section>
+
+          <section className={panelClass}>
+            <div className={sectionHeaderClass}>
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-emerald-100 p-1.5 text-emerald-600 dark:border dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Global Memory
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Shared long-term notes for future tasks. Keep this concise and save only durable lessons worth reusing.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className={warningButtonClass}
+                  onClick={() => void handleResetGlobalMemory()}
+                  disabled={isSavingGlobalMemory || isResettingGlobalMemory}
+                >
+                  {isResettingGlobalMemory ? (
+                    <span className="loading loading-spinner loading-xs"></span>
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Reset
+                </button>
+                <button
+                  className={secondaryButtonClass}
+                  onClick={() => void handleSaveGlobalMemory()}
+                  disabled={isSavingGlobalMemory || isResettingGlobalMemory}
+                >
+                  {isSavingGlobalMemory ? (
+                    <span className="loading loading-spinner loading-xs"></span>
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+                  Save Memory
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 break-all font-mono text-xs text-slate-700 app-dark-surface-raised">
+                {globalMemoryPath}
+              </div>
+              <textarea
+                className="textarea min-h-[320px] w-full border-slate-200 bg-slate-50 font-mono text-sm text-slate-800 focus:border-primary focus:outline-none app-dark-input"
+                value={globalMemoryValue}
+                onChange={(event) => setGlobalMemoryValue(event.target.value)}
+                placeholder="# Global Memory"
+                disabled={isSavingGlobalMemory || isResettingGlobalMemory}
+              />
             </div>
           </section>
 

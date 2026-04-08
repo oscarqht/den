@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getConfig, updateConfig, type Config } from './config.ts';
 import { buildAgentStartupPrompt } from '../../lib/agent-startup-prompt.ts';
+import { getRelevantMemoryFiles } from '../../lib/memory.ts';
 import { normalizeProviderReasoningEffort } from '../../lib/agent/reasoning.ts';
 import { readLocalState, updateLocalState } from '../../lib/local-db.ts';
 import { addProject, findProjectByFolderPath } from '../../lib/store.ts';
@@ -842,9 +843,15 @@ export async function executeQuickCreateTaskJob(
         throw new Error(launchContextResult.error || 'Failed to save quick create launch context.');
       }
 
+      const memoryFiles = await getRelevantMemoryFiles({
+        projectId: target.projectId,
+        projectPath: target.projectPath,
+      });
+
       const startupPrompt = buildAgentStartupPrompt({
         taskDescription: sessionPrompt,
         attachmentPaths: attachmentMetadata.attachmentPaths,
+        memoryFiles,
         sessionMode: 'plan',
         workspaceMode: sessionResult.workspaceMode || 'folder',
         workspaceFolders: sessionResult.workspaceFolders,

@@ -193,7 +193,7 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /Workspace layout: your shell starts in `\.`/);
     assert.match(prompt!, /Git context: this project contains one Git repository at `\.`\./);
     assert.match(prompt!, /For testing and debugging in web projects, start a fresh dev server before running checks,/);
-    assert.match(prompt!, /do not kill the process holding port `3200`; that port belongs to the Palx app hosting this session\./);
+    assert.match(prompt!, /do not kill the process holding port `3200`; that port belongs to the Den app hosting this session\./);
     assert.match(prompt!, /Start the project on another available port instead unless the user explicitly asks to reuse `3200`\./);
     assert.match(prompt!, /If you are not sure which dev server command or script to use, ask the user to provide the dev server script before proceeding\./);
     assert.match(prompt!, /For visual UI tasks, prioritize Chrome remote-debug MCP tooling to attach to the user's current browser session/);
@@ -242,5 +242,21 @@ describe('buildAgentStartupPrompt', () => {
     assert.match(prompt!, /If the runtime supports delegation or subagents, use them for bounded, independent subtasks that can run in parallel/);
     assert.match(prompt!, /Attachments:\n- \/tmp\/spec\.md/);
     assert.doesNotMatch(prompt!, /send a notification to the matching Palx session/i);
+  });
+
+  it('includes relevant memory files when provided', () => {
+    const prompt = buildAgentStartupPrompt({
+      taskDescription: 'Investigate the project',
+      workspaceMode: 'folder',
+      memoryFiles: [
+        { scope: 'global', path: '/tmp/.viba/memory/global.md', label: 'Global memory' },
+        { scope: 'project', path: '/tmp/.viba/memory/projects/project-1.md', label: 'Den memory', projectId: 'project-1', projectName: 'Den' },
+      ],
+    });
+
+    assert.ok(prompt);
+    assert.match(prompt!, /Relevant memory files are available in local markdown files\./);
+    assert.match(prompt!, /Global memory: `\/tmp\/\.viba\/memory\/global\.md`/);
+    assert.match(prompt!, /Den memory: `\/tmp\/\.viba\/memory\/projects\/project-1\.md`/);
   });
 });

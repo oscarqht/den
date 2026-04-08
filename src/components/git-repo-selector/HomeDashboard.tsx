@@ -63,6 +63,7 @@ export type HomeDashboardProps = {
   ) => void | Promise<void>;
   onOpenProjectServiceLog: (event: MouseEvent, project: string) => void | Promise<void>;
   onOpenProjectSettings: (event: MouseEvent, project: string) => void | Promise<void>;
+  onOpenProjectMemory: (event: MouseEvent, project: string) => void | Promise<void>;
   onRemoveRecent: (event: MouseEvent, project: string) => void;
   onProjectIconError: (project: string) => void;
   onAddProject: () => void;
@@ -111,6 +112,7 @@ export function HomeDashboard({
   onProjectServiceAction,
   onOpenProjectServiceLog,
   onOpenProjectSettings,
+  onOpenProjectMemory,
   onRemoveRecent,
   onProjectIconError,
   onAddProject,
@@ -339,6 +341,7 @@ export function HomeDashboard({
                 onProjectServiceAction={onProjectServiceAction}
                 onOpenProjectServiceLog={onOpenProjectServiceLog}
                 onOpenProjectSettings={onOpenProjectSettings}
+                onOpenProjectMemory={onOpenProjectMemory}
                 onRemoveRecent={onRemoveRecent}
                 onProjectIconError={onProjectIconError}
               />

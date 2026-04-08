@@ -5,6 +5,7 @@ import {
   Play,
   RotateCw,
   Settings,
+  BookOpen,
   Square,
   X,
   GitBranch as GitBranchIcon,
@@ -56,6 +57,7 @@ export type HomeRepoCardProps = {
   ) => void | Promise<void>;
   onOpenProjectServiceLog: (event: ReactMouseEvent, project: string) => void | Promise<void>;
   onOpenProjectSettings: (event: ReactMouseEvent, project: string) => void | Promise<void>;
+  onOpenProjectMemory: (event: ReactMouseEvent, project: string) => void | Promise<void>;
   onRemoveRecent: (event: ReactMouseEvent, project: string) => void;
   onProjectIconError: (project: string) => void;
 };
@@ -126,6 +128,7 @@ export function HomeRepoCard({
   onProjectServiceAction,
   onOpenProjectServiceLog,
   onOpenProjectSettings,
+  onOpenProjectMemory,
   onRemoveRecent,
   onProjectIconError,
 }: HomeRepoCardProps) {
@@ -417,6 +420,16 @@ export function HomeRepoCard({
                 </div>
               </HomeRepoCardAction>
 
+              <button
+                type="button"
+                onClick={(event) => {
+                  void onOpenProjectMemory(event, project);
+                }}
+                className={actionButtonClass}
+                title="Project memory"
+              >
+                <BookOpen className="h-[18px] w-[18px]" />
+              </button>
               <button
                 type="button"
                 onClick={(event) => {

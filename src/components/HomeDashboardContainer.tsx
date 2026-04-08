@@ -29,6 +29,11 @@ import {
   type DiscoverProjectGitReposResult,
 } from '@/app/actions/project';
 import {
+  getProjectMemory,
+  resetProjectMemory,
+  saveProjectMemory,
+} from '@/app/actions/memory';
+import {
   deleteQuickCreateDraft,
   getHomeQuickCreateState,
   startQuickCreateTask,
@@ -89,6 +94,7 @@ const CloneRemoteDialog = dynamic(() =>
 const ProjectServiceLogModal = dynamic(() =>
   import('./git-repo-selector/ProjectServiceLogModal').then((module) => module.ProjectServiceLogModal),
 );
+const MemoryEditorModal = dynamic(() => import('./MemoryEditorModal'));
 const QuickCreateTaskDialog = dynamic(() =>
   import('./QuickCreateTaskDialog').then((module) => module.QuickCreateTaskDialog),
 );
@@ -207,6 +213,13 @@ export default function HomeDashboardContainer({
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = useState(false);
   const [quickCreateDraftForEdit, setQuickCreateDraftForEdit] = useState<QuickCreateDraft | null>(null);
+  const [projectMemoryProjectId, setProjectMemoryProjectId] = useState<string | null>(null);
+  const [projectMemoryTitle, setProjectMemoryTitle] = useState('Project Memory');
+  const [projectMemoryPath, setProjectMemoryPath] = useState('');
+  const [projectMemoryValue, setProjectMemoryValue] = useState('');
+  const [projectMemoryError, setProjectMemoryError] = useState<string | null>(null);
+  const [isProjectMemorySaving, setIsProjectMemorySaving] = useState(false);
+  const [isProjectMemoryResetting, setIsProjectMemoryResetting] = useState(false);
 
   const homeBootstrapQuery = useQuery({
     queryKey: queryKeys.homeBootstrap(),
@@ -508,6 +521,15 @@ export default function HomeDashboardContainer({
     setIsUploadingProjectIcon(false);
   }, [isSavingRepoSettings]);
 
+  const dismissProjectMemoryDialog = useCallback(() => {
+    if (isProjectMemorySaving || isProjectMemoryResetting) return;
+    setProjectMemoryProjectId(null);
+    setProjectMemoryTitle('Project Memory');
+    setProjectMemoryPath('');
+    setProjectMemoryValue('');
+    setProjectMemoryError(null);
+  }, [isProjectMemoryResetting, isProjectMemorySaving]);
+
   const handleOpenRepoSettings = useCallback(async (
     event: ReactMouseEvent,
     projectReference: string,
@@ -535,6 +557,74 @@ export default function HomeDashboardContainer({
     setRepoSettingsError(null);
     setIsRepoSettingsDialogOpen(true);
   }, [config?.projectSettings, resolveProjectEntry]);
+
+  const handleOpenProjectMemory = useCallback(async (
+    event: ReactMouseEvent,
+    projectReference: string,
+  ) => {
+    event.stopPropagation();
+    setProjectMemoryError(null);
+
+    const resolvedProject = resolveProjectEntry(projectReference);
+    if (!resolvedProject.project) {
+      setError('Project metadata could not be loaded.');
+      return;
+    }
+
+    setProjectMemoryProjectId(resolvedProject.project.id);
+    setProjectMemoryTitle(`${resolvedProject.project.name} Memory`);
+
+    try {
+      const memory = await getProjectMemory(resolvedProject.project.id);
+      setProjectMemoryPath(memory.path);
+      setProjectMemoryValue(memory.content);
+    } catch (loadError) {
+      console.error(loadError);
+      setProjectMemoryPath('');
+      setProjectMemoryValue('');
+      setProjectMemoryError(
+        loadError instanceof Error ? loadError.message : 'Failed to load project memory.',
+      );
+    }
+  }, [resolveProjectEntry]);
+
+  const handleSaveProjectMemory = useCallback(async () => {
+    if (!projectMemoryProjectId) return;
+    setProjectMemoryError(null);
+    setIsProjectMemorySaving(true);
+
+    try {
+      const memory = await saveProjectMemory(projectMemoryProjectId, projectMemoryValue);
+      setProjectMemoryPath(memory.path);
+      setProjectMemoryValue(memory.content);
+    } catch (saveError) {
+      console.error(saveError);
+      setProjectMemoryError(
+        saveError instanceof Error ? saveError.message : 'Failed to save project memory.',
+      );
+    } finally {
+      setIsProjectMemorySaving(false);
+    }
+  }, [projectMemoryProjectId, projectMemoryValue]);
+
+  const handleResetProjectMemory = useCallback(async () => {
+    if (!projectMemoryProjectId) return;
+    setProjectMemoryError(null);
+    setIsProjectMemoryResetting(true);
+
+    try {
+      const memory = await resetProjectMemory(projectMemoryProjectId);
+      setProjectMemoryPath(memory.path);
+      setProjectMemoryValue(memory.content);
+    } catch (resetError) {
+      console.error(resetError);
+      setProjectMemoryError(
+        resetError instanceof Error ? resetError.message : 'Failed to reset project memory.',
+      );
+    } finally {
+      setIsProjectMemoryResetting(false);
+    }
+  }, [projectMemoryProjectId]);
 
   const handleSaveRepoSettings = useCallback(async () => {
     if (!projectForSettingsId) return;
@@ -1545,6 +1635,7 @@ export default function HomeDashboardContainer({
         onProjectServiceAction={handleProjectServiceAction}
         onOpenProjectServiceLog={handleOpenProjectServiceLog}
         onOpenProjectSettings={handleOpenRepoSettings}
+        onOpenProjectMemory={handleOpenProjectMemory}
         onRemoveRecent={handleRemoveRecent}
         onProjectIconError={handleRepoIconError}
         onAddProject={openCreateProjectDialog}
@@ -1614,6 +1705,25 @@ export default function HomeDashboardContainer({
           setProjectServiceLogCommand(undefined);
           setProjectServiceLogRunning(false);
         }}
+      />
+
+      <MemoryEditorModal
+        isOpen={projectMemoryProjectId !== null}
+        title={projectMemoryTitle}
+        description="Keep only durable, high-signal notes that will help future work on this project."
+        pathLabel={projectMemoryPath}
+        value={projectMemoryValue}
+        error={projectMemoryError}
+        isSaving={isProjectMemorySaving}
+        isResetting={isProjectMemoryResetting}
+        onChange={setProjectMemoryValue}
+        onSave={() => {
+          void handleSaveProjectMemory();
+        }}
+        onReset={() => {
+          void handleResetProjectMemory();
+        }}
+        onClose={dismissProjectMemoryDialog}
       />
 
       <CreateProjectDialog

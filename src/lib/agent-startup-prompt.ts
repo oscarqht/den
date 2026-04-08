@@ -1,4 +1,5 @@
 import type { SessionGitRepoContext, SessionWorkspaceFolder, SessionWorkspaceMode } from './types.ts';
+import type { MemoryFileInfo } from './memory.ts';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
   'Plan mode: in your first response of this session, inspect the relevant code. If you encounter ambiguity during planning, ask the user targeted clarification questions and resolve them before presenting the plan. Once the scope is clear, present a concrete implementation plan and wait for explicit user approval before any file edits or write commands. After the user approves that initial plan, execute small or trivial follow-up changes directly without re-requesting approval. Request approval again only when a proposed change is substantial (for example meaningfully expands scope, changes approach, or introduces material risk).';
@@ -20,6 +21,7 @@ const VISUAL_EVIDENCE_INSTRUCTION =
 export type BuildAgentStartupPromptOptions = {
   taskDescription?: string | null;
   attachmentPaths?: string[];
+  memoryFiles?: MemoryFileInfo[];
   sessionMode?: 'fast' | 'plan';
   workspaceMode: SessionWorkspaceMode;
   workspaceFolders?: SessionWorkspaceFolder[];
@@ -161,6 +163,7 @@ export function buildProjectGitInstructionLines(
 export function buildAgentStartupPrompt({
   taskDescription,
   attachmentPaths = [],
+  memoryFiles = [],
   sessionMode = 'fast',
   workspaceMode,
   workspaceFolders = [],
@@ -175,6 +178,22 @@ export function buildAgentStartupPrompt({
   const normalizedAttachmentPaths = Array.from(
     new Set(attachmentPaths.map((entry) => entry.trim()).filter(Boolean)),
   );
+  const normalizedMemoryFiles = Array.from(new Map<string, MemoryFileInfo>(
+    memoryFiles
+      .map((entry) => {
+        const normalizedPath = entry.path.trim();
+        if (!normalizedPath) return null;
+        return [
+          normalizedPath,
+          {
+            ...entry,
+            path: normalizedPath,
+            label: entry.label.trim() || 'Memory',
+          },
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, MemoryFileInfo] => Boolean(entry)),
+  ).values());
 
   const instructionLines: string[] = [];
   if (sessionMode === 'plan') {
@@ -189,6 +208,12 @@ export function buildAgentStartupPrompt({
   instructionLines.push(OPTIONAL_SKILL_DISCOVERY_INSTRUCTION);
   instructionLines.push(TASK_BREAKDOWN_INSTRUCTION);
   instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
+  if (normalizedMemoryFiles.length > 0) {
+    instructionLines.push('Relevant memory files are available in local markdown files. Read them before substantial work when relevant, and update them only with durable, high-value notes that will help future tasks.');
+    for (const memoryFile of normalizedMemoryFiles) {
+      instructionLines.push(`${memoryFile.label}: \`${memoryFile.path}\``);
+    }
+  }
 
   const taskSections: string[] = [trimmedTaskDescription];
   if (normalizedAttachmentPaths.length > 0) {

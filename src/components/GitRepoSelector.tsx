@@ -3356,6 +3356,7 @@ export default function GitRepoSelector({
           onProjectServiceAction={async () => {}}
           onOpenProjectServiceLog={async () => {}}
           onOpenProjectSettings={handleOpenRepoSettings}
+          onOpenProjectMemory={async () => {}}
           onRemoveRecent={handleRemoveRecent}
           onEditQuickCreateDraft={() => {}}
           onDeleteQuickCreateDraft={async () => {}}

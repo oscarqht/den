@@ -21,6 +21,7 @@ import {
   type SessionMetadata,
 } from './session';
 import { buildAgentStartupPrompt } from '@/lib/agent-startup-prompt';
+import { getRelevantMemoryFiles } from '@/lib/memory';
 import { getErrorMessage } from '@/lib/error-utils';
 import { readLocalState, updateLocalState } from '@/lib/local-db';
 import {
@@ -333,10 +334,14 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       return { success: false, error: 'Session not found' };
     }
 
-    const [resolvedProject, launchContextResult, initialAgentSnapshotResult] = await Promise.all([
+    const [resolvedProject, launchContextResult, initialAgentSnapshotResult, memoryFiles] = await Promise.all([
       Promise.resolve(metadata.projectId ? getProjectById(metadata.projectId) : null),
       readSessionLaunchContext(sessionId),
       getSessionAgentSnapshot(sessionId),
+      getRelevantMemoryFiles({
+        projectId: metadata.projectId,
+        projectPath: metadata.projectPath,
+      }),
     ]);
 
     if (!launchContextResult.success) {
@@ -406,6 +411,7 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
     const initialAgentPrompt = buildAgentStartupPrompt({
       taskDescription: parsedLaunch.launchContext?.rawInitialMessage || parsedLaunch.launchContext?.initialMessage,
       attachmentPaths: parsedLaunch.launchContext?.attachmentPaths || [],
+      memoryFiles,
       sessionMode: parsedLaunch.launchContext?.sessionMode,
       workspaceMode: metadata.workspaceMode,
       workspaceFolders: metadata.workspaceFolders,

@@ -37,6 +37,8 @@ export function SessionCanvasGitPanel({
 
   const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
   const [currentBaseBranch, setCurrentBaseBranch] = useState<string>(selectedRepo?.baseBranch?.trim() || '');
+  const [historyBaseBranch, setHistoryBaseBranch] = useState<string>(selectedRepo?.baseBranch?.trim() || '');
+  const [currentBaseCommitId, setCurrentBaseCommitId] = useState<string>(selectedRepo?.baseCommitId?.trim() || '');
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
@@ -47,7 +49,9 @@ export function SessionCanvasGitPanel({
 
   useEffect(() => {
     setCurrentBaseBranch(selectedRepo?.baseBranch?.trim() || '');
-  }, [selectedRepo?.baseBranch, selectedRepo?.sourceRepoPath]);
+    setHistoryBaseBranch(selectedRepo?.baseBranch?.trim() || '');
+    setCurrentBaseCommitId(selectedRepo?.baseCommitId?.trim() || '');
+  }, [selectedRepo?.baseBranch, selectedRepo?.baseCommitId, selectedRepo?.sourceRepoPath]);
 
   const refreshGitState = useCallback(async ({ refreshRepoViewer = false }: { refreshRepoViewer?: boolean } = {}) => {
     if (!selectedRepo) return;
@@ -141,6 +145,12 @@ export function SessionCanvasGitPanel({
         throw new Error(result.error || 'Failed to rebase onto base branch');
       }
       setFeedback(`Rebased ${result.branchName} onto ${result.baseBranch}`);
+      if (result.baseBranch?.trim()) {
+        setHistoryBaseBranch(result.baseBranch.trim());
+      }
+      if (result.baseCommitId?.trim()) {
+        setCurrentBaseCommitId(result.baseCommitId.trim());
+      }
       await refreshGitState({ refreshRepoViewer: true });
     } catch (error) {
       console.error('Failed to rebase session branch:', error);
@@ -291,7 +301,8 @@ export function SessionCanvasGitPanel({
         <SessionRepoViewer
           repoPath={selectedRepo.worktreePath || selectedRepo.sourceRepoPath}
           branchHint={selectedRepo.branchName}
-          baseBranchHint={currentBaseBranch || selectedRepo.baseBranch}
+          baseBranchHint={historyBaseBranch || selectedRepo.baseBranch}
+          baseCommitIdHint={currentBaseCommitId || selectedRepo.baseCommitId}
           refreshToken={repoViewerRefreshToken}
         />
       </div>

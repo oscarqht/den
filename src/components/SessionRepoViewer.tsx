@@ -5,8 +5,11 @@ import { RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGitAction, useGitBranches, useGitLog, useGitMergeBase, useGitStatus } from '@/hooks/use-git';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
+import { isSameCommitHash, selectSessionHistoryCommits } from '@/lib/session-git-history';
 import { Commit } from '@/lib/types';
 import { CommitChangesView } from './git/commit-changes-view';
+
+type CommitBadgeTone = 'current' | 'base' | 'ref';
 
 function formatCommitDate(value: string): string {
   const parsed = Date.parse(value);
@@ -16,13 +19,6 @@ function formatCommitDate(value: string): string {
 
 function commitLabel(commit: Commit): string {
   return `${commit.hash} ${commit.message}`.trim();
-}
-
-function isSameCommitHash(left: string, right: string): boolean {
-  const normalizedLeft = left.trim();
-  const normalizedRight = right.trim();
-  if (!normalizedLeft || !normalizedRight) return false;
-  return normalizedLeft.startsWith(normalizedRight) || normalizedRight.startsWith(normalizedLeft);
 }
 
 function parseBranchHintList(value: string | undefined): string[] {
@@ -38,6 +34,45 @@ function parseBranchHintList(value: string | undefined): string[] {
   );
 }
 
+function appendCommitBadge(
+  badges: Array<{ label: string; tone: CommitBadgeTone }>,
+  label: string,
+  tone: CommitBadgeTone,
+) {
+  const normalizedLabel = label.trim();
+  if (!normalizedLabel || badges.some((badge) => badge.label === normalizedLabel)) {
+    return;
+  }
+  badges.push({ label: normalizedLabel, tone });
+}
+
+function parseCommitRefBadges(refs: string): string[] {
+  const normalizedRefs = refs.trim();
+  if (!normalizedRefs) return [];
+
+  const body = normalizedRefs.startsWith('(') && normalizedRefs.endsWith(')')
+    ? normalizedRefs.slice(1, -1)
+    : normalizedRefs;
+
+  return Array.from(new Set(
+    body
+      .split(',')
+      .map((entry) => entry.trim())
+      .flatMap((entry) => {
+        if (!entry || entry === 'HEAD') return [];
+        if (entry.startsWith('tag: ')) return [];
+        if (entry.includes('->')) {
+          const [, target = ''] = entry.split('->').map((part) => part.trim());
+          if (!target || target.endsWith('/HEAD')) return [];
+          return [target];
+        }
+        if (entry.endsWith('/HEAD')) return [];
+        return [entry];
+      })
+      .filter(Boolean),
+  ));
+}
+
 function normalizeCommitMessage(message: string): string {
   return message.replace(/\r\n/g, '\n').replace(/\s+$/, '');
 }
@@ -51,6 +86,7 @@ type SessionRepoViewerProps = {
   repoPath: string;
   branchHint?: string;
   baseBranchHint?: string;
+  baseCommitIdHint?: string;
   repoOptions?: SessionRepoViewerOption[];
   refreshToken?: number;
 };
@@ -71,6 +107,7 @@ export function SessionRepoViewer({
   repoPath,
   branchHint,
   baseBranchHint,
+  baseCommitIdHint,
   repoOptions = [],
   refreshToken,
 }: SessionRepoViewerProps) {
@@ -115,6 +152,10 @@ export function SessionRepoViewer({
   const queryClient = useQueryClient();
   const action = useGitAction();
   const { data: branchData } = useGitBranches(effectiveRepoPath);
+  const currentBranchRef = branchData?.current?.trim() || effectiveBranchHint?.trim() || null;
+  const currentBranch = currentBranchRef || 'unknown';
+  const baseBranchRef = effectiveBaseBranchHint?.trim() || null;
+  const baseCommitIdRef = baseCommitIdHint?.trim() || null;
   const { data: statusData } = useGitStatus(effectiveRepoPath);
   const {
     data: log,
@@ -122,13 +163,24 @@ export function SessionRepoViewer({
     isFetching,
     isError,
     error,
-  } = useGitLog(effectiveRepoPath, 200, { scope: 'current' });
+  } = useGitLog(effectiveRepoPath, baseCommitIdRef ? null : 200, {
+    scope: 'current',
+    baseCommitId: baseCommitIdRef,
+    headRef: currentBranchRef,
+    includeBoundary: true,
+    fallbackToCurrent: true,
+  });
   const allCommits = useMemo(() => log?.all ?? [], [log]);
-  const currentBranch = branchData?.current?.trim() || effectiveBranchHint?.trim() || 'unknown';
-  const currentBranchRef = branchData?.current?.trim() || effectiveBranchHint?.trim() || null;
-  const baseBranchRef = effectiveBaseBranchHint?.trim() || null;
   const { data: mergeBaseHash } = useGitMergeBase(effectiveRepoPath, baseBranchRef, currentBranchRef);
-  const baseBranchTags = useMemo(() => {
+  const commits = useMemo(() => {
+    return selectSessionHistoryCommits(allCommits, {
+      baseCommitId: baseCommitIdRef,
+      mergeBaseHash,
+    });
+  }, [allCommits, baseCommitIdRef, mergeBaseHash]);
+  const displayCommitCount = commits.length;
+  const currentBranchHeadHash = branchData?.branchCommits?.[currentBranchRef || ''] || commits[0]?.hash || null;
+  const fallbackBaseBranchTags = useMemo(() => {
     const hintedBranches = parseBranchHintList(effectiveBaseBranchHint);
     if (!mergeBaseHash) return hintedBranches;
 
@@ -144,20 +196,6 @@ export function SessionRepoViewer({
 
     return Array.from(new Set([...hintedBranches, ...branchNamesAtMergeBase])).sort((a, b) => a.localeCompare(b));
   }, [branchData?.branchCommits, branchData?.branches, currentBranchRef, effectiveBaseBranchHint, mergeBaseHash]);
-  const commits = useMemo(() => {
-    if (!mergeBaseHash) return allCommits;
-    const normalizedMergeBase = mergeBaseHash.trim();
-    if (!normalizedMergeBase) return allCommits;
-
-    const branchPointIndex = allCommits.findIndex((commit) => isSameCommitHash(normalizedMergeBase, commit.hash));
-    if (branchPointIndex < 0) return allCommits;
-    return allCommits.slice(0, branchPointIndex + 1);
-  }, [allCommits, mergeBaseHash]);
-  const displayCommitCount = useMemo(() => {
-    const hasMergeBaseBoundaryCommit = !!mergeBaseHash && commits.some((commit) => isSameCommitHash(commit.hash, mergeBaseHash));
-    if (!hasMergeBaseBoundaryCommit) return commits.length;
-    return Math.max(commits.length - 1, 0);
-  }, [commits, mergeBaseHash]);
   const selectedCommitHash = useMemo(() => {
     if (commits.length === 0) return null;
     if (selection.mode === 'unselected') return null;
@@ -372,8 +410,24 @@ export function SessionRepoViewer({
             <div className="divide-y divide-slate-200 dark:divide-[color:var(--app-dark-border-subtle)]">
               {commits.map((commit, index) => {
                 const isSelected = selectedCommitHash === commit.hash;
-                const isOldestCommit = index === commits.length - 1;
-                const shouldShowBaseBranchTags = isOldestCommit && !!mergeBaseHash && isSameCommitHash(commit.hash, mergeBaseHash) && baseBranchTags.length > 0;
+                const commitBadges: Array<{ label: string; tone: CommitBadgeTone }> = [];
+
+                if (currentBranch && currentBranchHeadHash && isSameCommitHash(commit.hash, currentBranchHeadHash)) {
+                  appendCommitBadge(commitBadges, currentBranch, 'current');
+                }
+                if (baseBranchRef && baseCommitIdRef && isSameCommitHash(commit.hash, baseCommitIdRef)) {
+                  appendCommitBadge(commitBadges, baseBranchRef, 'base');
+                }
+                parseCommitRefBadges(commit.refs).forEach((label) => appendCommitBadge(commitBadges, label, 'ref'));
+                if (
+                  commitBadges.length === 0
+                  && index === commits.length - 1
+                  && !baseCommitIdRef
+                  && !!mergeBaseHash
+                  && isSameCommitHash(commit.hash, mergeBaseHash)
+                ) {
+                  fallbackBaseBranchTags.forEach((label) => appendCommitBadge(commitBadges, label, 'base'));
+                }
                 return (
                   <button
                     key={commit.hash}
@@ -392,15 +446,25 @@ export function SessionRepoViewer({
                     <div className="mt-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">
                       {commit.message || '(no subject)'}
                     </div>
-                    {shouldShowBaseBranchTags && (
+                    {commitBadges.length > 0 && (
                       <div className="mt-1 flex flex-wrap items-center gap-1">
-                        {baseBranchTags.map((branchName) => (
+                        {commitBadges.map((badge) => (
                           <span
-                            key={branchName}
-                            className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
-                            title={`Base branch: ${branchName}`}
+                            key={badge.label}
+                            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                              badge.tone === 'current'
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                : badge.tone === 'base'
+                                  ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                                  : 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-700/40 dark:text-slate-200'
+                            }`}
+                            title={badge.tone === 'base'
+                              ? `Base branch: ${badge.label}`
+                              : badge.tone === 'current'
+                                ? `Current branch: ${badge.label}`
+                                : `Ref: ${badge.label}`}
                           >
-                            {branchName}
+                            {badge.label}
                           </span>
                         ))}
                       </div>

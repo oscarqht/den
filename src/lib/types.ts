@@ -153,6 +153,7 @@ export interface SessionGitRepoContext {
   worktreePath: string;
   branchName: string;
   baseBranch?: string;
+  baseCommitId?: string;
 }
 
 export type SessionCanvasPanelType =

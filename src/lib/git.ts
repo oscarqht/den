@@ -8,6 +8,18 @@ import { tmpdir } from 'node:os';
 import { createGitLogOptions } from './git-log-options';
 
 const execFileAsync = promisify(execFile);
+const LOG_FIELD_SEPARATOR = '\x1f';
+const LOG_RECORD_SEPARATOR = '\x1e';
+const RAW_LOG_FORMAT = [
+  '%h',
+  '%p',
+  '%aI',
+  '%s',
+  '%d',
+  '%an',
+  '%ae',
+  '%b',
+].join(`${LOG_FIELD_SEPARATOR}`) + LOG_RECORD_SEPARATOR;
 
 function normalizeRemoteUrlForHttpAuth(remoteUrl: string): string | null {
   if (remoteUrl.startsWith('http://') || remoteUrl.startsWith('https://')) {
@@ -63,7 +75,11 @@ export function getGit(repoPath: string): SimpleGit {
 }
 
 export class GitService {
-  constructor(private repoPath: string) { }
+  private repoPath: string;
+
+  constructor(repoPath: string) {
+    this.repoPath = repoPath;
+  }
 
   private get git(): SimpleGit {
     return getGit(this.repoPath);
@@ -77,6 +93,46 @@ export class GitService {
       throw new Error(`File path is outside repository: ${filePath}`);
     }
     return resolvedFilePath;
+  }
+
+  private parseRawLogOutput(output: string): GitLog['all'] {
+    return output
+      .split(LOG_RECORD_SEPARATOR)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [
+          hash = '',
+          parents = '',
+          date = '',
+          message = '',
+          refs = '',
+          author_name = '',
+          author_email = '',
+          body = '',
+        ] = entry.split(LOG_FIELD_SEPARATOR);
+
+        return {
+          hash,
+          parents: parents.split(' ').filter(Boolean),
+          date,
+          message,
+          refs,
+          body,
+          author_name,
+          author_email,
+        };
+      });
+  }
+
+  private async readRawLog(args: string[]): Promise<GitLog['all']> {
+    const output = await this.git.raw([
+      'log',
+      '--decorate=short',
+      `--format=${RAW_LOG_FORMAT}`,
+      ...args,
+    ]);
+    return this.parseRawLogOutput(output);
   }
 
   static async cloneRepository(
@@ -223,6 +279,51 @@ export class GitService {
       total: log.total,
       latest: commits[0] || null
     } as unknown as GitLog;
+  }
+
+  async getLogRange(
+    baseCommitId: string,
+    headRef: string,
+    options: { includeBoundary?: boolean; limit?: number } = {},
+  ): Promise<GitLog> {
+    const trimmedBaseCommitId = baseCommitId.trim();
+    const trimmedHeadRef = headRef.trim();
+    const { includeBoundary = true, limit } = options;
+
+    if (!trimmedBaseCommitId) {
+      throw new Error('Base commit id is required');
+    }
+    if (!trimmedHeadRef) {
+      throw new Error('Head ref is required');
+    }
+
+    await this.git.revparse(['--verify', trimmedBaseCommitId]);
+    await this.git.revparse(['--verify', trimmedHeadRef]);
+    await this.git.raw(['merge-base', '--is-ancestor', trimmedBaseCommitId, trimmedHeadRef]);
+
+    const rangeArgs: string[] = [];
+    if (Number.isFinite(limit) && typeof limit === 'number' && limit > 0) {
+      rangeArgs.push(`--max-count=${limit}`);
+    }
+    rangeArgs.push(`${trimmedBaseCommitId}..${trimmedHeadRef}`);
+
+    const commits = await this.readRawLog(rangeArgs);
+    if (!includeBoundary) {
+      return {
+        all: commits,
+        total: commits.length,
+        latest: commits[0] || null,
+      };
+    }
+
+    const boundaryCommit = (await this.readRawLog(['-1', trimmedBaseCommitId]))[0] ?? null;
+    const all = boundaryCommit ? [...commits, boundaryCommit] : commits;
+
+    return {
+      all,
+      total: all.length,
+      latest: all[0] || null,
+    };
   }
 
   async getLatestCommitMessage(branch: string): Promise<string> {

@@ -80,6 +80,7 @@ export type LocalSessionGitRepoRecord = {
   worktreePath: string;
   branchName: string;
   baseBranch?: string | null;
+  baseCommitId?: string | null;
 };
 
 export type LocalSessionRecord = {

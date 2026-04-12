@@ -339,25 +339,60 @@ export function useGitConflictFileVersions(repoPath: string | null, filePath: st
 
 export function useGitLog(
   repoPath: string | null,
-  limit: number = 50,
-  options: { scope?: 'all' | 'current' } = {},
+  limit: number | null = 50,
+  options: {
+    scope?: 'all' | 'current';
+    baseCommitId?: string | null;
+    headRef?: string | null;
+    includeBoundary?: boolean;
+    fallbackToCurrent?: boolean;
+  } = {},
 ) {
   const scope = options.scope ?? 'all';
+  const baseCommitId = options.baseCommitId?.trim() || null;
+  const headRef = options.headRef?.trim() || null;
+  const includeBoundary = options.includeBoundary !== false;
+  const fallbackToCurrent = options.fallbackToCurrent !== false;
 
   return useQuery<GitLog>({
-    queryKey: ['git', repoPath, 'log', limit, scope],
+    queryKey: ['git', repoPath, 'log', limit, scope, baseCommitId, headRef, includeBoundary],
     queryFn: async () => {
       if (!repoPath) return null;
-      const res = await fetch(
-        `${API_BASE}/git/log?path=${encodeURIComponent(repoPath)}&limit=${limit}&scope=${scope}`
-      );
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        const err = new Error(errorData.error || 'Failed to fetch log') as GitError;
-        err.status = res.status;
-        throw err;
+      const buildUrl = (withRange: boolean) => {
+        const params = new URLSearchParams({
+          path: repoPath,
+          scope,
+        });
+        if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+          params.set('limit', String(limit));
+        }
+        if (withRange && baseCommitId && headRef) {
+          params.set('baseCommitId', baseCommitId);
+          params.set('headRef', headRef);
+          params.set('includeBoundary', includeBoundary ? 'true' : 'false');
+        }
+        return `${API_BASE}/git/log?${params.toString()}`;
+      };
+
+      const readLog = async (withRange: boolean) => {
+        const res = await fetch(buildUrl(withRange));
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          const err = new Error(errorData.error || 'Failed to fetch log') as GitError;
+          err.status = res.status;
+          throw err;
+        }
+        return res.json();
+      };
+
+      try {
+        return await readLog(Boolean(baseCommitId && headRef));
+      } catch (error) {
+        if (!baseCommitId || !headRef || !fallbackToCurrent) {
+          throw error;
+        }
+        return await readLog(false);
       }
-      return res.json();
     },
     enabled: !!repoPath,
     placeholderData: (previousData) => previousData,

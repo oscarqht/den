@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { sessionRecordToMetadata } from './session-metadata.ts';
 
@@ -33,6 +34,7 @@ test('converts a stored session record into metadata with compatibility fields',
       worktreePath: '/workspace/.palx/session-a',
       branchName: 'palx/session-a',
       baseBranch: 'main',
+      baseCommitId: 'abc1234',
     }],
   });
 
@@ -42,6 +44,7 @@ test('converts a stored session record into metadata with compatibility fields',
     worktreePath: '/workspace/.palx/session-a',
     branchName: 'palx/session-a',
     baseBranch: 'main',
+    baseCommitId: 'abc1234',
   }]);
   assert.equal(metadata.repoPath, '/workspace/project-a');
   assert.equal(metadata.worktreePath, '/workspace/.palx/session-a');
@@ -78,9 +81,9 @@ test('falls back to a direct workspace mapping for local-source sessions', () =>
   });
 
   assert.deepEqual(metadata.workspaceFolders, [{
-    sourcePath: '/workspace/project-b',
+    sourcePath: path.resolve('/workspace/project-b'),
     workspaceRelativePath: '.',
-    workspacePath: '/workspace/project-b',
+    workspacePath: path.resolve('/workspace/project-b'),
     provisioning: 'direct',
   }]);
   assert.equal(metadata.worktreePath, '/workspace/project-b');

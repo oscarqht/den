@@ -143,6 +143,7 @@ function getSessionGitReposFromRecord(record: Pick<LocalSessionRecord, 'gitRepos
       worktreePath: gitRepo.worktreePath,
       branchName: gitRepo.branchName,
       baseBranch: gitRepo.baseBranch ?? undefined,
+      baseCommitId: gitRepo.baseCommitId ?? undefined,
     }));
 }
 
@@ -164,6 +165,7 @@ export function sessionRecordToMetadata(record: LocalSessionRecord): SessionMeta
       worktreePath: fallbackWorktree,
       branchName: fallbackBranch,
       baseBranch: fallbackBase,
+      baseCommitId: undefined,
     });
   }
 

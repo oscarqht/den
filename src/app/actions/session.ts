@@ -217,6 +217,7 @@ type SessionGitRepoRow = {
   worktree_path: string;
   branch_name: string;
   base_branch: string | null;
+  base_commit_id: string | null;
 };
 
 type SessionLaunchContextRow = {
@@ -261,6 +262,7 @@ function toSessionGitRepoRows(metadata: {
     worktreePath: string;
     branchName: string;
     baseBranch?: string | null;
+    baseCommitId?: string | null;
   }>;
 }): SessionGitRepoRow[] {
   return metadata.gitRepos.map((gitRepo) => ({
@@ -270,6 +272,7 @@ function toSessionGitRepoRows(metadata: {
     worktree_path: gitRepo.worktreePath,
     branch_name: gitRepo.branchName,
     base_branch: gitRepo.baseBranch ?? null,
+    base_commit_id: gitRepo.baseCommitId ?? null,
   }));
 }
 
@@ -457,6 +460,7 @@ function toSessionGitRepoContext(row: SessionGitRepoRow): SessionGitRepoContext 
     worktreePath: row.worktree_path,
     branchName: row.branch_name,
     baseBranch: row.base_branch ?? undefined,
+    baseCommitId: row.base_commit_id ?? undefined,
   };
 }
 
@@ -823,6 +827,7 @@ function parseSessionWorkspacePreparationPayload(
         worktreePath: normalizeOptionalText(entry.worktreePath) || '',
         branchName: normalizeOptionalText(entry.branchName) || '',
         baseBranch: normalizeOptionalText(entry.baseBranch),
+        baseCommitId: normalizeOptionalText(entry.baseCommitId),
       }))
       .filter((entry) => (
         Boolean(entry.sourceRepoPath)
@@ -887,6 +892,11 @@ async function resolveRepoHeadBranch(repoPath: string): Promise<string> {
   const branches = await git.branchLocal();
   if (branches.current?.trim()) return branches.current.trim();
   return resolveDefaultBaseBranch(repoPath);
+}
+
+async function resolveGitRefCommit(repoPath: string, ref: string): Promise<string> {
+  const git = simpleGit(repoPath);
+  return (await git.revparse([ref])).trim();
 }
 
 async function copyProjectWithoutGitRepos(
@@ -1029,6 +1039,7 @@ async function createSingleRepoSession(
   const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
   const branchName = buildSessionBranchName(sessionName, context.repoPath);
   const git = simpleGit(context.repoPath);
+  const baseCommitId = await resolveGitRefCommit(context.repoPath, baseBranch);
   await git.raw(['worktree', 'add', '-b', branchName, workspacePath, baseBranch]);
 
   return {
@@ -1043,6 +1054,7 @@ async function createSingleRepoSession(
       worktreePath: workspacePath,
       branchName,
       baseBranch,
+      baseCommitId,
     }],
   };
 }
@@ -1116,6 +1128,7 @@ async function createWorkspaceModeSession(
     const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
     const branchName = buildSessionBranchName(sessionName, context.repoPath);
     const git = simpleGit(context.repoPath);
+    const baseCommitId = await resolveGitRefCommit(context.repoPath, baseBranch);
     await git.raw(['worktree', 'add', '-b', branchName, targetWorktreePath, baseBranch]);
 
     gitRepos.push({
@@ -1124,6 +1137,7 @@ async function createWorkspaceModeSession(
       worktreePath: targetWorktreePath,
       branchName,
       baseBranch,
+      baseCommitId,
     });
 
     const existingWorkspaceFolderIndex = workspaceFolders.findIndex((workspaceFolder) => (
@@ -1196,6 +1210,7 @@ async function createLocalSourceSession(
     const normalizedRelativeRepoPath = relativeRepoPath === '.' ? '' : relativeRepoPath;
     const branchName = await resolveRepoHeadBranch(context.repoPath);
     const baseBranch = context.baseBranch || await resolveDefaultBaseBranch(context.repoPath);
+    const baseCommitId = await resolveGitRefCommit(context.repoPath, baseBranch);
     const worktreePath = hasMultipleFolders
       ? path.join(/* turbopackIgnore: true */ workspacePath, normalizeRelativeWorkspacePath(normalizedRelativeRepoPath || '.'))
       : context.repoPath;
@@ -1206,6 +1221,7 @@ async function createLocalSourceSession(
       worktreePath,
       branchName,
       baseBranch,
+      baseCommitId,
     } satisfies SessionGitRepoContext;
   }));
 
@@ -1691,6 +1707,7 @@ export async function saveSessionMetadata(metadata: SessionMetadata): Promise<vo
         worktreePath: gitRepo.worktreePath,
         branchName: gitRepo.branchName,
         baseBranch: gitRepo.baseBranch ?? null,
+        baseCommitId: gitRepo.baseCommitId ?? null,
       })),
     };
   });
@@ -2821,14 +2838,14 @@ export async function mergeSessionToBase(
 export async function rebaseSessionOntoBase(
   sessionName: string,
   sourceRepoPath?: string,
-): Promise<{ success: boolean; branchName?: string; baseBranch?: string; error?: string }> {
+): Promise<{ success: boolean; branchName?: string; baseBranch?: string; baseCommitId?: string; error?: string }> {
   try {
     const target = await resolveSessionGitTarget(sessionName, sourceRepoPath);
     if ('error' in target) {
       return { success: false, error: target.error };
     }
 
-    const { gitRepo } = target;
+    const { metadata, gitRepo } = target;
     const baseBranch = gitRepo.baseBranch?.trim();
     if (!baseBranch) {
       return { success: false, error: 'Base branch is missing for the selected repository context.' };
@@ -2854,12 +2871,21 @@ export async function rebaseSessionOntoBase(
       await worktreeGit.checkout(gitRepo.branchName);
     }
 
+    const baseCommitId = await resolveGitRefCommit(gitRepo.sourceRepoPath, baseBranch);
     await worktreeGit.rebase([baseBranch]);
+
+    metadata.gitRepos = metadata.gitRepos.map((context) => (
+      context.sourceRepoPath === gitRepo.sourceRepoPath
+        ? { ...context, baseCommitId }
+        : context
+    ));
+    await saveSessionMetadata(metadata);
 
     return {
       success: true,
       branchName: gitRepo.branchName,
       baseBranch,
+      baseCommitId,
     };
   } catch (e: unknown) {
     console.error('Failed to rebase session branch:', e);

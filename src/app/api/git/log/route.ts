@@ -9,6 +9,9 @@ export async function GET(request: Request) {
   const path = searchParams.get('path');
   const limit = searchParams.get('limit');
   const scope = searchParams.get('scope') === 'current' ? 'current' : 'all';
+  const baseCommitId = searchParams.get('baseCommitId')?.trim() || null;
+  const headRef = searchParams.get('headRef')?.trim() || null;
+  const includeBoundary = searchParams.get('includeBoundary') !== 'false';
 
   if (!path) {
     return NextResponse.json({ error: 'Repo path is required' }, { status: 400 });
@@ -21,9 +24,14 @@ export async function GET(request: Request) {
 
   try {
     const git = new GitService(path);
-    const parsedLimit = limit ? Number.parseInt(limit, 10) : 50;
-    const normalizedLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
-    const log = await git.getLog(normalizedLimit, { includeAll: scope !== 'current' });
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : NaN;
+    const normalizedLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
+    const log = baseCommitId && headRef
+      ? await git.getLogRange(baseCommitId, headRef, {
+        includeBoundary,
+        limit: normalizedLimit,
+      })
+      : await git.getLog(normalizedLimit ?? 50, { includeAll: scope !== 'current' });
     return NextResponse.json(log);
   } catch (error) {
     return handleGitError(error);

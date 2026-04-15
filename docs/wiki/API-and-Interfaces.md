@@ -86,10 +86,10 @@ Implementation:
 - parser: [src/lib/cli-args.mjs](../../src/lib/cli-args.mjs)
 - launcher: [bin/viba.mjs](../../bin/viba.mjs)
 
-## Authn/Authz Model
+## Access Model
 
-- Localhost and loopback hosts bypass authentication. Any non-local host requires Auth0, using `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, and `AUTH0_SECRET` from [src/lib/auth0.ts](../../src/lib/auth0.ts).
-- Middleware enforces session checks on app routes and APIs when configured: [src/proxy.ts](../../src/proxy.ts).
+- Den does not include built-in application authentication.
+- Any remote exposure should be protected by external network controls or a reverse proxy.
 
 ## Validation, Error Shapes, and Status Codes
 

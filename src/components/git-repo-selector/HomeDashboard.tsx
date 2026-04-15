@@ -5,7 +5,7 @@ import type { HomeProjectGitRepo } from '@/lib/home-project-git';
 import { getHomeDashboardRenderState } from '@/lib/home-dashboard-state';
 import { hasProjectIcon, type ProjectIconValue } from '@/lib/project-icons';
 import { APP_PAGE_PANEL_CLASS, APP_PAGE_TOOLBAR_CLASS } from '@/components/app-shell/AppPageSurface';
-import { ArrowUpDown, KeyRound, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowUpDown, KeyRound, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import type { ComponentType, MouseEvent } from 'react';
 import appIcon from '@/app/icon.png';
@@ -25,8 +25,6 @@ export type HomeDashboardProps = {
   lastUpdatedAt?: string | null;
   homeSearchQuery: string;
   homeProjectSort: HomeProjectSort;
-  showLogout: boolean;
-  logoutEnabled: boolean;
   quickCreateActiveCount: number;
   failedQuickCreateDrafts: QuickCreateDraft[];
   themeModeLabel: string;
@@ -78,8 +76,6 @@ export function HomeDashboard({
   lastUpdatedAt = null,
   homeSearchQuery,
   homeProjectSort,
-  showLogout,
-  logoutEnabled,
   quickCreateActiveCount,
   failedQuickCreateDrafts,
   themeModeLabel,
@@ -200,17 +196,6 @@ export function HomeDashboard({
             <KeyRound className="h-4 w-4" />
             <span className="hidden max-w-24 truncate whitespace-nowrap lg:inline">Settings</span>
           </button>
-          {showLogout && logoutEnabled ? (
-            <a
-              href="/auth/logout"
-              className={compactGhostButtonClass}
-              title="Log out"
-              aria-label="Log out"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden max-w-20 truncate whitespace-nowrap lg:inline">Logout</span>
-            </a>
-          ) : null}
           <button
             className="btn btn-ghost btn-sm btn-square h-8 min-h-8 w-8 rounded-lg text-slate-700 hover:bg-slate-100 dark:border dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
             onClick={onCycleThemeMode}

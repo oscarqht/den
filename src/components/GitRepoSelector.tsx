@@ -163,8 +163,6 @@ type GitRepoSelectorProps = {
   fromRepoName?: string | null;
   prefillFromSession?: string | null;
   predefinedPrompts?: PredefinedPrompt[];
-  showLogout?: boolean;
-  logoutEnabled?: boolean;
 };
 
 function deriveSessionTitleFromTaskDescription(taskDescription: string): string | undefined {
@@ -348,8 +346,6 @@ export default function GitRepoSelector({
   fromRepoName = null,
   prefillFromSession = null,
   predefinedPrompts = [],
-  showLogout = false,
-  logoutEnabled = true,
 }: GitRepoSelectorProps) {
   const queryClient = useQueryClient();
   const repoPath = projectPath ?? legacyRepoPath;
@@ -3335,8 +3331,6 @@ export default function GitRepoSelector({
           isLoaded={isLoaded}
           homeSearchQuery={homeSearchQuery}
           homeProjectSort={homeProjectSort}
-          showLogout={showLogout}
-          logoutEnabled={logoutEnabled}
           themeModeLabel={themeModeLabel}
           nextThemeModeLabel={nextThemeModeLabel}
           ThemeModeIcon={ThemeModeIcon}

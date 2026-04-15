@@ -1,9 +1,8 @@
-# Settings, Credentials, and Authentication
+# Settings and Credentials
 
 ## What This Feature Does
 
 User-facing behavior:
-- Optional Auth0 login gate for app access.
 - Settings UI for default coding agent preferences plus GitHub/GitLab git tokens and Codex API key/proxy.
 - Automatic credential selection for clone/push/pull based on remote provider/host.
 
@@ -14,9 +13,6 @@ System-facing behavior:
 
 ## Key Modules and Responsibilities
 
-- Auth0 config and middleware gate:
-- [src/lib/auth0.ts](../../../src/lib/auth0.ts)
-- [src/proxy.ts](../../../src/proxy.ts)
 - Credential persistence and host matching:
 - [src/lib/credentials.ts](../../../src/lib/credentials.ts)
 - Agent API credential persistence:
@@ -29,10 +25,6 @@ System-facing behavior:
 - [src/app/actions/credentials.ts](../../../src/app/actions/credentials.ts)
 
 ## Public Interfaces
-
-### Auth interfaces
-- Auth routes are handled by `@auth0/nextjs-auth0` middleware integration when required env vars are present ([src/lib/auth0.ts](../../../src/lib/auth0.ts), [src/proxy.ts](../../../src/proxy.ts)).
-- For unauthenticated API access, middleware returns `401` JSON for protected API routes.
 
 ### Credential APIs
 - `GET /api/credentials`: list metadata.
@@ -85,15 +77,13 @@ sequenceDiagram
 - Duplicate credentials are blocked per host/user combination.
 - Clone/push credential matching handles SSH and HTTPS remotes and GitLab host disambiguation ([src/lib/terminal-session.ts](../../../src/lib/terminal-session.ts), [src/lib/credentials.ts](../../../src/lib/credentials.ts), [src/app/actions/repository.ts](../../../src/app/actions/repository.ts)).
 - Clone errors sanitize secret values from messages before returning to UI ([src/app/actions/repository.ts](../../../src/app/actions/repository.ts)).
-- Localhost and loopback access bypass login, while non-local access is blocked unless Auth0 env vars are configured ([src/proxy.ts](../../../src/proxy.ts), [src/lib/auth0.ts](../../../src/lib/auth0.ts)).
 
 ## Observability
 
-- Credential and auth failures are logged (`console.error`) and surfaced in API/UI messages.
-- Middleware centralizes auth rejections and redirect behavior logs indirectly through Next/Auth0 runtime.
+- Credential failures are logged (`console.error`) and surfaced in API/UI messages.
 
 ## Tests
 
-No dedicated credential/auth integration tests are present in this branch.
+No dedicated credential integration tests are present in this branch.
 Supporting host parsing/provider detection tests:
 - [src/lib/terminal-session.test.ts](../../../src/lib/terminal-session.test.ts).

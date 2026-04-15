@@ -6,7 +6,7 @@ Prerequisites (from README and launcher logic):
 - Node.js + npm ([README.md](../../README.md), [package.json](../../package.json)).
 - `ttyd` installed and available in `PATH`.
 - `tmux` for persistent terminal mode.
-- Optional Auth0 app credentials for protected mode.
+- No built-in application login layer is configured.
 
 Install and run:
 
@@ -87,17 +87,9 @@ NPM package expectations:
 
 ### Environment variables
 
-Auth0-related:
-- `AUTH0_DOMAIN`
-- `AUTH0_CLIENT_ID`
-- `AUTH0_CLIENT_SECRET`
-- `AUTH0_SECRET`
-- `APP_BASE_URL`
-
-Tailscale note:
-- Tailscale MagicDNS hosts (`*.ts.net`), Tailscale CGNAT `100.64.0.0/10`, and the Tailscale IPv6 ULA prefix bypass Auth0.
-- Existing `/auth/login?...` links opened over Tailscale redirect back to `returnTo`.
-- `APP_BASE_URL` only needs to cover Auth0-protected origins such as localhost, ngrok, or nport.
+Remote access note:
+- Den no longer includes built-in app authentication.
+- If you expose it beyond localhost, secure that access at the network or reverse-proxy layer.
 
 Runtime/launcher:
 - `PORT`
@@ -110,7 +102,6 @@ Session terminal env injection (derived at runtime):
 
 References:
 - [README.md](../../README.md)
-- [src/lib/auth0.ts](../../src/lib/auth0.ts)
 - [src/app/actions/git.ts](../../src/app/actions/git.ts)
 - [src/lib/terminal-session.ts](../../src/lib/terminal-session.ts)
 
@@ -126,8 +117,7 @@ Legacy note:
 ## Troubleshooting Guide
 
 ### App inaccessible / unauthorized
-- If Auth0 vars are incomplete, app runs unprotected and shows warning banner on home page ([src/app/page.tsx](../../src/app/page.tsx)).
-- If Auth0 is configured and API calls return `401`, verify session and callback/logout URLs; middleware protects most routes ([src/proxy.ts](../../src/proxy.ts)).
+- If the app is exposed remotely, verify your network or proxy restrictions separately because Den does not enforce a login gate itself.
 
 ### Terminal not loading
 - Check `ttyd` availability and process startup errors from `startTtydProcess` ([src/app/actions/git.ts](../../src/app/actions/git.ts)).

@@ -65,8 +65,8 @@ flowchart LR
 - Session metadata/context and drafts backed by JSON state, with prompt files kept in `~/.viba/session-prompts`: [src/app/actions/session.ts](../../src/app/actions/session.ts), [src/app/actions/draft.ts](../../src/app/actions/draft.ts).
 - Git and agent API credentials with keytar-backed secrets: [src/lib/credentials.ts](../../src/lib/credentials.ts), [src/lib/agent-api-credentials.ts](../../src/lib/agent-api-credentials.ts).
 
-### Security/auth boundary
-- Optional Auth0 gate for pages and most APIs via middleware: [src/proxy.ts](../../src/proxy.ts), [src/lib/auth0.ts](../../src/lib/auth0.ts).
+### Security boundary
+- Den does not include a built-in login gate; access control for remote exposure must be handled outside the app.
 
 ## Main Data Flows
 

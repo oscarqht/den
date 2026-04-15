@@ -142,15 +142,7 @@ function writeStoredHomeProjectSort(nextSort: HomeProjectSort): void {
   }
 }
 
-type HomeDashboardContainerProps = {
-  showLogout?: boolean;
-  logoutEnabled?: boolean;
-};
-
-export default function HomeDashboardContainer({
-  showLogout = false,
-  logoutEnabled = true,
-}: HomeDashboardContainerProps) {
+export default function HomeDashboardContainer() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1612,8 +1604,6 @@ export default function HomeDashboardContainer({
         lastUpdatedAt={homeLastUpdatedAt}
         homeSearchQuery={homeSearchQuery}
         homeProjectSort={homeProjectSort}
-        showLogout={showLogout}
-        logoutEnabled={logoutEnabled}
         quickCreateActiveCount={quickCreateActiveCount}
         failedQuickCreateDrafts={quickCreateDrafts}
         themeModeLabel={themeModeLabel}

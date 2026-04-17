@@ -35,6 +35,10 @@ import {
   type SessionCanvasWorkspaceSearchResult,
 } from '@/lib/session-canvas-search';
 import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
+import {
+  resolveProjectRepoPathsForSession,
+  shouldDiscoverProjectReposForSession,
+} from '@/lib/session-project-repos';
 import { buildShellBootstrapCommand } from '@/lib/shell';
 import { getProjectById } from '@/lib/store';
 import {
@@ -355,15 +359,21 @@ export async function getSessionCanvasBootstrap(sessionId: string): Promise<Sess
       || null
     );
 
-    const discoveryResult = parsedLaunch.projectRepoPaths.length > 0
-      ? null
-      : await discoverProjectGitRepos(metadata.projectPath).catch(() => null);
-    const discoveredProjectRepoPaths = parsedLaunch.projectRepoPaths.length > 0
-      ? parsedLaunch.projectRepoPaths
-      : (discoveryResult?.repos.map((repo) => repo.repoPath) ?? null);
+    const sessionRepoPaths = metadata.gitRepos.map((repo) => repo.sourceRepoPath);
+    const discoveryResult = shouldDiscoverProjectReposForSession({
+      launchContextRepoPaths: parsedLaunch.projectRepoPaths,
+      sessionRepoPaths,
+    })
+      ? await discoverProjectGitRepos(metadata.projectPath).catch(() => null)
+      : null;
+    const discoveredProjectRepoPaths = resolveProjectRepoPathsForSession({
+      launchContextRepoPaths: parsedLaunch.projectRepoPaths,
+      sessionRepoPaths,
+      discoveredProjectRepoPaths: discoveryResult?.repos.map((repo) => repo.repoPath) ?? null,
+    });
 
     const terminalRepoPaths = resolveSessionTerminalRepoPaths({
-      sessionRepoPaths: metadata.gitRepos.map((repo) => repo.sourceRepoPath),
+      sessionRepoPaths,
       discoveredProjectRepoPaths,
       activeRepoPath: metadata.activeRepoPath,
       projectPath: metadata.projectPath,

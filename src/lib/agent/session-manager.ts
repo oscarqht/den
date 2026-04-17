@@ -28,6 +28,10 @@ import {
 } from '@/lib/agent/store';
 import { buildPlanText, normalizePlanSteps, parsePlanStepsFromText } from '@/lib/agent/plan';
 import { resolveSessionRuntimeUpdate } from '@/lib/agent/session-runtime-updates';
+import {
+  resolveProjectRepoPathsForSession,
+  shouldDiscoverProjectReposForSession,
+} from '@/lib/session-project-repos';
 import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
 import { deriveSessionNotificationFromRuntime } from '@/lib/session-agent-notifications';
 import {
@@ -245,14 +249,20 @@ async function resolveSessionGitAuthEnv(metadata: NonNullable<Awaited<ReturnType
   const launchContextRepoPaths = (launchContextResult?.success ? (launchContextResult.context?.projectRepoPaths ?? []) : [])
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const discoveryResult = launchContextRepoPaths.length > 0
-    ? null
-    : await discoverProjectGitRepos(metadata.projectPath).catch(() => null);
+  const sessionRepoPaths = metadata.gitRepos.map((repo) => repo.sourceRepoPath);
+  const discoveryResult = shouldDiscoverProjectReposForSession({
+    launchContextRepoPaths,
+    sessionRepoPaths,
+  })
+    ? await discoverProjectGitRepos(metadata.projectPath).catch(() => null)
+    : null;
   const repoPaths = resolveSessionTerminalRepoPaths({
-    sessionRepoPaths: metadata.gitRepos.map((repo) => repo.sourceRepoPath),
-    discoveredProjectRepoPaths: launchContextRepoPaths.length > 0
-      ? launchContextRepoPaths
-      : (discoveryResult?.repos.map((repo) => repo.repoPath) ?? null),
+    sessionRepoPaths,
+    discoveredProjectRepoPaths: resolveProjectRepoPathsForSession({
+      launchContextRepoPaths,
+      sessionRepoPaths,
+      discoveredProjectRepoPaths: discoveryResult?.repos.map((repo) => repo.repoPath) ?? null,
+    }),
     activeRepoPath: metadata.activeRepoPath,
     projectPath: metadata.projectPath,
   });

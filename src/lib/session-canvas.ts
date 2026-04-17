@@ -48,6 +48,17 @@ type SessionCanvasPanelDraft = Omit<SessionCanvasPanel, 'id' | 'zIndex'> & {
   zIndex?: number;
 };
 
+export type SessionCanvasPanelCloseResult = {
+  layout: SessionCanvasLayout;
+  nextActivePanelId: string | null;
+  terminalShutdown:
+    | {
+        role: string;
+        requiresShellShutdown: boolean;
+      }
+    | null;
+};
+
 export function clampSessionCanvasScale(value: number): number {
   if (!Number.isFinite(value)) return SESSION_CANVAS_DEFAULT_SCALE;
   return Math.max(SESSION_CANVAS_MIN_SCALE, Math.min(SESSION_CANVAS_MAX_SCALE, value));
@@ -168,6 +179,29 @@ export function getDefaultSessionCanvasPanelId(
   }
 
   return panels.at(-1)?.id ?? null;
+}
+
+export function closeSessionCanvasPanel(
+  layout: SessionCanvasLayout,
+  panelId: string,
+  terminalPersistenceMode: TerminalPersistenceMode,
+): SessionCanvasPanelCloseResult {
+  const targetPanel = layout.panels.find((panel) => panel.id === panelId) ?? null;
+  const nextPanels = layout.panels.filter((panel) => panel.id !== panelId);
+
+  return {
+    layout: {
+      ...layout,
+      panels: nextPanels,
+    },
+    nextActivePanelId: getDefaultSessionCanvasPanelId(nextPanels),
+    terminalShutdown: targetPanel?.type === 'terminal'
+      ? {
+          role: getSessionCanvasTerminalRole(targetPanel),
+          requiresShellShutdown: terminalPersistenceMode === 'shell',
+        }
+      : null,
+  };
 }
 
 export function normalizeSessionCanvasLayout(

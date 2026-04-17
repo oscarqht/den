@@ -6,6 +6,7 @@ import {
   buildSessionCanvasTerminalBootstrapCommand,
   buildSessionCanvasTerminalSrc,
   centerSessionCanvasViewportOnPanels,
+  closeSessionCanvasPanel,
   createDefaultSessionCanvasLayout,
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
@@ -222,6 +223,54 @@ describe('session canvas layout helpers', () => {
     ];
 
     assert.equal(getDefaultSessionCanvasPanelId(panels), 'preview:1');
+  });
+
+  it('returns terminal shutdown details when closing a tmux-backed terminal panel', () => {
+    const layout = createDefaultSessionCanvasLayout({
+      workspacePath: '/tmp/workspace',
+      startupScript: 'npm run dev',
+    });
+
+    const result = closeSessionCanvasPanel(layout, layout.panels[1]!.id, 'tmux');
+
+    assert.deepEqual(result.layout.panels.map((panel) => panel.id), [layout.panels[0]!.id]);
+    assert.equal(result.nextActivePanelId, layout.panels[0]!.id);
+    assert.deepEqual(result.terminalShutdown, {
+      role: 'terminal',
+      requiresShellShutdown: false,
+    });
+  });
+
+  it('requests shell shutdown when closing a shell-backed generic terminal panel', () => {
+    const layout = createDefaultSessionCanvasLayout({
+      workspacePath: '/tmp/workspace',
+      startupScript: null,
+    });
+    const genericTerminalPanel: SessionCanvasTerminalPanel = {
+      id: 'terminal:generic',
+      type: 'terminal',
+      title: 'Terminal',
+      x: 920,
+      y: 96,
+      width: 760,
+      height: 420,
+      zIndex: 2,
+      state: {},
+      payload: {
+        terminalKey: 'terminal-123',
+        role: 'generic',
+      },
+    };
+
+    const result = closeSessionCanvasPanel({
+      ...layout,
+      panels: [...layout.panels, genericTerminalPanel],
+    }, genericTerminalPanel.id, 'shell');
+
+    assert.deepEqual(result.terminalShutdown, {
+      role: 'terminal-123',
+      requiresShellShutdown: true,
+    });
   });
 
   it('builds canvas terminal src values with the session workspace cwd', () => {

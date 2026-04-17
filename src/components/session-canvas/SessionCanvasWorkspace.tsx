@@ -49,6 +49,7 @@ import {
   buildSessionCanvasTerminalSrc,
   centerSessionCanvasViewportOnPanels,
   clampSessionCanvasScale,
+  closeSessionCanvasPanel,
   createSessionCanvasPanelId,
   fitSessionCanvasLayoutToViewport,
   fitSessionCanvasViewportToPanels,
@@ -72,7 +73,6 @@ import { isPrimaryShortcutModifierPressed, isWindowsPlatform } from '@/lib/keybo
 import { getBaseName, getDirName } from '@/lib/path';
 import {
   sendTerminalDataEvent,
-  sendTerminalInput,
   submitTerminalBootstrapCommand,
 } from '@/lib/terminal-input';
 import {
@@ -110,6 +110,10 @@ type TerminalRuntime = {
   iframe: HTMLIFrameElement;
   win: Window & { term?: NonNullable<TerminalWindow['term']> };
   term: NonNullable<TerminalWindow['term']>;
+};
+
+type TerminalPanelHandle = {
+  terminateSession: () => boolean;
 };
 
 type TerminalWindow = Window & {
@@ -1062,7 +1066,7 @@ function CommandPalette({
   );
 }
 
-const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelProps>(function TerminalPanel({
+const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(function TerminalPanel({
   sessionId,
   panel,
   src,
@@ -1236,25 +1240,18 @@ const TerminalPanel = forwardRef<SessionCanvasAgentInputHandle, TerminalPanelPro
   }, [shouldMount]);
 
   useImperativeHandle(ref, () => ({
-    insertText(text: string) {
-      const value = text ?? '';
-      if (!value || !shouldMount || terminalError || !terminalServiceReady || !terminalReady) {
-        return false;
-      }
-
+    terminateSession() {
       const runtime = getTerminalRuntime(iframeRef.current);
       if (!runtime) {
         return false;
       }
 
-      const inserted = sendTerminalInput(runtime.term, value);
-      if (inserted) {
-        runtime.iframe.focus();
-        runtime.win.focus();
-      }
-      return inserted;
+      // Interrupt the foreground process before asking the shell to exit.
+      const interrupted = sendTerminalDataEvent(runtime.term, '\u0003');
+      const exited = sendTerminalDataEvent(runtime.term, 'exit\r');
+      return interrupted || exited;
     },
-  }), [shouldMount, terminalError, terminalReady, terminalServiceReady]);
+  }), []);
 
   useEffect(() => {
     if (!shouldMount || !iframeRef.current) {
@@ -1414,6 +1411,7 @@ export function SessionCanvasWorkspace({
     startY: number;
   } | null>(null);
   const agentInputHandlesRef = useRef<Record<string, SessionCanvasAgentInputHandle | null>>({});
+  const terminalPanelHandlesRef = useRef<Record<string, TerminalPanelHandle | null>>({});
   const [layout, setLayout] = useState<SessionCanvasLayout>(bootstrap.layout);
   const [activePanelId, setActivePanelId] = useState<string | null>(getDefaultSessionCanvasPanelId(bootstrap.layout.panels));
   const [agentHeaderMetaByPanelId, setAgentHeaderMetaByPanelId] = useState<Record<string, AgentSessionHeaderMeta>>({});
@@ -1701,6 +1699,11 @@ export function SessionCanvasWorkspace({
         delete agentInputHandlesRef.current[panelId];
       }
     }
+    for (const panelId of Object.keys(terminalPanelHandlesRef.current)) {
+      if (!activePanelIds.has(panelId)) {
+        delete terminalPanelHandlesRef.current[panelId];
+      }
+    }
     setAgentHeaderMetaByPanelId((current) => {
       const nextEntries = Object.entries(current).filter(([panelId]) => activePanelIds.has(panelId));
       if (nextEntries.length === Object.keys(current).length) {
@@ -1853,17 +1856,35 @@ export function SessionCanvasWorkspace({
   }, []);
 
   const closePanel = useCallback((panelId: string) => {
-    let nextActivePanelId: string | null = null;
-    setLayout((previous) => {
-      const remainingPanels = previous.panels.filter((panel) => panel.id !== panelId);
-      nextActivePanelId = getDefaultSessionCanvasPanelId(remainingPanels);
-      return {
-        ...previous,
-        panels: remainingPanels,
-      };
-    });
-    setActivePanelId((current) => (current === panelId ? nextActivePanelId : current));
-  }, []);
+    const closeResult = closeSessionCanvasPanel(layout, panelId, bootstrap.terminalPersistenceMode);
+    const applyClose = () => {
+      let nextActivePanelId = closeResult.nextActivePanelId;
+      setLayout((previous) => {
+        const nextCloseResult = closeSessionCanvasPanel(previous, panelId, bootstrap.terminalPersistenceMode);
+        nextActivePanelId = nextCloseResult.nextActivePanelId;
+        return nextCloseResult.layout;
+      });
+      setActivePanelId((current) => (current === panelId ? nextActivePanelId : current));
+    };
+
+    const shellShutdownRequested = closeResult.terminalShutdown?.requiresShellShutdown
+      ? (terminalPanelHandlesRef.current[panelId]?.terminateSession() ?? false)
+      : false;
+
+    delete terminalPanelHandlesRef.current[panelId];
+
+    if (shellShutdownRequested) {
+      window.setTimeout(applyClose, 75);
+    } else {
+      applyClose();
+    }
+
+    if (closeResult.terminalShutdown && !closeResult.terminalShutdown.requiresShellShutdown) {
+      void terminateTmuxSessionRole(sessionId, closeResult.terminalShutdown.role).catch((error) => {
+        console.error('Failed to terminate terminal panel tmux session:', error);
+      });
+    }
+  }, [bootstrap.terminalPersistenceMode, layout, sessionId]);
 
   const updatePanel = useCallback((panelId: string, updates: Partial<SessionCanvasPanel>) => {
     setLayout((previous) => updatePanelInLayout(previous, panelId, updates));
@@ -2076,6 +2097,14 @@ export function SessionCanvasWorkspace({
       return;
     }
     delete agentInputHandlesRef.current[panelId];
+  }, []);
+
+  const registerTerminalPanelHandle = useCallback((panelId: string, handle: TerminalPanelHandle | null) => {
+    if (handle) {
+      terminalPanelHandlesRef.current[panelId] = handle;
+      return;
+    }
+    delete terminalPanelHandlesRef.current[panelId];
   }, []);
 
   const handleAgentHeaderMetaChange = useCallback((panelId: string, meta: AgentSessionHeaderMeta) => {
@@ -2466,6 +2495,7 @@ export function SessionCanvasWorkspace({
 
       return (
         <TerminalPanel
+          ref={(handle) => registerTerminalPanelHandle(panel.id, handle)}
           sessionId={sessionId}
           panel={panel}
           src={src}
@@ -2545,6 +2575,7 @@ export function SessionCanvasWorkspace({
     isAgentFileInsertPending,
     agentFileTargetPanelId,
     isMobileViewport,
+    registerTerminalPanelHandle,
   ]);
 
   const explorerState = {
